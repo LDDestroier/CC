@@ -1595,7 +1595,7 @@ local specialCharSelector = function()
 	render()
 	while true do
 		evt, butt, x, y = os.pullEvent()
-		if evt == "mouse_click" then
+		if evt == "mouse_click" or evt == "mouse_drag" then
 			if chars[y-sy] then
 				if chars[y-sy][x] then
 					if (chars[y-sy][x] ~= char) then
