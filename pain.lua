@@ -1568,7 +1568,6 @@ local boxCharSelector = function()
 end
 
 local specialCharSelector = function()
-	local sy = scr_y - 9
 	local chars = {}
 	local buff = 0
 	for y = 1, 16 do
@@ -1578,6 +1577,7 @@ local specialCharSelector = function()
                         buff = buff + 1
 		end
 	end
+	local sy = scr_y - (#chars + 1)
 	local char = paint.c
 	local render = function()
 		for y = 1, #chars do
