@@ -4,9 +4,7 @@
 	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua
 	 std ld pain pain
 	
-	This is a beta release. You fool!
-	To do:
-		+ add special character selector
+	This is a stable release. You fool!
 --]]
 local askToSerialize = false
 local defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
