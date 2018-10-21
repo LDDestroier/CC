@@ -1571,11 +1571,11 @@ local specialCharSelector = function()
 	local sy = scr_y - 9
 	local chars = {}
 	local buff = 0
-	for y = 1, 8 do
-		for x = 1, 8 do
-			buff = buff + 1
+	for y = 1, 16 do
+		for x = 1, 16 do
 			chars[y] = chars[y] or {}
 			chars[y][x] = string.char(buff)
+                        buff = buff + 1
 		end
 	end
 	local char = paint.c
