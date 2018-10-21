@@ -1514,14 +1514,14 @@ local boxCharSelector = function()
 		end
 	end
 	local rend = function()
-		term.setCursorPos(4,scr_y)
+		term.setCursorPos(1,scr_y)
 		term.setBackgroundColor(colors.lightGray)
-		term.setTextColor(colors.gray)
+		term.setTextColor(colors.black)
 		term.clearLine()
-		term.write("Press CTRL when ready.")
-		term.setCursorPos(1,scr_y-2) co(boxchar.topLeft) write("Q") co(boxchar.topRight) write("W")
-		term.setCursorPos(1,scr_y-1) co(boxchar.left) write("A") co(boxchar.right) write("S")
-		term.setCursorPos(1,scr_y-0) co(boxchar.bottomLeft) write("Z") co(boxchar.bottomRight) write("X")
+		term.write("Press CTRL or 'N' when ready.")
+		term.setCursorPos(1,scr_y-3) co(boxchar.topLeft) write("Q") co(boxchar.topRight) write("W")
+		term.setCursorPos(1,scr_y-2) co(boxchar.left) write("A") co(boxchar.right) write("S")
+		term.setCursorPos(1,scr_y-1) co(boxchar.bottomLeft) write("Z") co(boxchar.bottomRight) write("X")
 	end
 	while true do
 		rend()
@@ -1542,13 +1542,13 @@ local boxCharSelector = function()
 			local button, mx, my = evt[2], evt[3], evt[4]
 			if my >= scr_y-2 then
 				if mx == 1 then
-					if my == scr_y - 2 then boxchar.topLeft = not boxchar.topLeft end
-					if my == scr_y - 1 then boxchar.left = not boxchar.left end
-					if my == scr_y - 0 then boxchar.bottomLeft = not boxchar.bottomLeft end
+					if my == scr_y - 3 then boxchar.topLeft = not boxchar.topLeft end
+					if my == scr_y - 2 then boxchar.left = not boxchar.left end
+					if my == scr_y - 1 then boxchar.bottomLeft = not boxchar.bottomLeft end
 				elseif mx == 2 then
-					if my == scr_y - 2 then boxchar.topRight = not boxchar.topRight end
-					if my == scr_y - 1 then boxchar.right = not boxchar.right end
-					if my == scr_y - 0 then boxchar.bottomRight = not boxchar.bottomRight end
+					if my == scr_y - 3 then boxchar.topRight = not boxchar.topRight end
+					if my == scr_y - 2 then boxchar.right = not boxchar.right end
+					if my == scr_y - 1 then boxchar.bottomRight = not boxchar.bottomRight end
 				elseif evt[1] == "mouse_click" then
 					break
 				end
@@ -1593,6 +1593,13 @@ local specialCharSelector = function()
 	end
 	local evt, butt, x, y
 	render()
+	
+	term.setCursorPos(1,scr_y)
+	term.setBackgroundColor(colors.lightGray)
+	term.setTextColor(colors.black)
+	term.clearLine()
+	term.write("Press CTRL or 'N' when ready.")
+	
 	while true do
 		evt, butt, x, y = os.pullEvent()
 		if evt == "mouse_click" or evt == "mouse_drag" then
