@@ -1,9 +1,8 @@
 --[[
 	PAIN image editor for ComputerCraft
 	Get it with
-	 pastebin get eWpW2W5n painb
-	 std pb eWpW2W5n painb
-     std ld pain pain
+	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua
+	 std ld pain pain
 	
 	This is a beta release. You fool!
 	To do:
@@ -1568,6 +1567,55 @@ local boxCharSelector = function()
 	end
 end
 
+local specialCharSelector = function()
+	local sy = scr_y - 9
+	local chars = {}
+	local buff = 0
+	for y = 1, 8 do
+		for x = 1, 8 do
+			buff = buff + 1
+			chars[y] = chars[y] or {}
+			chars[y][x] = string.char(buff)
+		end
+	end
+	local char = paint.c
+	local render = function()
+		for y = 1, #chars do
+			for x = 1, #chars do
+				term.setCursorPos(x,y-sy)
+				if chars[y][x] == char then
+					term.blit(chars[y][x], "5", "d")
+				else
+					term.blit(chars[y][x], "8", "7")
+				end
+			end
+		end
+	end
+	local evt, butt, x, y
+	render()
+	while true do
+		evt, butt, x, y = os.pullEvent()
+		if evt == "mouse_click" then
+			if chars[y-sy] then
+				if chars[y-sy][x] then
+					if (chars[y-sy][x] ~= char) then
+						char = chars[y-sy][x]
+						render()
+					end
+				else
+					return char
+				end
+			else
+				return char
+			end
+		elseif evt == "key" then
+			if key == keys.c or key == keys.q then
+				return char
+			end
+		end
+	end
+end
+
 local dontDragThisTime = false
 local resetInputState = function()
 	miceDown = {}
@@ -1824,6 +1872,9 @@ local displayMenu = function()
 	local editBoxCharSelector = function()
 		paint.c = boxCharSelector()
 	end
+	local editSpecialCharSelector = function()
+		paint.c = boxCharSelector()
+	end
 
 	local windowSetScrSize = function()
 		local x,y
@@ -1962,7 +2013,7 @@ I recommend using NFT if you don't need frames, NFP if you don't need text, UCG 
 			end
 		end,
 		[2] = function() --Edit
-			local output = makeSubMenu(6,cleary-1,{"Delete Frame","Clear Frame","Crop Frame","Change Box Character","BLittle Shrink"})
+			local output = makeSubMenu(6,cleary-1,{"Delete Frame","Clear Frame","Crop Frame","Choose Box Character","Choose Special Character","BLittle Shrink"})
 			doRender = true
 			if output == 1 then
 				editDelFrame()
@@ -1973,6 +2024,8 @@ I recommend using NFT if you don't need frames, NFP if you don't need text, UCG 
 			elseif output == 4 then
 				editBoxCharSelector()
 			elseif output == 5 then
+				editSpecialCharSelector()
+			elseif output == 6 then
 				local res = bottomPrompt("You sure? It's unreversable! (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 				if res == "y" then
 					getBlittle()
@@ -2566,7 +2619,11 @@ local getInput = function() --gotta catch them all
 				doRender = true
 			end
 			if key == keys.n then
-				paint.c = boxCharSelector()
+				if keysDown[keys.leftShift] then
+					paint.c = specialCharSelector()
+				else
+					paint.c = boxCharSelector()
+				end
 				resetInputState()
 				doRender = true
 			end
