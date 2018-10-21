@@ -1582,7 +1582,7 @@ local specialCharSelector = function()
 	local render = function()
 		for y = 1, #chars do
 			for x = 1, #chars do
-				term.setCursorPos(x,y-sy)
+				term.setCursorPos(x,y+sy)
 				if chars[y][x] == char then
 					term.blit(chars[y][x], "5", "d")
 				else
