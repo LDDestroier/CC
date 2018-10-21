@@ -1602,7 +1602,7 @@ local specialCharSelector = function()
 	
 	while true do
 		evt, butt, x, y = os.pullEvent()
-		if evt == "mouse_click" or evt == "mouse_drag" then
+		if (evt == "mouse_click" or evt == "mouse_drag") then
 			if chars[y-sy] then
 				if chars[y-sy][x] then
 					if (chars[y-sy][x] ~= char) then
@@ -1616,7 +1616,7 @@ local specialCharSelector = function()
 				return char
 			end
 		elseif evt == "key" then
-			if key == keys.c or key == keys.q then
+			if (butt == keys.c) or (butt == keys.leftCtrl) then
 				return char
 			end
 		end
