@@ -567,13 +567,12 @@ local clearRedundant = function(dots)
 	local input = {}
 	local pheight = 0
 	local pwidth = 0
+	local minX, minY = 0, 0
 	for a = 1, #dots do
-		if dots[a].y > pheight then
-			pheight = dots[a].y
-		end
-		if dots[a].x > pwidth then
-			pwidth = dots[a].x
-		end
+		pheight = math.max(pheight, dots[a].y)
+		pwidth = math.max(pwidth, dots[a].x)
+		minX = math.min(minX, dots[a].x)
+		minY = math.min(minY, dots[a].y)
 	end
 	for a = 1, #dots do
 		if not input[dots[a].y] then input[dots[a].y] = {} end
@@ -581,8 +580,8 @@ local clearRedundant = function(dots)
 	end
 	local output = {}
 	local frame = 0
-	for y = 1, pheight do
-		for x = 1, pwidth do
+	for y = minY, pheight do
+		for x = minX, pwidth do
 			if input[y] then
 				if input[y][x] then
 					output[#output+1] = input[y][x]
