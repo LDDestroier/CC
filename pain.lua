@@ -254,7 +254,10 @@ Hotkeys:
 
  "p": pick colors from position onscreen, cancel with X
 
- "n": change box character for drawing, cancel with CTRL, N, or by clicking outside
+ "n":
+  +left shift = change character to that of a special character
+  -alone = change box character for drawing
+  (cancel with CTRL, N, or by clicking outside)
 
  "[" or mouse scroll down:
   +shift = change to previous text color
@@ -304,7 +307,7 @@ Hotkeys:
  "m": set metadata for pixels (for game makers, otherwise safe to ignore)
 
 
- Le Menu (access with CTRL):
+ Yonder Menu (accessible with CTRL):
 
  -left click on a menu item to select it.
  -if you click on the menubar, let go on an option to select it.
@@ -312,7 +315,7 @@ Hotkeys:
  "File > Save"
  Saves all frames to a specially formatted PAIN paint file. The format PAIN uses is very inefficient despite my best efforts, so Export if you don\39t use text or multiple frame.
 
-"File > Save As"
+ "File > Save As"
  Same as "File > Save", but you change the filename.
 
  "File > Export"
@@ -329,6 +332,9 @@ Hotkeys:
 
  "Edit > Change Box Character"
  Opens the block character selection. Used for making those delicious subpixel pictures.
+
+ "Edit > Change Special Character"
+ Opens the special character selector, which lets you change the paint character to that of byte 0 to 255.
 
  "Edit > BLittle Shrink"
  Shrinks the current frame using the BLittle API. Very lossy, and unreversable without Undo.
@@ -1614,7 +1620,7 @@ local specialCharSelector = function()
 				return char
 			end
 		elseif evt == "key" then
-			if (butt == keys.c) or (butt == keys.leftCtrl) then
+			if (butt == keys.n) or (butt == keys.leftCtrl) then
 				return char
 			end
 		end
@@ -1927,20 +1933,20 @@ local displayMenu = function()
 	local aboutPAIN = function()
 		local helpText = [[
  
- ### ### ### #  #
- # # # #  #  ## #
- ### ###  #  # ##
- #   # #  #  #  #
- #   # # ### #  #
+      
+         
+       
+           
+         
 
-Advanced Paint Editor
+Advanced Paint Program
  by LDDestroier
  or EldidiStroyrr
   if you please!
 
-PAIN is a multi-frame paint program with the intention of becoming a stable, well-used CC drawing utility.
+PAIN is a multi-frame paint program with the intention of becoming a stable, well-used, and mondo-useful CC drawing utility.
 
-The main focus during development is to add more functions that you might see in MSPAINT such as lines or a proper fill tool (which I don't have, yet), as well as to export/import to and from as many image formats as possible.
+The main focus during development is to add more functions that you might see in MSPAINT such as lines or a proper fill tool (which I don't have, grr hiss boo), as well as to export/import to and from as many image formats as possible.
 
 My ultimate goal is to have PAIN be the default paint program for most every operating system on the forums. In order to do this, I'll need to make sure that PAIN is stable, easy to use, and can be easily limited by an OS to work with more menial tasks like making a single icon or what have you.
 ]]
@@ -1975,7 +1981,7 @@ Stands for Universal Compressed Graphics. This format was made by ardera, and us
 Cannot save multiple frames.
 
 
-I recommend using NFT if you don't need frames, NFP if you don't need text, UCG if the picture is really big, Native PAIN if you need both text and multiframe support, and GIF if you want to use something like MS Paint or Pinta or Gimp or whatever.
+I recommend using NFT if you don't need multiple frames, NFP if you don't need text, UCG if the picture is really big, Native PAIN if you need both text and multiframe support, and GIF if you want to use something like MS Paint or Pinta or GIMP or whatever.
 ]]
 		guiHelp(helpText)
 	end
