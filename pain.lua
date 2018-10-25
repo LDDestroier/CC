@@ -1,10 +1,12 @@
 --[[
 	PAIN image editor for ComputerCraft
 	Get it with
-	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua
+	 wget https://raw.githubusercontent.com/LDDestroier/CC/beta/pain.lua
 	 std ld pain pain
 	
-	This is a stable release. You fool!
+	This is a beta release. You fool!
+	To do:
+	 + a god damned fill function
 --]]
 local askToSerialize = false
 local defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
@@ -135,7 +137,7 @@ local explode = function(div,str)
     return arr
 end
 
-local function cutString(max_line_length, str) -- from stack overflow
+local cutString = function(max_line_length, str) -- from stack overflow
    local lines = {}
    local line
    str:gsub('(%s*)(%S+)', 
@@ -642,58 +644,22 @@ local getOnscreenCoords = function(tbl,_x,_y)
 	end
 end
 
-local fillTool = function(info,cx,cy,color,layer) -- takes a frame, not the whole paintEncoded
-	local x,y
+local fillTool = function(frame,cx,cy,dot) -- takes a frame, not the whole paintEncoded
+	local maxX, maxY = 0, 0
+	local minX, minY = 0, 0
 	local output = {}
-	for a = 1, #info do
-		if (info[a].x == cx) and (info[a].y == cy) then
-			x = cx
-			y = cy
-			replaceColor = info[a].b
-			break
-		end
+	for a = 1, #frame do
+		maxX = math.max(maxX, frame[a].x)
+		maxY = math.max(maxY, frame[a].y)
+		mixX = math.min(maxX, frame[a].x)
+		minY = math.min(maxY, frame[a].y)
 	end
-	if not x and y then
-		return
-	end
-	if color == replaceColor then
-		return
-	end
-	table.insert(output,{
-		["x"] = x,
-		["y"] = y,
-		["b"] = color,
-		["t"] = color,
-		["c"] = " ",
-		["m"] = paint.m
-	})
-	local loops = 0
-	local tAffectedPoints = {
-		[1] = {
-			x = x+tTerm.scroll.x,
-			z = z+tTerm.scroll.z
-		}
-	}
-	while #tAffectedPoints > 0 do
-		if loops%200 == 0 then
-			sleep(0.05)
+	local touched = {}
+	local check = {dot.x, dot.y}
+	while true do
+		for a = 1, #check do
+			--do finish please...
 		end
-		for i=-1,1,2 do
-			local x = tAffectedPoints[1]["x"]+i
-			local z = tAffectedPoints[1]["z"]
-			if tBlueprint[layer][x][z] == replaceColor and x >= tTerm.viewable.sX and x <= tTerm.viewable.eX and z >= tTerm.viewable.sZ and z <= tTerm.viewable.eZ then
-				drawPoint(x,z,color,layer,true,true)
-				table.insert(tAffectedPoints,{["x"] = x,["z"] = z})
-			end
-			x = tAffectedPoints[1]["x"]
-			z = tAffectedPoints[1]["z"]+i
-			if tBlueprint[layer][x][z] == replaceColor and x >= tTerm.viewable.sX and x <= tTerm.viewable.eX and z >= tTerm.viewable.sZ and z <= tTerm.viewable.eZ then
-				drawPoint(x,z,color,layer,true,true)
-				table.insert(tAffectedPoints,{["x"] = x,["z"] = z})
-			end
-		end
-		table.remove(tAffectedPoints,1)
-		loops = loops+1
 	end
 end
 
