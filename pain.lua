@@ -655,10 +655,45 @@ local fillTool = function(frame,cx,cy,dot) -- takes a frame, not the whole paint
 		minY = math.min(maxY, frame[a].y)
 	end
 	local touched = {}
-	local check = {dot.x, dot.y}
+	local check = {{dot.x, dot.y}}
+	local chkpos = function(x, y)
+		if (x < minX or x > maxX) or (y < minY or y > maxY) then
+			return false
+		else
+			for a = 1, #touched do
+				if (touched[1] == x and touched[2] == y) then
+					return false
+				end
+			end
+			return true
+		end
+	end
+	local a = 0
 	while true do
-		for a = 1, #check do
-			--do finish please...
+		a = a + 1
+		chX, chY = check[a].x, check[a].y
+		frame[#frame+1] = {
+			x = check[a].x,
+			y = check[a].y,
+			c = dot.c,
+			t = dot.t,
+			b = dot.b
+		}
+		touched[#touched+1] = {chX, chY}
+		if chkpos(chX+1, chY) then
+			check[#check+1] = {chX+1, chY}
+		end
+		if chkpos(chX-1, chY) then
+			check[#check+1] = {chX-1, chY}
+		end
+		if chkpos(chX, chY+1) then
+			check[#check+1] = {chX, chY+1}
+		end
+		if chkpos(chX, chY-1) then
+			check[#check+1] = {chX, chY-1}
+		end
+		if #touched == #check then
+			break
 		end
 	end
 end
@@ -2511,6 +2546,26 @@ local getInput = function() --gotta catch them all
 					doRender = true
 					changedImage = true
 					isDragging = false
+				end
+				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
+					local mevt
+					repeat
+						mevt = {os.pullEvent()}
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					if not (mevt[1] == "key" and mevt[2] == keys.x) then
+						local x,y = mevt[3],mevt[4]
+						if renderBlittle then
+							x = 2*x
+							y = 3*y
+						end
+						fillTool(paintEncoded[frame], x, y, paint)
+						miceDown = {}
+						keysDown = {}
+					end
+					doRender = true
+					changedImage = true
+					isDragging = false
+					renderBottomBar("Click to fill region.")
 				end
 				if key == keys.p then 
 					renderBottomBar("Pick color with cursor:")
