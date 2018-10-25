@@ -655,7 +655,7 @@ local fillTool = function(frame,cx,cy,dot) -- takes a frame, not the whole paint
 		minY = math.min(maxY, frame[a].y)
 	end
 	local touched = {}
-	local check = {{dot.x, dot.y}}
+	local check = {{cx+paint.scrollX, cy+paint.scrollY}}
 	local chkpos = function(x, y)
 		if (x < minX or x > maxX) or (y < minY or y > maxY) then
 			return false
@@ -2548,6 +2548,7 @@ local getInput = function() --gotta catch them all
 					isDragging = false
 				end
 				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
+					renderBottomBar("Click to fill area.")
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
