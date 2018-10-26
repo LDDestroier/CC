@@ -647,21 +647,48 @@ end
 local fillTool = function(frame,cx,cy,dot) -- takes a frame, not the whole paintEncoded
 	local maxX, maxY = 0, 0
 	local minX, minY = 0, 0
+	local scx, scy = cx+paint.scrollX, cy+paint.scrollY
 	local output = {}
+	local initDot
 	for a = 1, #frame do
 		maxX = math.max(maxX, frame[a].x)
 		maxY = math.max(maxY, frame[a].y)
-		mixX = math.min(maxX, frame[a].x)
-		minY = math.min(maxY, frame[a].y)
+		minX = math.min(minX, frame[a].x)
+		minY = math.min(minY, frame[a].y)
+	end
+	local doop = {}
+	for y = minY, maxY do
+		doop[y] = {}
+		for x = minX, maxX do
+			doop[y][x] = false
+		end
+	end
+	for a = 1, #frame do
+		doop[frame[a].y][frame[a].x] = frame[a]
+		if frame[a].x == scx and frame[a].y == scy then
+			initDot = frame[a]
+		end
 	end
 	local touched = {}
-	local check = {{cx+paint.scrollX, cy+paint.scrollY}}
+	local check = {{scx, scy}}
 	local chkpos = function(x, y)
 		if (x < minX or x > maxX) or (y < minY or y > maxY) then
 			return false
 		else
+			if initDot then
+				if (doop[y][x].b ~= initDot.b) or (doop[y][x].t ~= initDot.t) or (doop[y][x].c ~= initDot.c) then
+					return false
+				end
+			elseif doop[y][x] then
+				return false
+			end
 			for a = 1, #touched do
 				if (touched[1] == x and touched[2] == y) then
+					return false
+				end
+			end
+			for a = 1, #check do
+				if (check[1] == x and check[2] == y) then
 					return false
 				end
 			end
@@ -671,10 +698,10 @@ local fillTool = function(frame,cx,cy,dot) -- takes a frame, not the whole paint
 	local a = 0
 	while true do
 		a = a + 1
-		chX, chY = check[a].x, check[a].y
+		chX, chY = check[a][1], check[a][2]
 		frame[#frame+1] = {
-			x = check[a].x,
-			y = check[a].y,
+			x = chX,
+			y = chY,
 			c = dot.c,
 			t = dot.t,
 			b = dot.b
