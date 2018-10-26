@@ -305,12 +305,12 @@ Hotkeys:
 
  "f":
   +shift = fill all empty pixels with background color and selected box character
-  -alone = absolutely nothing (which is what you are about to become)
+  -alone = activate fill tool - click anywhere to fill with color
 
  "m": set metadata for pixels (for game makers, otherwise safe to ignore)
 
 
- Yonder Menu (accessible with CTRL):
+ Thy Menu (accessible with CTRL):
 
  -left click on a menu item to select it.
  -if you click on the menubar, let go on an option to select it.
