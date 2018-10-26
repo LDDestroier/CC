@@ -22,7 +22,7 @@ local useFlattenGIF = true
 local undoBufferSize = 8
 
 local doFillDiagonal = false    -- checks for diagonal dots when using fill tool
-local doFillAnimation = true   -- whether or not to animate the fill tool
+local doFillAnimation = false   -- whether or not to animate the fill tool
 
 local displayHelp = function()
 	local progname = fs.getName(shell.getRunningProgram())
@@ -1529,7 +1529,7 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 			for chX, isTrue in pairs(v) do
 				if isTrue and (not touched[chY][chX]) then
 					step = step + 1
-					if doFillAnimation then
+					if doFillAnimation and (step % 2 == 0) then
 						if (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y) then
 							reRenderPAIN()
 						end
@@ -1584,7 +1584,7 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 							doBreak = false
 						end
 					end
-					if step % 1024 == 0 then -- tries to prevent crash
+					if step % (doFillAnimation and 256 or 1024) == 0 then -- tries to prevent crash
 						sleep(0)
 					end
 				end
