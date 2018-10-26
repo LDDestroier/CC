@@ -21,6 +21,9 @@ local readNonImageAsNFP = true
 local useFlattenGIF = true
 local undoBufferSize = 8
 
+local doFillDiagonal = false    -- checks for diagonal dots when using fill tool
+local doFillAnimation = true   -- whether or not to animate the fill tool
+
 local displayHelp = function()
 	local progname = fs.getName(shell.getRunningProgram())
 	print(progname)
@@ -135,7 +138,7 @@ local explode = function(div,str)
     return arr
 end
 
-local function cutString(max_line_length, str) -- from stack overflow
+local cutString = function(max_line_length, str) -- from stack overflow
    local lines = {}
    local line
    str:gsub('(%s*)(%S+)', 
@@ -639,61 +642,6 @@ local getOnscreenCoords = function(tbl,_x,_y)
 			end
 		end
 		return false
-	end
-end
-
-local fillTool = function(info,cx,cy,color,layer) -- takes a frame, not the whole paintEncoded
-	local x,y
-	local output = {}
-	for a = 1, #info do
-		if (info[a].x == cx) and (info[a].y == cy) then
-			x = cx
-			y = cy
-			replaceColor = info[a].b
-			break
-		end
-	end
-	if not x and y then
-		return
-	end
-	if color == replaceColor then
-		return
-	end
-	table.insert(output,{
-		["x"] = x,
-		["y"] = y,
-		["b"] = color,
-		["t"] = color,
-		["c"] = " ",
-		["m"] = paint.m
-	})
-	local loops = 0
-	local tAffectedPoints = {
-		[1] = {
-			x = x+tTerm.scroll.x,
-			z = z+tTerm.scroll.z
-		}
-	}
-	while #tAffectedPoints > 0 do
-		if loops%200 == 0 then
-			sleep(0.05)
-		end
-		for i=-1,1,2 do
-			local x = tAffectedPoints[1]["x"]+i
-			local z = tAffectedPoints[1]["z"]
-			if tBlueprint[layer][x][z] == replaceColor and x >= tTerm.viewable.sX and x <= tTerm.viewable.eX and z >= tTerm.viewable.sZ and z <= tTerm.viewable.eZ then
-				drawPoint(x,z,color,layer,true,true)
-				table.insert(tAffectedPoints,{["x"] = x,["z"] = z})
-			end
-			x = tAffectedPoints[1]["x"]
-			z = tAffectedPoints[1]["z"]+i
-			if tBlueprint[layer][x][z] == replaceColor and x >= tTerm.viewable.sX and x <= tTerm.viewable.eX and z >= tTerm.viewable.sZ and z <= tTerm.viewable.eZ then
-				drawPoint(x,z,color,layer,true,true)
-				table.insert(tAffectedPoints,{["x"] = x,["z"] = z})
-			end
-		end
-		table.remove(tAffectedPoints,1)
-		loops = loops+1
 	end
 end
 
@@ -1504,6 +1452,149 @@ local reRenderPAIN = function()
 	doRenderBar = 1
 	renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true,true)
 	doRenderBar = _reallyDoRenderBar
+end
+
+local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
+	local maxX, maxY = 0, 0
+	local minX, minY = 0, 0
+    paintEncoded = clearAllRedundant(paintEncoded)
+    local frame = paintEncoded[_frame]
+	local scx, scy = cx+paint.scrollX, cy+paint.scrollY
+	local output = {}
+	for a = 1, #frame do
+		maxX = math.max(maxX, frame[a].x)
+		maxY = math.max(maxY, frame[a].y)
+		minX = math.min(minX, frame[a].x)
+		minY = math.min(minY, frame[a].y)
+	end
+    
+    maxX = math.max(maxX, scx)
+    maxY = math.max(maxY, scy)
+    minX = math.min(minX, scx)
+    minY = math.min(minY, scy)
+    
+    maxX = math.max(maxX, screenEdges[1])
+    maxY = math.max(maxY, screenEdges[2])
+    
+	local doop = {}
+    local touched = {}
+	local check = {[scy] = {[scx] = true}}
+	for y = minY, maxY do
+		doop[y] = {}
+        touched[y] = {}
+		for x = minX, maxX do
+			doop[y][x] = {
+                c = " ",
+                b = 0,
+                t = 0
+            }
+            touched[y][x] = false
+		end
+	end
+	for a = 1, #frame do
+		doop[frame[a].y][frame[a].x] = {
+            c = frame[a].c,
+            t = frame[a].t,
+            b = frame[a].b
+        }
+	end
+    local initDot = {
+        c = doop[scy][scx].c,
+        t = doop[scy][scx].t,
+        b = doop[scy][scx].b
+    }
+	local chkpos = function(x, y, checkList)
+		if (x < minX or x > maxX) or (y < minY or y > maxY) then
+			return false
+		else
+            if (doop[y][x].b ~= initDot.b) or (doop[y][x].t ~= initDot.t) or (doop[y][x].c ~= initDot.c) then
+                return false
+            end
+            if check[y] then
+                if check[y][x] then
+                    return false
+                end
+            end
+            if touched[y][x] then
+                return false
+            end
+            return true
+		end
+	end
+    local doBreak
+    local step = 0
+	while true do
+        doBreak = true
+		for chY, v in pairs(check) do
+            for chX, isTrue in pairs(v) do
+                if isTrue and (not touched[chY][chX]) then
+                    step = step + 1
+                    if doFillAnimation then
+                        if (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y) then
+                            reRenderPAIN()
+                        end
+                    end
+                    frame[#frame+1] = {
+                        x = chX,
+                        y = chY,
+                        c = dot.c,
+                        t = dot.t,
+                        b = dot.b
+                    }
+                    touched[chY][chX] = true
+                    -- check adjacent
+                    if chkpos(chX+1, chY) then
+                        check[chY][chX+1] = true
+                        doBreak = false
+                    end
+                    if chkpos(chX-1, chY) then
+                        check[chY][chX-1] = true
+                        doBreak = false
+                    end
+                    if chkpos(chX, chY+1) then
+                        check[chY+1] = check[chY+1] or {}
+                        check[chY+1][chX] = true
+                        doBreak = false
+                    end
+                    if chkpos(chX, chY-1) then
+                        check[chY-1] = check[chY-1] or {}
+                        check[chY-1][chX] = true
+                        doBreak = false
+                    end
+                    -- check diagonal
+                    if doFillDiagonal then
+                        if chkpos(chX-1, chY-1) then
+                            check[chY-1] = check[chY-1] or {}
+                            check[chY-1][chX-1] = true
+                            doBreak = false
+                        end
+                        if chkpos(chX+1, chY-1) then
+                            check[chY-1] = check[chY-1] or {}
+                            check[chY-1][chX+1] = true
+                            doBreak = false
+                        end
+                        if chkpos(chX-1, chY+1) then
+                            check[chY+1] = check[chY+1] or {}
+                            check[chY+1][chX-1] = true
+                            doBreak = false
+                        end
+                        if chkpos(chX+1, chY+1) then
+                            check[chY+1] = check[chY+1] or {}
+                            check[chY+1][chX+1] = true
+                            doBreak = false
+                        end
+                    end
+                    if step % 1024 == 0 then -- tries to prevent crash
+                        sleep(0)
+                    end
+                end
+            end
+        end
+		if doBreak then
+			break
+		end
+	end
+    paintEncoded = clearAllRedundant(paintEncoded)
 end
 
 local boxCharSelector = function()
@@ -2546,6 +2637,28 @@ local getInput = function() --gotta catch them all
 					changedImage = true
 					isDragging = false
 				end
+				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
+					renderBottomBar("Click to fill area.")
+					local mevt
+					repeat
+						mevt = {os.pullEvent()}
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					if not (mevt[1] == "key" and mevt[2] == keys.x) then
+						local x,y = mevt[3],mevt[4]
+						if renderBlittle then
+							x = 2*x
+							y = 3*y
+						end
+                        renderBottomBar("Filling area...")
+						fillTool(frame, x, y, paint)
+						miceDown = {}
+						keysDown = {}
+					end
+					doRender = true
+					changedImage = true
+					isDragging = false
+					renderBottomBar("Click to fill region.")
+				end
 				if key == keys.p then 
 					renderBottomBar("Pick color with cursor:")
 					paintEncoded = clearAllRedundant(paintEncoded)
@@ -2741,7 +2854,7 @@ runPainEditor = function(...) --needs to be cleaned up
 			write("That is a")
 			sleep(0.1)
 			term.setTextColor(colors.red)
-			write(" FUCKING")
+			write(" DAMNED")
 			sleep(0.4)
 			print(" FOLDER.")
 			term.setTextColor(colors.white)
@@ -2790,8 +2903,6 @@ runPainEditor = function(...) --needs to be cleaned up
 			defaultSaveFormat = 4
 		end
 	end
-	
-	--paintEncoded = tun(tse(paintEncoded):gsub("bg","b"):gsub("txt","t"):gsub("char","c"):gsub("meta","m")) -- gotta have backwards compatibility, sorta, okay maybe not
 	
 	if not paintEncoded[frame] then paintEncoded = {paintEncoded} end
 	if pMode == 1 then
