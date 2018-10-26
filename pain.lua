@@ -72,6 +72,7 @@ local firstTerm, blittleTerm = term.current()
 local firstBG = term.getBackgroundColor()
 local firstTX = term.getTextColor()
 local changedImage = false
+local isCurrentlyFilling = false
 
 local _
 local tableconcat = table.concat
@@ -1447,10 +1448,10 @@ local convertToGrayscale = function(pe)
 	return output
 end
 
-local reRenderPAIN = function()
+local reRenderPAIN = function(overrideRenderBar)
 	local _reallyDoRenderBar = doRenderBar
 	doRenderBar = 1
-	renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true,true)
+	renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true,overrideRenderBar)
 	doRenderBar = _reallyDoRenderBar
 end
 
@@ -1523,15 +1524,17 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 	end
 	local doBreak
 	local step = 0
+    local currentlyOnScreen
 	while true do
 		doBreak = true
 		for chY, v in pairs(check) do
 			for chX, isTrue in pairs(v) do
+                currentlyOnScreen = (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y)
 				if isTrue and (not touched[chY][chX]) then
 					step = step + 1
-					if doFillAnimation and (step % 2 == 0) then
-						if (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y) then
-							reRenderPAIN()
+					if doFillAnimation then
+						if currentlyOnScreen then
+							reRenderPAIN(true)
 						end
 					end
 					frame[#frame+1] = {
@@ -1584,7 +1587,7 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 							doBreak = false
 						end
 					end
-					if step % (doFillAnimation and 256 or 1024) == 0 then -- tries to prevent crash
+					if step % ((doFillAnimation and currentlyOnScreen) and 4 or 1024) == 0 then -- tries to prevent crash
 						sleep(0)
 					end
 				end
@@ -2111,7 +2114,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				elseif output == false then
 					return "nobreak"
 				end
-				reRenderPAIN()
+				reRenderPAIN(true)
 			end
 		end,
 		[2] = function() --Edit
@@ -2244,7 +2247,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				if res == "exit" then
 					return "exit"
 				elseif res == "nobreak" then
-					reRenderPAIN()
+					reRenderPAIN(true)
 				else
 					return
 				end
@@ -2623,7 +2626,7 @@ local getInput = function() --gotta catch them all
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
 						if renderBlittle then
@@ -2638,27 +2641,25 @@ local getInput = function() --gotta catch them all
 					changedImage = true
 					isDragging = false
 				end
-				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
+				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) and (not isCurrentlyFilling) then
 					renderBottomBar("Click to fill area.")
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
 						if renderBlittle then
 							x = 2*x
 							y = 3*y
 						end
-                        renderBottomBar("Filling area...")
-						fillTool(frame, x, y, paint)
+                        os.queueEvent("filltool_async", frame, x, y, paint)
 						miceDown = {}
 						keysDown = {}
 					end
 					doRender = true
 					changedImage = true
 					isDragging = false
-					renderBottomBar("Click to fill region.")
 				end
 				if key == keys.p then 
 					renderBottomBar("Pick color with cursor:")
@@ -2904,6 +2905,19 @@ runPainEditor = function(...) --needs to be cleaned up
 			defaultSaveFormat = 4
 		end
 	end
+    
+    local asyncFillTool = function()
+        local event, frameNo, x, y, dot
+        isCurrentlyFilling = false
+        while true do
+            event, frameNo, x, y, dot = os.pullEvent("filltool_async")
+            isCurrentlyFilling = true
+            renderBottomBar("Filling area...")
+            fillTool(frameNo, x, y, dot)
+            isCurrentlyFilling = false
+            reRenderPAIN(false)
+        end
+    end
 	
 	if not paintEncoded[frame] then paintEncoded = {paintEncoded} end
 	if pMode == 1 then
@@ -2916,7 +2930,7 @@ runPainEditor = function(...) --needs to be cleaned up
 	end
 	lastPaintEncoded = deepCopy(paintEncoded)
 	undoBuffer = {deepCopy(paintEncoded)}
-	parallel.waitForAny(getInput,doNonEventDrivenMovement)
+	parallel.waitForAny(getInput, doNonEventDrivenMovement, asyncFillTool)
 	
 	term.setCursorPos(1,scr_y)
 	term.setBackgroundColor(colors.black)
