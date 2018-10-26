@@ -1457,8 +1457,8 @@ end
 local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 	local maxX, maxY = 0, 0
 	local minX, minY = 0, 0
-    paintEncoded = clearAllRedundant(paintEncoded)
-    local frame = paintEncoded[_frame]
+	paintEncoded = clearAllRedundant(paintEncoded)
+	local frame = paintEncoded[_frame]
 	local scx, scy = cx+paint.scrollX, cy+paint.scrollY
 	local output = {}
 	for a = 1, #frame do
@@ -1467,134 +1467,135 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 		minX = math.min(minX, frame[a].x)
 		minY = math.min(minY, frame[a].y)
 	end
-    
-    maxX = math.max(maxX, scx)
-    maxY = math.max(maxY, scy)
-    minX = math.min(minX, scx)
-    minY = math.min(minY, scy)
-    
-    maxX = math.max(maxX, screenEdges[1])
-    maxY = math.max(maxY, screenEdges[2])
-    
+
+	maxX = math.max(maxX, scx)
+	maxY = math.max(maxY, scy)
+	minX = math.min(minX, scx)
+	minY = math.min(minY, scy)
+
+	maxX = math.max(maxX, screenEdges[1])
+	maxY = math.max(maxY, screenEdges[2])
+
 	local doop = {}
-    local touched = {}
+	local touched = {}
 	local check = {[scy] = {[scx] = true}}
 	for y = minY, maxY do
 		doop[y] = {}
-        touched[y] = {}
+		touched[y] = {}
 		for x = minX, maxX do
 			doop[y][x] = {
-                c = " ",
-                b = 0,
-                t = 0
-            }
-            touched[y][x] = false
+				c = " ",
+				b = 0,
+				t = 0
+			}
+			touched[y][x] = false
 		end
 	end
 	for a = 1, #frame do
 		doop[frame[a].y][frame[a].x] = {
-            c = frame[a].c,
-            t = frame[a].t,
-            b = frame[a].b
-        }
+			c = frame[a].c,
+			t = frame[a].t,
+			b = frame[a].b
+		}
 	end
-    local initDot = {
-        c = doop[scy][scx].c,
-        t = doop[scy][scx].t,
-        b = doop[scy][scx].b
-    }
+	local initDot = {
+		c = doop[scy][scx].c,
+		t = doop[scy][scx].t,
+		b = doop[scy][scx].b
+	}
 	local chkpos = function(x, y, checkList)
 		if (x < minX or x > maxX) or (y < minY or y > maxY) then
 			return false
 		else
-            if (doop[y][x].b ~= initDot.b) or (doop[y][x].t ~= initDot.t) or (doop[y][x].c ~= initDot.c) then
-                return false
-            end
-            if check[y] then
-                if check[y][x] then
-                    return false
-                end
-            end
-            if touched[y][x] then
-                return false
-            end
-            return true
+			if (doop[y][x].b ~= initDot.b) or (doop[y][x].t ~= initDot.t) or (doop[y][x].c ~= initDot.c) then
+				return false
+			end
+			if check[y] then
+				if check[y][x] then
+					return false
+				end
+			end
+			if touched[y][x] then
+				return false
+			end
+			return true
 		end
 	end
-    local doBreak
-    local step = 0
+	local doBreak
+	local step = 0
 	while true do
-        doBreak = true
+		doBreak = true
 		for chY, v in pairs(check) do
-            for chX, isTrue in pairs(v) do
-                if isTrue and (not touched[chY][chX]) then
-                    step = step + 1
-                    if doFillAnimation then
-                        if (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y) then
-                            reRenderPAIN()
-                        end
-                    end
-                    frame[#frame+1] = {
-                        x = chX,
-                        y = chY,
-                        c = dot.c,
-                        t = dot.t,
-                        b = dot.b
-                    }
-                    touched[chY][chX] = true
-                    -- check adjacent
-                    if chkpos(chX+1, chY) then
-                        check[chY][chX+1] = true
-                        doBreak = false
-                    end
-                    if chkpos(chX-1, chY) then
-                        check[chY][chX-1] = true
-                        doBreak = false
-                    end
-                    if chkpos(chX, chY+1) then
-                        check[chY+1] = check[chY+1] or {}
-                        check[chY+1][chX] = true
-                        doBreak = false
-                    end
-                    if chkpos(chX, chY-1) then
-                        check[chY-1] = check[chY-1] or {}
-                        check[chY-1][chX] = true
-                        doBreak = false
-                    end
-                    -- check diagonal
-                    if doFillDiagonal then
-                        if chkpos(chX-1, chY-1) then
-                            check[chY-1] = check[chY-1] or {}
-                            check[chY-1][chX-1] = true
-                            doBreak = false
-                        end
-                        if chkpos(chX+1, chY-1) then
-                            check[chY-1] = check[chY-1] or {}
-                            check[chY-1][chX+1] = true
-                            doBreak = false
-                        end
-                        if chkpos(chX-1, chY+1) then
-                            check[chY+1] = check[chY+1] or {}
-                            check[chY+1][chX-1] = true
-                            doBreak = false
-                        end
-                        if chkpos(chX+1, chY+1) then
-                            check[chY+1] = check[chY+1] or {}
-                            check[chY+1][chX+1] = true
-                            doBreak = false
-                        end
-                    end
-                    if step % 1024 == 0 then -- tries to prevent crash
-                        sleep(0)
-                    end
-                end
-            end
-        end
+			for chX, isTrue in pairs(v) do
+				if isTrue and (not touched[chY][chX]) then
+					step = step + 1
+					if doFillAnimation then
+						if (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y) then
+							reRenderPAIN()
+						end
+					end
+					frame[#frame+1] = {
+						x = chX,
+						y = chY,
+						c = dot.c,
+						t = dot.t,
+						b = dot.b
+					}
+					touched[chY][chX] = true
+					-- check adjacent
+					if chkpos(chX+1, chY) then
+						check[chY][chX+1] = true
+						doBreak = false
+					end
+					if chkpos(chX-1, chY) then
+						check[chY][chX-1] = true
+						doBreak = false
+					end
+					if chkpos(chX, chY+1) then
+						check[chY+1] = check[chY+1] or {}
+						check[chY+1][chX] = true
+						doBreak = false
+					end
+					if chkpos(chX, chY-1) then
+						check[chY-1] = check[chY-1] or {}
+						check[chY-1][chX] = true
+						doBreak = false
+					end
+					-- check diagonal
+					if doFillDiagonal then
+						if chkpos(chX-1, chY-1) then
+							check[chY-1] = check[chY-1] or {}
+							check[chY-1][chX-1] = true
+							doBreak = false
+						end
+						if chkpos(chX+1, chY-1) then
+							check[chY-1] = check[chY-1] or {}
+							check[chY-1][chX+1] = true
+							doBreak = false
+						end
+						if chkpos(chX-1, chY+1) then
+							check[chY+1] = check[chY+1] or {}
+							check[chY+1][chX-1] = true
+							doBreak = false
+						end
+						if chkpos(chX+1, chY+1) then
+							check[chY+1] = check[chY+1] or {}
+							check[chY+1][chX+1] = true
+							doBreak = false
+						end
+					end
+					if step % 1024 == 0 then -- tries to prevent crash
+						sleep(0)
+					end
+				end
+			end
+		end
 		if doBreak then
 			break
 		end
 	end
-    paintEncoded = clearAllRedundant(paintEncoded)
+	paintEncoded = clearAllRedundant(paintEncoded)
+	saveToUndoBuffer()
 end
 
 local boxCharSelector = function()
