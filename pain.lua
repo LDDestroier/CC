@@ -1,7 +1,8 @@
 --[[
 	PAIN image editor for ComputerCraft
 	Get it with
-	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua
+	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua pain
+	 pastebin get wJQ7jav0 pain
 	 std ld pain pain
 	
 	This is a stable release. You fool!
@@ -24,8 +25,9 @@ local undoBufferSize = 8
 local doFillDiagonal = false    -- checks for diagonal dots when using fill tool
 local doFillAnimation = false   -- whether or not to animate the fill tool
 
+local progname = fs.getName(shell.getRunningProgram())
+
 local displayHelp = function()
-	local progname = fs.getName(shell.getRunningProgram())
 	print(progname)
 	print(progname.." <filename>")
 	print(progname.." [-h/--help]")
@@ -206,6 +208,8 @@ local getEvents = function(...)
 		end
 	end
 end
+
+
 
 local sanitize = function(sani,tize)
 	local _,x = string.find(sani,tize)
@@ -884,6 +888,288 @@ importFromPaint = function(theInput)
 	return output
 end
 
+local lddfm = {
+	scroll = 0,
+	ypaths = {},
+}
+
+lddfm.scr_x, lddfm.scr_y = term.getSize()
+
+lddfm.setPalate = function(_p)
+	if type(_p) ~= "table" then
+		_p = {}
+	end
+	lddfm.p = { --the DEFAULT color palate
+		bg =        _p.bg or colors.gray,			-- whole background color
+		d_txt =     _p.d_txt or colors.yellow,		-- directory text color
+		d_bg =      _p.d_bg or colors.gray,			-- directory bg color
+		f_txt =     _p.f_txt or colors.white,		-- file text color
+		f_bg =      _p.f_bg or colors.gray,			-- file bg color
+		p_txt =     _p.p_txt or colors.black,		-- path text color
+		p_bg =      _p.p_bg or colors.lightGray,	-- path bg color
+		close_txt = _p.close_txt or colors.gray,	-- close button text color
+		close_bg =  _p.close_bg or colors.lightGray,-- close button bg color
+		scr =       _p.scr or colors.lightGray,		-- scrollbar color
+		scrbar =    _p.scrbar or colors.gray,		-- scroll tab color
+	}
+end
+
+lddfm.setPalate()
+
+lddfm.foldersOnTop = function(floop,path)
+	local output = {}
+	for a = 1, #floop do
+		if fs.isDir(fs.combine(path,floop[a])) then
+			table.insert(output,1,floop[a])
+		else
+			table.insert(output,floop[a])
+		end
+	end
+	return output
+end
+
+lddfm.filterFileFolders = function(list,path,_noFiles,_noFolders,_noCD,_doHidden)
+	local output = {}
+	for a = 1, #list do
+		local entry = fs.combine(path,list[a])
+		if fs.isDir(entry) then
+			if entry == ".." then
+				if not (_noCD or _noFolders) then table.insert(output,list[a]) end
+			else
+				if not ((not _doHidden) and list[a]:sub(1,1) == ".") then
+					if not _noFolders then table.insert(output,list[a]) end
+				end
+			end
+		else
+			if not ((not _doHidden) and list[a]:sub(1,1) == ".") then
+				if not _noFiles then table.insert(output,list[a]) end
+			end
+		end
+	end
+	return output
+end
+
+lddfm.isColor = function(col)
+	for k,v in pairs(colors) do
+		if v == col then
+			return true, k
+		end
+	end
+	return false
+end
+
+lddfm.clearLine = function(x1,x2,_y,_bg,_char)
+	local cbg, bg = term.getBackgroundColor()
+	local x,y = term.getCursorPos()
+	local sx,sy = term.getSize()
+	if type(_char) == "string" then char = _char else char = " " end
+	if type(_bg) == "number" then
+		if lddfm.isColor(_bg) then bg = _bg
+		else bg = cbg end
+	else bg = cbg end
+	term.setCursorPos(x1 or 1, _y or y)
+	term.setBackgroundColor(bg)
+	if x2 then --it pains me to add an if statement to something as simple as this
+		term.write((char or " "):rep(x2-x1))
+	else
+		term.write((char or " "):rep(sx-(x1 or 0)))
+	end
+	term.setBackgroundColor(cbg)
+	term.setCursorPos(x,y)
+end
+
+lddfm.render = function(_x1,_y1,_x2,_y2,_rlist,_path,_rscroll,_canClose,_scrbarY)
+	local tsv = term.current().setVisible
+	local px,py = term.getCursorPos()
+	if tsv then tsv(false) end
+	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
+	local rlist = _rlist or {"Invalid directory."}
+	local path = _path or "And that's terrible."
+	ypaths = {}
+	local rscroll = _rscroll or 0
+	for a = y1, y2 do
+		lddfm.clearLine(x1,x2,a,lddfm.p.bg)
+	end
+	term.setCursorPos(x1,y1)
+	term.setTextColor(lddfm.p.p_txt)
+	lddfm.clearLine(x1,x2+1,y1,lddfm.p.p_bg)
+	term.setBackgroundColor(lddfm.p.p_bg)
+	term.write(("/"..path):sub(1,x2-x1))
+	for a = 1,(y2-y1) do
+		if rlist[a+rscroll] then
+			term.setCursorPos(x1,a+(y1))
+			if fs.isDir(fs.combine(path,rlist[a+rscroll])) then
+				lddfm.clearLine(x1,x2,a+(y1),lddfm.p.d_bg)
+				term.setTextColor(lddfm.p.d_txt)
+				term.setBackgroundColor(lddfm.p.d_bg)
+			else
+				lddfm.clearLine(x1,x2,a+(y1),lddfm.p.f_bg)
+				term.setTextColor(lddfm.p.f_txt)
+				term.setBackgroundColor(lddfm.p.f_bg)
+			end
+			term.write(rlist[a+rscroll]:sub(1,x2-x1))
+			ypaths[a+(y1)] = rlist[a+rscroll]
+		else
+			lddfm.clearLine(x1,x2,a+(y1),lddfm.p.bg)
+		end
+	end
+	local scrbarY = _scrbarY or math.ceil( (y1+1)+( (_rscroll/(#_rlist-(y2-(y1+1))))*(y2-(y1+1)) ) )
+	for a = y1+1, y2 do
+		term.setCursorPos(x2,a)
+		if a == scrbarY then
+			term.setBackgroundColor(lddfm.p.scrbar)
+		else
+			term.setBackgroundColor(lddfm.p.scr)
+		end
+		term.write(" ")
+	end
+	if _canClose then
+		term.setCursorPos(x2-4,y1)
+		term.setTextColor(lddfm.p.close_txt)
+		term.setBackgroundColor(lddfm.p.close_bg)
+		term.write("close")
+	end
+	term.setCursorPos(px,py)
+	if tsv then tsv(true) end
+	return scrbarY
+end
+
+lddfm.coolOutro = function(x1,y1,x2,y2,_bg,_txt,char)
+	local cx, cy = term.getCursorPos()
+	local bg, txt = term.getBackgroundColor(), term.getTextColor()
+	term.setTextColor(_txt or colors.white)
+	term.setBackgroundColor(_bg or colors.black)
+	local _uwah = 0
+	for y = y1, y2 do
+		for x = x1, x2 do
+			_uwah = _uwah + 1
+			term.setCursorPos(x,y)
+			term.write(char or " ")
+			if _uwah >= math.ceil((x2-x1)*1.63) then sleep(0) _uwah = 0 end
+		end
+	end
+	term.setTextColor(txt)
+	term.setBackgroundColor(bg)
+	term.setCursorPos(cx,cy)
+end
+
+lddfm.scrollMenu = function(amount,list,y1,y2)
+	if #list >= y2-y1 then
+		lddfm.scroll = lddfm.scroll + amount
+		if lddfm.scroll < 0 then
+			lddfm.scroll = 0
+		end
+		if lddfm.scroll > #list-(y2-y1) then
+			lddfm.scroll = #list-(y2-y1)
+		end
+	end
+end
+
+--[[
+ a quick explanation of the arguments for lddfm.makeMenu:
+
+x1 and y1: top-left corner coordinates of menu window. defaults to the top-left corner of the screen
+x2 and y2: bottom-right corner coordinates of menu window. defaults to the bottom-right corner of the screen
+_path: path to start viewing. defaults to "/"
+_noFiles: whether or not to view files in the menu, mainly for picking a path for installing something. defaults to false
+_noFolders: whether or not to view folders in the menu, mainly for choosing a file to run or whatever. defaults to false
+_noCD: whether or not you can change the directory, mainly to limit choices to a single folder. defaults to false
+_noSelectFolders: whether or not you can select folders to return. defaults to false
+_doHidden: whether or not to hide hidden files (starts with "."). defaults to false
+_p: the palate. has: bg, d_txt, d_bg, f_txt, t_bg, p_txt, p_bg, scr, scrbar. 'd' is for directory, 'f' is for file, 'p' is for path bar.
+_canClose: whether or not you can click on the little top-right "Cancel" button.
+--]]
+
+lddfm.makeMenu = function(_x1,_y1,_x2,_y2,_path,_noFiles,_noFolders,_noCD,_noSelectFolders,_doHidden,_p,_canClose)
+	if _noFiles and _noFolders then
+		return false, "C'mon, man..."
+	end
+	if _x1 == true then
+		return false, "arguments: x1, y1, x2, y2, path, noFiles, noFolders, noCD, noSelectFolders, doHidden, palate, canClose" -- a little help
+	end
+	lddfm.setPalate(_p)
+	local path, list = _path or ""
+	lddfm.scroll = 0
+	local _pbg, _ptxt = term.getBackgroundColor(), term.getTextColor()
+	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
+	local keysDown = {}
+	local _barrY
+	while true do
+		list = lddfm.foldersOnTop(lddfm.filterFileFolders(fs.list(path),path,_noFiles,_noFolders,_noCD,_doHidden),path)
+		if (fs.getDir(path) ~= "..") and not (_noCD or _noFolders) then
+			table.insert(list,1,"..")
+		end
+		_res, _barrY = pcall( function() return lddfm.render(x1,y1,x2,y2,list,path,lddfm.scroll,_canClose) end)
+		if not _res then
+			local tsv = term.current().setVisible
+			if tsv then tsv(true) end
+			error(_barrY)
+		end
+		local evt = {os.pullEvent()}
+		if evt[1] == "mouse_scroll" then
+			lddfm.scrollMenu(evt[2],list,y1,y2)
+		elseif evt[1] == "mouse_click" then
+			local butt,mx,my = evt[2],evt[3],evt[4]
+			if (butt == 1 and my == y1 and mx <= x2 and mx >= x2-4) and _canClose then
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return false
+			elseif ypaths[my] and (mx >= x1 and mx < x2) then --x2 is reserved for the scrollbar, breh
+				if fs.isDir(fs.combine(path,ypaths[my])) then
+					if _noCD or butt == 3 then
+						if not _noSelectFolders or _noFolders then
+							--lddfm.coolOutro(x1,y1,x2,y2)
+							term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+							return fs.combine(path,ypaths[my])
+						end
+					else
+						path = fs.combine(path,ypaths[my])
+						lddfm.scroll = 0
+					end
+				else
+					term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+					return fs.combine(path,ypaths[my])
+				end
+			end
+		elseif evt[1] == "key" then
+			keysDown[evt[2]] = true
+			if evt[2] == keys.enter and not (_noFolders or _noCD or _noSelectFolders) then --the logic for _noCD being you'd normally need to go back a directory to select the current directory.
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return path
+			end
+			if evt[2] == keys.up then
+				lddfm.scrollMenu(-1,list,y1,y2)
+			elseif evt[2] == keys.down then
+				lddfm.scrollMenu(1,list,y1,y2)
+			end
+			if evt[2] == keys.pageUp then
+				lddfm.scrollMenu(y1-y2,list,y1,y2)
+			elseif evt[2] == keys.pageDown then
+				lddfm.scrollMenu(y2-y1,list,y1,y2)
+			end
+			if evt[2] == keys.home then
+				lddfm.scroll = 0
+			elseif evt[2] == keys["end"] then
+				if #list > (y2-y1) then
+					lddfm.scroll = #list-(y2-y1)
+				end
+			end
+			if evt[2] == keys.h then
+				if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
+					_doHidden = not _doHidden
+				end
+			elseif _canClose and (evt[2] == keys.x or evt[2] == keys.q or evt[2] == keys.leftCtrl) then
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return false
+			end
+		elseif evt[1] == "key_up" then
+			keysDown[evt[2]] = false
+		end
+	end
+end
+
 local getBlittle = function()
 	if not blittle then
 		if fs.exists("/.painapi/blittle") then
@@ -932,26 +1218,6 @@ local getUCG = function()
 				file.write(geet)
 				file.close()
 				os.loadAPI("/.painapi/ucg")
-			end
-		end
-	end
-end
-
-local getBitmap = function()
-	if not bitmap then
-		if fs.exists("/.painapi/bitmap") then
-			os.loadAPI("/.painapi/bitmap")
-			return true
-		else
-			local geet = http.get("https://pastebin.com/raw/Y3JeZWzV")
-			if not geet then
-				return false
-			else
-				geet = geet.readAll()
-				local file = fs.open("/.painapi/bitmap","w")
-				file.write(geet)
-				file.close()
-				os.loadAPI("/.painapi/bitmap")
 			end
 		end
 	end
@@ -1008,32 +1274,6 @@ local NFPserializeImage = function(str)
 		end	
 	end
 	return textutils.unserialize(textutils.serialize(output):gsub("\n",""):gsub(" ",""):gsub(",}","}"))
-end
-
-local importFromBitmap = function(fileName)
-	getBitmap()
-	local image = bitmap.ImageHelpers.parseFile(fileName).pixels
-	local output = {}
-	local closest, termSets = bitmap.Colors.findClosestColor, bitmap.Colors.termSets
-	for y = 1, #image do
-		local line = image[y]
-		for x = 1, #line do
-			output[#output+1] = {
-				x = x,
-				y = y,
-				t = colors.white,
-				c = " ",
-				b = closest(termSets, unpack(line[x])),
-				m = 0,
-			}
-		end
-	end
-	return output
-end
-
-local exportToBitmap = function(theInput)
-	getBitmap()
-	--er, I don't think this is possible at the moment
 end
 
 local importFromGIF = function(filename,verbose)
@@ -1745,6 +1985,64 @@ local renderAllPAIN = function()
 	renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true)
 end
 
+local checkIfNFP = function(str) --does not check table format, only string format
+	local good = {
+		[0] = true,
+		[1] = true,
+		[2] = true,
+		[3] = true,
+		[4] = true,
+		[5] = true,
+		[6] = true,
+		[7] = true,
+		[8] = true,
+		[9] = true,
+		a = true,
+		b = true,
+		c = true,
+		d = true,
+		e = true,
+		f = true,
+		[" "] = true,
+		["\n"] = true
+	}
+	for a = 1, #str do
+		if not good[str:sub(a,a):lower()] then
+			return false
+		end
+	end
+	return true
+end
+
+local openNewFile = function(fname, allowNonImageNFP)
+	local file = fs.open(fname,"r")
+	local contents = file.readAll()
+	file.close()
+	if type(tun(contents)) ~= "table" then
+		term.setTextColor(colors.white)
+		if contents:sub(1,3) == "BLT" then --thank you bomb bloke for this easy identifier
+			if pMode ~= 1 then print("Importing from BLT...") end
+			return importFromBLT(fname), 3
+		elseif contents:sub(1,3) == "GIF" then
+			if pMode ~= 1 then print("Importing from GIF, this'll take a while...") end
+			return importFromGIF(fname,true), 5
+		elseif contents:sub(1,4) == "?!7\2" then
+			if pMode ~= 1 then print("Importing from UCG...") end
+			return {importFromUCG(fname)}, 6
+		elseif contents:find(string.char(30)) and contents:find(string.char(31)) then
+			if pMode ~= 1 then print("Importing from NFT...") end
+			return {importFromNFT(contents)}, 2
+		elseif (checkIfNFP(contents) or allowNonImageNFP) then
+			print("Importing from NFP...")
+			return {importFromPaint(contents)}, 1
+		else
+			return false, "That is not a valid image file."
+		end
+	else
+		return tun(contents), 4
+	end
+end
+
 local displayMenu = function()
 	menuOptions = {"File","Edit","Window","About","Exit"}
 	local diss = " "..tableconcat(menuOptions," ")
@@ -1878,7 +2176,7 @@ local displayMenu = function()
 				return
 			end
 			if fs.exists(exportName) and (not _fileName) then
-				local plea = (shell.getRunningProgram() == fs.combine("",exportName)) and "Overwrite ORIGINAL file!?" or "Overwrite?"
+				local plea = (progname == fs.combine("",exportName)) and "Overwrite ORIGINAL file!?" or "Overwrite?"
 				result, _wIn = bottomPrompt(plea.." (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 				writeIndent = writeIndent + _wIn
 				if result ~= "y" then return end
@@ -2084,9 +2382,9 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 		[1] = function() --File
 			while true do
 				--renderAllPAIN()
-				local output, longestLen = makeSubMenu(1,cleary-1,{"Save","Save As","Export",((peripheral.find("printer")) and "Print" or nil)})
+				local output, longestLen = makeSubMenu(1,cleary-1,{"Save","Save As","Export","Open",((peripheral.find("printer")) and "Print" or nil)})
 				doRender = true
-				if output == 1 then --Save
+				if output == 1 then -- Save
 					local _fname = fileExport(_,defaultSaveFormat,fileName)
 					if _fname then
 						barmsg = "Saved as '".._fname.."'"
@@ -2094,7 +2392,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 						changedImage = false
 					end
 					break
-				elseif output == 2 then --Save As
+				elseif output == 2 then -- Save As
 					local oldfilename = fileName
 					fileName = nil
 					local res = fileExport(_,defaultSaveFormat)
@@ -2108,7 +2406,26 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 						barmsg = "Exported as '"..res.."'"
 						break
 					end
-				elseif output == 4 then --Print
+				elseif output == 4 then -- Open
+					renderBottomBar("Pick an image file.")
+					local newPath = lddfm.makeMenu(2, 2, scr_x-1, scr_y-2, fs.getDir(fileName or progname), false, false, false, true, false, nil, true)
+					if newPath then
+						local pen, form = openNewFile(newPath, readNonImageAsNFP)
+						if not pen then
+							barmsg = form
+						else
+							fileName = newPath
+							paintEncoded, lastPaintEncoded = pen, deepCopy(pen)
+							defaultSaveFormat = form
+							undoPos = 1
+							undoBuffer = {}
+							barmsg = "Opened '" .. fs.getName(newPath) .. "'"
+							paint.scrollX, paint.scrollY, paint.doGray = 1, 1, false
+							doRender = true
+						end
+					end
+					break
+				elseif output == 5 then -- Print
 					filePrint()
 					break
 				elseif output == false then
@@ -2792,35 +3109,6 @@ local getInput = function() --gotta catch them all
 	end
 end
 
-local checkIfNFP = function(str) --does not check table format, only string format
-	local good = {
-		[0] = true,
-		[1] = true,
-		[2] = true,
-		[3] = true,
-		[4] = true,
-		[5] = true,
-		[6] = true,
-		[7] = true,
-		[8] = true,
-		[9] = true,
-		a = true,
-		b = true,
-		c = true,
-		d = true,
-		e = true,
-		f = true,
-		[" "] = true,
-		["\n"] = true
-	}
-	for a = 1, #str do
-		if not good[str:sub(a,a):lower()] then
-			return false
-		end
-	end
-	return true
-end
-
 runPainEditor = function(...) --needs to be cleaned up
 	local tArg = table.pack(...)
 	if not (tArg[1] == "-n" or (not tArg[1])) then
@@ -2847,62 +3135,21 @@ runPainEditor = function(...) --needs to be cleaned up
 		paintEncoded = {{}}
 	elseif fs.isDir(fileName) then
 		if math.random(1,32) == 1 then
-			write("Oh")
-			sleep(0.2)
-			write(" My")
-			sleep(0.2)
-			print(" God")
-			sleep(0.3)
-			write("That is a")
-			sleep(0.1)
-			term.setTextColor(colors.red)
-			write(" DAMNED")
-			sleep(0.4)
-			print(" FOLDER.")
-			term.setTextColor(colors.white)
-			sleep(0.2)
-			print("You crazy person.")
-			sleep(0.2)
+			write("Oh") sleep(0.2)
+			write(" My") sleep(0.2)
+			print(" God") sleep(0.3)
+			write("That is a") sleep(0.1) term.setTextColor(colors.red)
+			write(" FLIPPING") sleep(0.4)
+			print(" FOLDER.") sleep(0.2) term.setTextColor(colors.white)
+			print("You crazy person.") sleep(0.2)
 		else
 			print("That's a folder.")
 		end
 		return
 	else
-		local file = fs.open(fileName,"r")
-		local contents = file.readAll()
-		file.close()
-		if type(tun(contents)) ~= "table" then
-			term.setTextColor(colors.white)
-			if contents:sub(1,3) == "BLT" then --thank you bomb bloke for this easy identifier
-				if pMode ~= 1 then print("Importing from BLT...") end
-				paintEncoded = importFromBLT(fileName)
-				defaultSaveFormat = 3
-			elseif contents:sub(1,2) == "BM" then
-				if pMode ~= 1 then print("Importing from BMP...") end
-	            paintEncoded = {importFromBitmap(fileName)}
-				defaultSaveFormat = 4
-			elseif contents:sub(1,3) == "GIF" then
-				if pMode ~= 1 then print("Importing from GIF, this'll take a while...") end
-				paintEncoded = importFromGIF(fileName,true)
-				defaultSaveFormat = 5
-			elseif contents:sub(1,4) == "?!7\2" then
-				if pMode ~= 1 then print("Importing from UCG...") end
-				paintEncoded = {importFromUCG(fileName)}
-				defaultSaveFormat = 6
-	        elseif contents:find(string.char(30)) and contents:find(string.char(31)) then
-				if pMode ~= 1 then print("Importing from NFT...") end
-				defaultSaveFormat = 2
-				paintEncoded = {importFromNFT(contents)}
-			elseif (checkIfNFP(contents) or readNonImageAsNFP) then
-				print("Importing from NFP...")
-				paintEncoded = {importFromPaint(contents)}
-				defaultSaveFormat = 1
-			else
-				return print("That is not a valid image file.")
-			end
-		else
-			paintEncoded = tun(contents)
-			defaultSaveFormat = 4
+		paintEncoded, defaultSaveFormat = openNewFile(fileName, readNonImageAsNFP)
+		if not paintEncoded then
+			return print(defaultSaveFormat)
 		end
 	end
     
