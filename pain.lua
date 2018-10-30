@@ -329,6 +329,9 @@ Hotkeys:
  "File > Export"
  Exports current frame to NFP, NFT, BLT, or the horribly inefficient PAIN format.
 
+ "File > Open"
+ Opens up a file picker for you to change the image currently being edited.
+
  "Edit > Delete Frame"
  Deletes the current frame. Tells you off if you try to delete the only frame.
 
