@@ -1698,7 +1698,7 @@ local reRenderPAIN = function(overrideRenderBar)
 	doRenderBar = _reallyDoRenderBar
 end
 
-local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
+local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame NUMBER
 	local maxX, maxY = 0, 0
 	local minX, minY = 0, 0
 	paintEncoded = clearAllRedundant(paintEncoded)
@@ -1767,12 +1767,12 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 	end
 	local doBreak
 	local step = 0
-    local currentlyOnScreen
+	local currentlyOnScreen
 	while true do
 		doBreak = true
 		for chY, v in pairs(check) do
 			for chX, isTrue in pairs(v) do
-                currentlyOnScreen = (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y)
+				currentlyOnScreen = (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y)
 				if isTrue and (not touched[chY][chX]) then
 					step = step + 1
 					if doFillAnimation then
@@ -1780,13 +1780,17 @@ local fillTool = function(_frame,cx,cy,dot) -- "_frame" is the frame NUMBER
 							reRenderPAIN(true)
 						end
 					end
-					frame[#frame+1] = {
-						x = chX,
-						y = chY,
-						c = dot.c,
-						t = dot.t,
-						b = dot.b
-					}
+					if isDeleting then
+						deleteDot(chX, chY)
+					else
+						frame[#frame+1] = {
+							x = chX,
+							y = chY,
+							c = dot.c,
+							t = dot.t,
+							b = dot.b
+						}
+					end
 					touched[chY][chX] = true
 					-- check adjacent
 					if chkpos(chX+1, chY) then
@@ -2966,14 +2970,14 @@ local getInput = function() --gotta catch them all
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] <= 2 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
 						if renderBlittle then
 							x = 2*x
 							y = 3*y
 						end
-                        os.queueEvent("filltool_async", frame, x, y, paint)
+						os.queueEvent("filltool_async", frame, x, y, paint, mevt[2] == 2)
 						miceDown = {}
 						keysDown = {}
 					end
@@ -3160,10 +3164,10 @@ runPainEditor = function(...) --needs to be cleaned up
         local event, frameNo, x, y, dot
         isCurrentlyFilling = false
         while true do
-            event, frameNo, x, y, dot = os.pullEvent("filltool_async")
+            event, frameNo, x, y, dot, isDeleting = os.pullEvent("filltool_async")
             isCurrentlyFilling = true
             renderBottomBar("Filling area...")
-            fillTool(frameNo, x, y, dot)
+            fillTool(frameNo, x, y, dot, isDeleting)
             isCurrentlyFilling = false
             reRenderPAIN(false)
         end
