@@ -2781,7 +2781,8 @@ local getInput = function() --gotta catch them all
 					changedImage = true
 				end
 			elseif origy >= scr_y-(renderBlittle and 0 or doRenderBar) then
-				keysDown = {}
+				keysDown = {[207] = keysDown[207]}
+				isDragging = false
 				local res = displayMenu()
 				if res == "exit" then break end
 				doRender = true
