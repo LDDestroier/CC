@@ -729,8 +729,12 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 	local blittlelabel = "blittle max"
 	local screenlabel = "screen max"
 	
+	local dotBuff = "" --only used if gridBleedThrough is true
 	if doGrid then
-		for y = 1, scr_y - yadjust do 
+		for y = 1, scr_y - yadjust do
+			if gridBleedThrough then
+				for x = 1, scr_x do
+					dotBuff = dotBuff .. 
 			term.setCursorPos(1,y)
 			-- the single most convoluted line I've ever written that works, and I love it
 			term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
@@ -860,20 +864,51 @@ BTC = function(_color,allowZero) --Blit To Color
 	return blitcolors[_color]
 end
 
+local tableFormatPE = function(input)
+	local doot = {}
+	local pwidths = {}
+	local pheight = {}
+	for k, dot in pairs(input) do
+		pwidths[dot.y] = math.max((pwidths[dot.y] or 0), dot.x)
+		pheight = math.max(pheight, dot.y)
+		doot[dot.y] = doot[dot.y] or {}
+		doot[dot.y][dot.x] = {
+			char = dot.c,
+			text = CTB(dot.t),
+			back = CTB(dot.b)
+		}
+	end
+	for y = 1, pheight do
+		pwidths[y] = pwidths[y] or 0
+		if doot[y] then
+			for x = 1, pwidths[y] do
+				doot[y][x] = doot[y][x] or {
+					text = " ",
+					back = " ",
+					char = " ",
+				}
+			end
+		else
+			doot[y] = false
+		end
+	end
+	return doot, pheight, pwidths
+end
+
 importFromPaint = function(theInput)
 	local output = {}
 	local input
-    if type(theInput) == "string" then
-        input = explode("\n",theInput)
-    else
-        input = {}
-        for y = 1, #theInput do
-            input[y] = ""
-            for x = 1, #theInput[y] do
-                input[y] = input[y]..(CTB(theInput[y][x]) or " ")
-            end
-        end
-    end
+	if type(theInput) == "string" then
+		input = explode("\n",theInput)
+	else
+		input = {}
+		for y = 1, #theInput do
+			input[y] = ""
+			for x = 1, #theInput[y] do
+				input[y] = input[y]..(CTB(theInput[y][x]) or " ")
+			end
+		end
+	end
 	for a = 1, #input do
 		line = input[a]
 		for b = 1, #line do
@@ -893,7 +928,7 @@ end
 
 local lddfm = {
 	scroll = 0,
-	ypaths = {},
+	ypaths = {}
 }
 
 lddfm.scr_x, lddfm.scr_y = term.getSize()
@@ -1500,39 +1535,13 @@ exportToPaint = function(input,noTransparent) --exports paintEncoded frame to re
 end
 
 local exportToNFT = function(input)
-	local pwidths = {}
-	local doot = {}
-	local pheight = 0
-	for k, dot in pairs(input) do
-		pwidths[dot.y] = math.max((pwidths[dot.y] or 0), dot.x)
-		pheight = math.max(pheight, dot.y)
-		doot[dot.y] = doot[dot.y] or {}
-		doot[dot.y][dot.x] = {
-			char = dot.c,
-			text = CTB(dot.t),
-			back = CTB(dot.b)
-		}
-	end
-	
+
 	local bgcode, txcode = "\30", "\31"
 	local output = ""
 	local text, back
 	
-	for y = 1, pheight do
-		pwidths[y] = pwidths[y] or 0
-		if doot[y] then
-			for x = 1, pwidths[y] do
-				doot[y][x] = doot[y][x] or {
-					text = " ",
-					back = " ",
-					char = " ",
-				}
-			end
-		else
-			doot[y] = false
-		end
-	end
-
+	local doot, pheight, pwidths = tableFormatPE(input)
+	
 	for y = 1, pheight do
 		
 		text, back = "0", "f"
