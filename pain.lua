@@ -21,6 +21,7 @@ local defaultSaveFormat = 4 -- will change if importing image, or making new fil
 local readNonImageAsNFP = true
 local useFlattenGIF = true
 local undoBufferSize = 8
+local gridBleedThrough = false
 
 local doFillDiagonal = false    -- checks for diagonal dots when using fill tool
 local doFillAnimation = false   -- whether or not to animate the fill tool
@@ -694,13 +695,83 @@ local renderBar = function(msg,dontSetVisible)
 	if tsv and (not dontSetVisible) then tsv(true) end
 end
 
-local getTablePaint = function(pe)
-	local output = {}
-	for a = 1, #pe do
-		if not output[pe[a].y] then output[pe[a].y] = {} end
-		output[pe[a].y][pe[a].x] = pe[a]
+local tableFormatPE = function(input)
+	local doot = {}
+	local pwidths = {}
+	local pheight = {}
+	for k, dot in pairs(input) do
+		pwidths[dot.y] = math.max((pwidths[dot.y] or 0), dot.x)
+		pheight = math.max(pheight, dot.y)
+		doot[dot.y] = doot[dot.y] or {}
+		doot[dot.y][dot.x] = {
+			char = dot.c,
+			text = CTB(dot.t),
+			back = CTB(dot.b)
+		}
 	end
-	return output
+	for y = 1, pheight do
+		pwidths[y] = pwidths[y] or 0
+		if doot[y] then
+			for x = 1, pwidths[y] do
+				doot[y][x] = doot[y][x] or {
+					text = " ",
+					back = " ",
+					char = " ",
+				}
+			end
+		else
+			doot[y] = false
+		end
+	end
+	return doot, pheight, pwidths
+end
+
+CTB = function(_color) --Color To Blit
+	local blitcolors = {
+		[0] = " ",
+		[colors.white] = "0",
+		[colors.orange] = "1",
+		[colors.magenta] = "2",
+		[colors.lightBlue] = "3",
+		[colors.yellow] = "4",
+		[colors.lime] = "5",
+		[colors.pink] = "6",
+		[colors.gray] = "7",
+		[colors.lightGray] = "8",
+		[colors.cyan] = "9",
+		[colors.purple] = "a",
+		[colors.blue] = "b",
+		[colors.brown] = "c",
+		[colors.green] = "d",
+		[colors.red] = "e",
+		[colors.black] = "f",
+	}
+	if _color == nil then return nil end
+	return blitcolors[_color] or "f"
+end
+
+BTC = function(_color,allowZero) --Blit To Color
+	local blitcolors = {
+		[" "] = allowZero and 0 or nil,
+		["0"] = colors.white,
+		["1"] = colors.orange,
+		["2"] = colors.magenta,
+		["3"] = colors.lightBlue,
+		["4"] = colors.yellow,
+		["5"] = colors.lime,
+		["6"] = colors.pink,
+		["7"] = colors.gray,
+		["8"] = colors.lightGray,
+		["9"] = colors.cyan,
+		["a"] = colors.purple,
+		["b"] = colors.blue,
+		["c"] = colors.brown,
+		["d"] = colors.green,
+		["e"] = colors.red,
+		["f"] = colors.black,
+	}
+	if _color == nil then return nil end
+	return blitcolors[_color]
 end
 
 local renderPainyThings = function(xscroll,yscroll,doGrid)
@@ -729,15 +800,24 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 	local blittlelabel = "blittle max"
 	local screenlabel = "screen max"
 	
-	local dotBuff = "" --only used if gridBleedThrough is true
+	local dotBuffChar, dotBuffBack = "", "" --only used if gridBleedThrough is true
+	local doot
 	if doGrid then
+		if gridBleedThrough then
+			doot = tableFormatPE(paintEncoded[frame])
+		end
 		for y = 1, scr_y - yadjust do
+			term.setCursorPos(1,y)
 			if gridBleedThrough then
 				for x = 1, scr_x do
-					dotBuff = dotBuff .. 
-			term.setCursorPos(1,y)
-			-- the single most convoluted line I've ever written that works, and I love it
-			term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
+					dotBuffChar = dotBuffChar .. grid[ro(y+(yscroll+2),#grid)+1]:sub(ro(x+paint.scrollX,#grid[1]))
+					dotBuffBack = dotBuffBack .. (CTB(doot[y+paint.scrollY][x+paint.scrollX].b or colors.white) or " ")
+				end
+				term.blit(dotBuffChar, (" ").rep(scr_x), dotBuffBack)
+			else
+				-- the single most convoluted line I've ever written that works, and I love it
+				term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
+			end
 			term.setCursorPos((xscroll <= 0) and (1-xscroll) or 0,y)
 			if ((screenEdges[2]+1)-yscroll) == y then --regular limit
 				term.write( (string.rep("@", math.max(0,( (screenEdges[1])     ) - (#screenlabel+1)  )) ..screenlabel:gsub(" ","@"):upper().."@@"):sub(xscroll>0 and xscroll or 0):sub(1,1+screenEdges[1]) )
@@ -814,85 +894,6 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 			term.clearLine()
 		end
 	end
-end
-
-CTB = function(_color) --Color To Blit
-	local blitcolors = {
-		[0] = " ",
-		[colors.white] = "0",
-		[colors.orange] = "1",
-		[colors.magenta] = "2",
-		[colors.lightBlue] = "3",
-		[colors.yellow] = "4",
-		[colors.lime] = "5",
-		[colors.pink] = "6",
-		[colors.gray] = "7",
-		[colors.lightGray] = "8",
-		[colors.cyan] = "9",
-		[colors.purple] = "a",
-		[colors.blue] = "b",
-		[colors.brown] = "c",
-		[colors.green] = "d",
-		[colors.red] = "e",
-		[colors.black] = "f",
-	}
-	if _color == nil then return nil end
-	return blitcolors[_color] or "f"
-end
-
-BTC = function(_color,allowZero) --Blit To Color
-	local blitcolors = {
-		[" "] = allowZero and 0 or nil,
-		["0"] = colors.white,
-		["1"] = colors.orange,
-		["2"] = colors.magenta,
-		["3"] = colors.lightBlue,
-		["4"] = colors.yellow,
-		["5"] = colors.lime,
-		["6"] = colors.pink,
-		["7"] = colors.gray,
-		["8"] = colors.lightGray,
-		["9"] = colors.cyan,
-		["a"] = colors.purple,
-		["b"] = colors.blue,
-		["c"] = colors.brown,
-		["d"] = colors.green,
-		["e"] = colors.red,
-		["f"] = colors.black,
-	}
-	if _color == nil then return nil end
-	return blitcolors[_color]
-end
-
-local tableFormatPE = function(input)
-	local doot = {}
-	local pwidths = {}
-	local pheight = {}
-	for k, dot in pairs(input) do
-		pwidths[dot.y] = math.max((pwidths[dot.y] or 0), dot.x)
-		pheight = math.max(pheight, dot.y)
-		doot[dot.y] = doot[dot.y] or {}
-		doot[dot.y][dot.x] = {
-			char = dot.c,
-			text = CTB(dot.t),
-			back = CTB(dot.b)
-		}
-	end
-	for y = 1, pheight do
-		pwidths[y] = pwidths[y] or 0
-		if doot[y] then
-			for x = 1, pwidths[y] do
-				doot[y][x] = doot[y][x] or {
-					text = " ",
-					back = " ",
-					char = " ",
-				}
-			end
-		else
-			doot[y] = false
-		end
-	end
-	return doot, pheight, pwidths
 end
 
 importFromPaint = function(theInput)
