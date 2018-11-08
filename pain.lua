@@ -3013,7 +3013,7 @@ local getInput = function() --gotta catch them all
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-(renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
 						if renderBlittle then
@@ -3033,7 +3033,7 @@ local getInput = function() --gotta catch them all
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] <= 2 and (mevt[4] or scr_y) < scr_y-(renderBlittle and 0 or doRenderBar))
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] <= 2 and (mevt[4] or scr_y) <= scr_y-(renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
 						if renderBlittle then
