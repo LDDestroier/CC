@@ -3232,7 +3232,7 @@ runPainEditor = function(...) --needs to be cleaned up
             renderBottomBar("Filling area...")
             fillTool(frameNo, x, y, dot, isDeleting)
             isCurrentlyFilling = false
-            reRenderPAIN(false)
+            reRenderPAIN(doRenderBar == 0)
         end
     end
 	
