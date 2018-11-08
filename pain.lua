@@ -1721,7 +1721,7 @@ end
 
 local reRenderPAIN = function(overrideRenderBar)
 	local _reallyDoRenderBar = doRenderBar
-	doRenderBar = 1
+--	doRenderBar = 1
 	renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true,overrideRenderBar)
 	doRenderBar = _reallyDoRenderBar
 end
