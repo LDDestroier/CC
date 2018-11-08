@@ -803,18 +803,9 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 	local dotBuffChar, dotBuffBack = "", "" --only used if gridBleedThrough is true
 	local doot
 	if doGrid then
-		if gridBleedThrough then
-			doot = tableFormatPE(paintEncoded[frame])
-		end
 		for y = 1, scr_y - yadjust do
 			term.setCursorPos(1,y)
-			if gridBleedThrough then
-				for x = 1, scr_x do
-					dotBuffChar = dotBuffChar .. grid[ro(y+(yscroll+2),#grid)+1]:sub(ro(x+paint.scrollX,#grid[1]))
-					dotBuffBack = dotBuffBack .. (CTB(doot[y+paint.scrollY][x+paint.scrollX].b or colors.white) or " ")
-				end
-				term.blit(dotBuffChar, CTB(rendback.t):rep(scr_x), dotBuffBack)
-			else
+			if not gridBleedThrough then
 				-- the single most convoluted line I've ever written that works, and I love it
 				term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
 			end
@@ -1370,30 +1361,35 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 	local beforeTX,beforeBG = term.getTextColor(), term.getBackgroundColor()
 	local cx,cy = term.getCursorPos()
 	local FUCK, SHIT = pcall(function()
-		if doPain then
-			if (not renderBlittle) then
-				if not dontRenderBar then
-					renderBar(barmsg,true)
-				end
-				renderPainyThings(xscroll,yscroll,evenDrawGrid)
-			else
-				term.clear()
-			end
-		end
-		for a = 1, #dots do
-			local d = dots[a]
 			if doPain then
-				if not ((d.y-yscroll >= 1 and d.y-yscroll <= scr_y-(renderBlittle and 0 or doRenderBar)) and (d.x-xscroll >= 1 and d.x-xscroll <= scr_x)) then
-					d = nil
+				if (not renderBlittle) then
+					if not dontRenderBar then
+						renderBar(barmsg,true)
+					end
+					renderPainyThings(xscroll,yscroll,evenDrawGrid)
+				else
+					term.clear()
 				end
 			end
-			if d then
-				term.setCursorPos(d.x-(xscroll or 0),d.y-(yscroll or 0))
-				term.setTextColor(      (paint.doGray and grayOut(d.t) or d.t) or rendback.t)
-				term.setBackgroundColor((paint.doGray and grayOut(d.b) or d.b) or rendback.b)
-				term.write(d.c or " ")
+			for a = 1, #dots do
+				local d = dots[a]
+				if doPain then
+					if not ((d.y-yscroll >= 1 and d.y-yscroll <= scr_y-(renderBlittle and 0 or doRenderBar)) and (d.x-xscroll >= 1 and d.x-xscroll <= scr_x)) then
+						d = nil
+					end
+				end
+				if d then
+					term.setCursorPos(d.x-(xscroll or 0),d.y-(yscroll or 0))
+					term.setBackgroundColor((paint.doGray and grayOut(d.b) or d.b) or rendback.b)
+					if gridBleedThrough then
+						term.setTextColor(rendback.t)
+						term.write(grid[ ro( y+(yscroll+2), #grid )+1 ]:sub(1+(paint.scrollX % #grid[1])))
+					else
+						term.setTextColor(      (paint.doGray and grayOut(d.t) or d.t) or rendback.t)
+						term.write(d.c or " ")
+					end
+				end
 			end
-		end
 	end)
 	term.setBackgroundColor(beforeBG or rendback.b)
 	term.setTextColor(beforeTX or rendback.t)
