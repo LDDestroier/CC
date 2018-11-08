@@ -722,7 +722,7 @@ end
 local tableFormatPE = function(input)
 	local doot = {}
 	local pwidths = {}
-	local pheight = {}
+	local pheight = 0
 	for k, dot in pairs(input) do
 		pwidths[dot.y] = math.max((pwidths[dot.y] or 0), dot.x)
 		pheight = math.max(pheight, dot.y)
