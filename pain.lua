@@ -813,7 +813,7 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 					dotBuffChar = dotBuffChar .. grid[ro(y+(yscroll+2),#grid)+1]:sub(ro(x+paint.scrollX,#grid[1]))
 					dotBuffBack = dotBuffBack .. (CTB(doot[y+paint.scrollY][x+paint.scrollX].b or colors.white) or " ")
 				end
-				term.blit(dotBuffChar, (" ").rep(scr_x), dotBuffBack)
+				term.blit(dotBuffChar, CTB(rendback.t):rep(scr_x), dotBuffBack)
 			else
 				-- the single most convoluted line I've ever written that works, and I love it
 				term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
