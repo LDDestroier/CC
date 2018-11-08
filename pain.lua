@@ -371,6 +371,10 @@ Hotkeys:
  "Edit > BLittle Shrink"
  Shrinks the current frame using the BLittle API. Very lossy, and unreversable without Undo.
 
+ "Set > ..."
+ Each option will toggle a config option (or set it's value to something else).
+ Changing a value is saved automatically, and effective immediately.
+
  "Window > Set Screen Size"
  Sets the sizes of the screen border references displayed on the canvas.
 
@@ -527,7 +531,7 @@ local makeSubMenu = function(x,y,options)
 			else
 				usingMouse = false
 				if evt == "mouse_click" then
-					return false
+					return false, longestLen
 				end
 			end
 		elseif evt == "mouse_up" then
@@ -2644,6 +2648,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			end
 		elseif event == "mouse_click" or event == "mouse_up" then
 			if y < cleary then
+				doRender = true
 				return
 			elseif key == 1 and initial+clickdelay < os.time() then --key? more like button
 				for a = 1, #menuPoses do
@@ -2652,7 +2657,8 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 							cursor = a
 							redrawTheMenu()
 							local res = menuFunctions[a]()
-							coroutine.yield()
+							os.queueEvent("queue")
+							os.pullEvent("queue")
 							if res == "exit" then
 								return "exit"
 							else
