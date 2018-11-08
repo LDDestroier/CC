@@ -805,10 +805,8 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 	if doGrid then
 		for y = 1, scr_y - yadjust do
 			term.setCursorPos(1,y)
-			if not gridBleedThrough then
-				-- the single most convoluted line I've ever written that works, and I love it
-				term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
-			end
+			-- the single most convoluted line I've ever written that works, and I love it
+			term.write(stringShift(grid[ro(y+(yscroll+2),#grid)+1],xscroll+1):rep(math.ceil(scr_x/#grid[ro(y+(yscroll+2),#grid)+1])):sub(1,scr_x))
 			term.setCursorPos((xscroll <= 0) and (1-xscroll) or 0,y)
 			if ((screenEdges[2]+1)-yscroll) == y then --regular limit
 				term.write( (string.rep("@", math.max(0,( (screenEdges[1])     ) - (#screenlabel+1)  )) ..screenlabel:gsub(" ","@"):upper().."@@"):sub(xscroll>0 and xscroll or 0):sub(1,1+screenEdges[1]) )
@@ -1383,7 +1381,7 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 					term.setBackgroundColor((paint.doGray and grayOut(d.b) or d.b) or rendback.b)
 					if gridBleedThrough then
 						term.setTextColor(rendback.t)
-						term.write(grid[ ro( y+(yscroll+2), #grid )+1 ]:sub(1+(paint.scrollX % #grid[1])))
+						term.write(grid[ ro( d.y+2, #grid)+1]:sub(1+ro(d.x+-1,#grid[1]), 1+ro(d.x+-1,#grid[1])))
 					else
 						term.setTextColor(      (paint.doGray and grayOut(d.t) or d.t) or rendback.t)
 						term.write(d.c or " ")
