@@ -18,15 +18,35 @@ local defaultSaveFormat = 4 -- will change if importing image, or making new fil
 	5. GIF
 	6. UCG
 --]]
-local readNonImageAsNFP = true
-local useFlattenGIF = true
-local undoBufferSize = 8
-local gridBleedThrough = false
-
-local doFillDiagonal = false    -- checks for diagonal dots when using fill tool
-local doFillAnimation = false   -- whether or not to animate the fill tool
 
 local progname = fs.getName(shell.getRunningProgram())
+local apipath = ".painapi"
+
+local painconfig = {
+	undoBufferSize = 8,			-- amount of times undo will save your neck
+	readNonImageAsNFP = true,	-- reads non-image files as NFP images
+	useFlattenGIF = true,		-- will flatten compressed GIFs
+	gridBleedThrough = false,	-- will draw grid instead of character value of dots
+	doFillDiagonal = false,		-- checks for diagonal dots when using fill tool
+	doFillAnimation = false,	-- whether or not to animate the fill tool
+}
+
+local saveConfig = function()
+	local file = fs.open(fs.combine(apipath,"painconfig"), "w")
+	file.write(textutils.serialize(painconfig))
+	file.close()
+end
+
+local loadConfig = function()
+	if fs.exists(fs.combine(apipath,"painconfig")) then
+		local file = fs.open(fs.combine(apipath,"painconfig"), "r")
+		painconfig = textutils.unserialize(file.readAll())
+		file.close()
+	end
+end
+
+loadConfig()
+saveConfig()
 
 local displayHelp = function()
 	print(progname)
@@ -464,7 +484,7 @@ local bottomPrompt = function(txt,history,cho,breakkeys,returnNumber,writeIndent
 	else
 		out = read(_,history)
 	end
-	return out,writeIndent
+	return out, writeIndent
 end
 
 local makeSubMenu = function(x,y,options)
@@ -1200,8 +1220,8 @@ end
 
 local getBlittle = function()
 	if not blittle then
-		if fs.exists("/.painapi/blittle") then
-			os.loadAPI("/.painapi/blittle")
+		if fs.exists(fs.combine(apipath,"blittle")) then
+			os.loadAPI(fs.combine(apipath,"blittle"))
 			if not blittleTerm then
 				blittleTerm = blittle.createWindow()
 			end
@@ -1212,11 +1232,11 @@ local getBlittle = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open("/.painapi/blittle","w")
+				local file = fs.open(fs.combine(apipath,"blittle"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI("/.painapi/blittle")
-				--fs.delete("/.painapi/")
+				os.loadAPI(fs.combine(apipath,"blittle"))
+				--fs.delete(apipath)
 				if not blittleTerm then
 					blittleTerm = blittle.createWindow()
 				end
@@ -1233,8 +1253,8 @@ end
 
 local getUCG = function()
 	if not ucg then
-		if fs.exists("/.painapi/ucg") then
-			os.loadAPI("/.painapi/ucg")
+		if fs.exists(fs.combine(apipath,"ucg")) then
+			os.loadAPI(fs.combine(apipath,"ucg"))
 			return true
 		else
 			local geet = http.get("https://raw.githubusercontent.com/ardera/libucg/master/src/libucg")
@@ -1242,10 +1262,10 @@ local getUCG = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open("/.painapi/ucg","w")
+				local file = fs.open(fs.combine(apipath,"ucg"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI("/.painapi/ucg")
+				os.loadAPI(fs.combine(apipath,"ucg"))
 			end
 		end
 	end
@@ -1253,8 +1273,8 @@ end
 
 local getBBPack = function()
 	if not bbpack then
-		if fs.exists("/.painapi/bbpack") then
-			os.loadAPI("/.painapi/bbpack")
+		if fs.exists(fs.combine(apipath,"bbpack")) then
+			os.loadAPI(fs.combine(apipath,"bbpack"))
 			return true
 		else
 			local geet = http.get("https://pastebin.com/raw/cUYTGbpb")
@@ -1262,10 +1282,10 @@ local getBBPack = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open("/.painapi/bbpack","w")
+				local file = fs.open(fs.combine(apipath,"bbpack"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI("/.painapi/bbpack")
+				os.loadAPI(fs.combine(apipath,"bbpack"))
 			end
 		end
 	end
@@ -1274,8 +1294,8 @@ end
 local getGIF = function()
 	getBBPack()
 	if not GIF then
-		if fs.exists("/.painapi/GIF") then
-			os.loadAPI("/.painapi/GIF")
+		if fs.exists(fs.combine(apipath,"GIF")) then
+			os.loadAPI(fs.combine(apipath,"GIF"))
 			return true
 		else
 			local geet = http.get("https://pastebin.com/raw/5uk9uRjC")
@@ -1283,10 +1303,10 @@ local getGIF = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open("/.painapi/GIF","w")
+				local file = fs.open(fs.combine(apipath,"GIF"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI("/.painapi/GIF")
+				os.loadAPI(fs.combine(apipath,"GIF"))
 			end
 		end
 	end
@@ -1309,7 +1329,7 @@ local importFromGIF = function(filename,verbose)
 	local output = {}
 	local image
 	local rawGif = GIF.loadGIF(filename)
-	if useFlattenGIF then
+	if painconfig.useFlattenGIF then
 		if verbose then
 			print("Flattening...")
 		end
@@ -1337,7 +1357,7 @@ local exportToGIF = function(input)
 		outGIF[a] = NFPserializeImage(exportToPaint(paintEncoded[a]))
 		sleep(0)
 	end
-	if useFlattenGIF then
+	if painconfig.useFlattenGIF then
 		return GIF.flattenGIF(GIF.buildGIF(table.unpack(outGIF)),true)
 	else
 		return GIF.buildGIF(table.unpack(outGIF))
@@ -1379,7 +1399,7 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 				if d then
 					term.setCursorPos(d.x-(xscroll or 0),d.y-(yscroll or 0))
 					term.setBackgroundColor((paint.doGray and grayOut(d.b) or d.b) or rendback.b)
-					if gridBleedThrough then
+					if painconfig.gridBleedThrough then
 						term.setTextColor(rendback.t)
 						term.write(grid[ ro( d.y+2, #grid)+1]:sub(1+ro(d.x+-1,#grid[1]), 1+ro(d.x+-1,#grid[1])))
 					else
@@ -1430,7 +1450,7 @@ local saveToUndoBuffer = function()
 			table.remove(undoBuffer,a)
 		end
 	end
-	if undoPos >= undoBufferSize then
+	if undoPos >= painconfig.undoBufferSize then
 		for a = 2, #undoBuffer do
 			undoBuffer[a-1] = undoBuffer[a]
 		end
@@ -1779,7 +1799,7 @@ local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame 
 				currentlyOnScreen = (chX-paint.scrollX >= 1 and chX-paint.scrollX <= scr_x and chY-paint.scrollY >= 1 and chY-paint.scrollY <= scr_y)
 				if isTrue and (not touched[chY][chX]) then
 					step = step + 1
-					if doFillAnimation then
+					if painconfig.doFillAnimation then
 						if currentlyOnScreen then
 							reRenderPAIN(true)
 						end
@@ -1816,7 +1836,7 @@ local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame 
 						doBreak = false
 					end
 					-- check diagonal
-					if doFillDiagonal then
+					if painconfig.doFillDiagonal then
 						if chkpos(chX-1, chY-1) then
 							check[chY-1] = check[chY-1] or {}
 							check[chY-1][chX-1] = true
@@ -1838,7 +1858,7 @@ local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame 
 							doBreak = false
 						end
 					end
-					if step % ((doFillAnimation and currentlyOnScreen) and 4 or 1024) == 0 then -- tries to prevent crash
+					if step % ((painconfig.doFillAnimation and currentlyOnScreen) and 4 or 1024) == 0 then -- tries to prevent crash
 						sleep(0)
 					end
 				end
@@ -2055,7 +2075,7 @@ local openNewFile = function(fname, allowNonImageNFP)
 end
 
 local displayMenu = function()
-	menuOptions = {"File","Edit","Window","About","Exit"}
+	menuOptions = {"File","Edit","Window","Set","About","Exit"}
 	local diss = " "..tableconcat(menuOptions," ")
 	local cleary = scr_y-math.floor(#diss/scr_x)
 
@@ -2421,7 +2441,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					renderBottomBar("Pick an image file.")
 					local newPath = lddfm.makeMenu(2, 2, scr_x-1, scr_y-2, fs.getDir(fileName or progname), false, false, false, true, false, nil, true)
 					if newPath then
-						local pen, form = openNewFile(newPath, readNonImageAsNFP)
+						local pen, form = openNewFile(newPath, painconfig.readNonImageAsNFP)
 						if not pen then
 							barmsg = form
 						else
@@ -2429,7 +2449,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 							paintEncoded, lastPaintEncoded = pen, deepCopy(pen)
 							defaultSaveFormat = form
 							undoPos = 1
-							undoBuffer = {}
+							undoBuffer = {deepCopy(paintEncoded)}
 							barmsg = "Opened '" .. fs.getName(newPath) .. "'"
 							paint.scrollX, paint.scrollY, paint.doGray = 1, 1, false
 							doRender = true
@@ -2499,7 +2519,38 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				return "nobreak"
 			end
 		end,
-		[4] = function() --About
+		[4] = function() --Set
+			local output = makeSubMenu(17,cleary-1,{
+				(painconfig.readNonImageAsNFP 	and "(T)" or "(F)") .. " Load Non-images",
+				(painconfig.useFlattenGIF 		and "(T)" or "(F)") .. " Flatten GIFs",
+				(painconfig.gridBleedThrough 	and "(T)" or "(F)") .. " Always Render Grid",
+				(painconfig.doFillDiagonal 		and "(T)" or "(F)") .. " Fill Diagonally",
+				(painconfig.doFillAnimation 	and "(T)" or "(F)") .. " Do Fill Animation",
+				"(" .. painconfig.undoBufferSize .. ") Set Undo Buffer Size",
+			})
+			if output == 1 then
+				painconfig.readNonImageAsNFP = not painconfig.readNonImageAsNFP
+			elseif output == 2 then
+				painconfig.useFlattenGIF = not painconfig.useFlattenGIF
+			elseif output == 3 then
+				painconfig.gridBleedThrough = not painconfig.gridBleedThrough
+			elseif output == 4 then
+				painconfig.doFillDiagonal = not painconfig.doFillDiagonal
+			elseif output == 5 then
+				painconfig.doFillAnimation = not painconfig.doFillAnimation
+			elseif output == 6 then
+				local newUndoBufferSize = bottomPrompt("New undo buffer size: ")
+				if tonumber(newUndoBufferSize) then
+					painconfig.undoBufferSize = math.abs(tonumber(newUndoBufferSize))
+					undoBuffer = {deepCopy(paintEncoded)}
+					undoPos = 1
+				else
+					return
+				end
+			end
+			saveConfig()
+		end,
+		[5] = function() --About
 			local output = makeSubMenu(17,cleary-1,{"PAIN","File Formats","Help!"})
 			doRender = true
 			if output == 1 then
@@ -2511,7 +2562,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				doRender = true
 			end
 		end,
-		[5] = function() --Exit
+		[6] = function() --Exit
 			if changedImage then
 				local outcum = bottomPrompt("Abandon unsaved work? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 				sleep(0)
@@ -2785,7 +2836,8 @@ local getInput = function() --gotta catch them all
 					changedImage = true
 				end
 			elseif origy >= scr_y-(renderBlittle and 0 or doRenderBar) then
-				keysDown = {[207] = keysDown[207]}
+				miceDown = {}
+				keysDown = {}
 				isDragging = false
 				local res = displayMenu()
 				if res == "exit" then break end
