@@ -2979,8 +2979,9 @@ local getInput = function() --gotta catch them all
 							paintEncoded[frame-1][#paintEncoded[frame-1] + 1] = paintEncoded[frame][a]
 						end
 						table.remove(paintEncoded, frame)
+						frame = frame - 1
 						paintEncoded = clearAllRedundant(paintEncoded)
-						barmsg = "Merged next frame."
+						barmsg = "Merged previous frame."
 						doRender = true
 						changedImage = true
 						saveToUndoBuffer()
