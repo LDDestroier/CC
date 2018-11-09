@@ -1727,8 +1727,8 @@ local reRenderPAIN = function(overrideRenderBar)
 end
 
 local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame NUMBER
-	local maxX, maxY = 0, 0
-	local minX, minY = 0, 0
+	local maxX, maxY = 1, 1
+	local minX, minY = 1, 1
 	paintEncoded = clearAllRedundant(paintEncoded)
 	local frame = paintEncoded[_frame]
 	local scx, scy = cx+paint.scrollX, cy+paint.scrollY
