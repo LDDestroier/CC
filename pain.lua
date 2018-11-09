@@ -249,100 +249,108 @@ local guiHelp = function(inputText)
 	scr_x, scr_y = term.current().getSize()
 	local _helpText = inputText or [[
 
- 'PAIN' Help Page
-Programmed by LDDestroier/EldidiStroyrr
+'PAIN' super-verbose help page
+  Programmed by LDDestroier
 
 (use UP/DOWN or scrollwheel, exit with Q)
-If you want to use PAIN to its full capacity, then READ EVERYTHING HERE! Its not TOO long, and it's completely worth it!
+If you wish to use PAIN to its fullest, read everything here.
+You'll be image-editing like a pro in no time flat.
 
 Syntax:
->pain <filename> [view]
+>pain <filename> [view] [x] [y]
 >pain [-n]
 >pain [-h/--help]
 
-[view]: disable all writing capability to view a file
-"-n" or no arguments: create new document, declare name upon saving
-"-h" or "--help": display short syntax help
+[view]: renders the image once (optionally scrolling with [x] and [y])
+"-n" or no arguments: Create new document, declare name upon saving
+"-h" or "--help": Display short syntax help
 
 You can see what colors are selected based on the word "PAIN" on the hotbar.
 
 Hotkeys:
- left/right ctrl: toggle the menu
+ left/right ctrl: Toggle the menu
 
  left click:
-  +shift = drag and let go to make a line
-  -alone = place pixel
+  +left shift = Drag and let go to make a line
+  -alone      = Place pixel
 
  right click: delete pixel
 
- middle click OR "t": place text down with current colors, cancel with X
+ middle click OR "t": Place text down with current colors, cancel with X
 
  "z":
-  +left alt = redo
-  -alone = undo
+  +left alt = Redo
+  -alone    = Undo
 
- "p": pick colors from position onscreen, cancel with X
+ "p": Pick colors from position onscreen; cancel with X
 
  "n":
-  +left shift = change character to that of a special character
-  -alone = change box character for drawing
+  +left shift = Change character to that of a special character
+  -alone      = Change box character for drawing
   (cancel with CTRL, N, or by clicking outside)
 
  "[" or mouse scroll down:
-  +shift = change to previous text color
-  -alone = change to previous background color
+  +shift = Change to previous text color
+  -alone = Change to previous background color
 
  "]" or mouse scroll up:
-  +shift = change to next text color
-  -alone = change to next background color
+  +shift = Change to next text color
+  -alone = Change to next background color
 
  "F1":
-  -alone = access help screen
+  -alone = Access help screen
 
  "F3:"
-  -alone = view all connected monitors
+  -alone = View all connected monitors
 
  spacebar:
-  +shift = toggle grid
-  -alone = toggle bar visibility
+  +shift = Toggle background grid
+  -alone = Toggle bar visibility
 
  arrow keys:
-  +shift = move entire picture
-  +tab = move one pixel at a time
-  -alone = looks around the canvas smoothly
+  +shift = Displaces the entire frame
+  +tab   = Moves canvas one pixel at a time
+  -alone = Looks around the canvas smoothly
 
  "+" (or equals):
-  +left alt = swap the current frame with the next frame
-  -alone = change to next frame
+  +left alt   = Swap the current frame with the next frame
+  +left shift = Merge the current frame atop the next frame
+  -alone      = Change to next frame
 
  "-":
-  +left alt = swap the current frame with the previous frame
-  -alone = change to previous frame
+  +left alt   = Swap the current frame with the previous frame
+  +left shift = Merge the current frame atop the previous frame
+  -alone      = Change to previous frame
 
- "a": set the coordinates to 0,0
+ (oh good, you're actually reading this stuff)
 
- "n": open block character selection
+ "a": Set the coordinates to 0,0
 
- "b": toggle redirect to blittle, to preview in teletext characters
+ "n": Open block character selection
 
- "c": input coordinates to scroll over to
+ "b": Toggle redirect to blittle, to preview in teletext characters
 
- "g": toggle grayscale mode. everything is in shades of gray. if you Save, it saves in grayscale.
+ "c": Input coordinates to scroll over to
+
+ "g": toggle grayscale mode.
+  Everything is in shades of gray.
+  If you Save, it saves in grayscale.
 
  "f":
-  +shift = fill all empty pixels with background color and selected box character
-  -alone = activate fill tool - click anywhere to fill with color
+  +left shift = fill all empty pixels with background color and selected box character
+  -alone      = activate fill tool - click anywhere to fill with color
 
- "m": set metadata for pixels (for game makers, otherwise safe to ignore)
+ "m": set metadata for pixels (for game makers, otherwise please ignore)
 
-
+==================================
  Thy Menu (accessible with CTRL):
+==================================
 
- -left click on a menu item to select it.
- -if you click on the menubar, let go on an option to select it.
+ Left click on a menu item to select it.
+ If you click on the menubar, release on an option to select it.
 
  "File > Save"
- Saves all frames to a specially formatted PAIN paint file. The format PAIN uses is very inefficient despite my best efforts, so Export if you don\39t use text or multiple frame.
+ Saves all frames to a specially formatted PAIN paint file. The format PAIN uses is very inefficient despite my best efforts, so Export if you don't use text or multiple frame.
 
  "File > Save As"
  Same as "File > Save", but you change the filename.
