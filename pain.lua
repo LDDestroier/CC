@@ -4,10 +4,6 @@
 	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua pain
 	 pastebin get wJQ7jav0 pain
 	 std ld pain pain
-
-	This is a beta release. You fool!
-	To add:
-		+ motherfucking copy/paste regions
 --]]
 local askToSerialize = false
 local defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
@@ -1433,7 +1429,7 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 					term.setBackgroundColor((paint.doGray and grayOut(d.b) or d.b) or rendback.b)
 					if painconfig.gridBleedThrough then
 						term.setTextColor(rendback.t)
-						term.write(grid[ ro( d.y+2, #grid)+1]:sub(1+ro(d.x+-1,#grid[1]), 1+ro(d.x+-1,#grid[1])))
+						term.write((d.x >= 1 and d.y >= 1) and grid[ ro( d.y+2, #grid)+1]:sub(1+ro(d.x+-1,#grid[1]), 1+ro(d.x+-1,#grid[1])) or "/")
 					else
 						term.setTextColor(      (paint.doGray and grayOut(d.t) or d.t) or rendback.t)
 						term.write(d.c or " ")
@@ -2168,6 +2164,70 @@ local openNewFile = function(fname, allowNonImageNFP)
 	end
 end
 
+local editCopy = function()
+    local board = bottomPrompt("Copy to board: ")
+    renderAllPAIN()
+    renderBottomBar("Select region to copy.")
+    local selectedDots = selectRegion()
+    theClipboard[board] = selectedDots
+    barmsg = "Copied to '"..board.."'"
+    doRender = true
+    keysDown = {}
+    miceDown = {}
+end
+local editCut = function()
+    local board = bottomPrompt("Cut to board: ")
+    renderAllPAIN()
+    renderBottomBar("Select region to copy.")
+    local selectedDots, x1, y1, x2, y2 = selectRegion()
+    theClipboard[board] = selectedDots
+    local dot
+    for i = #paintEncoded[frame], 1, -1 do
+        dot = paintEncoded[frame][i]
+        if dot.x >= x1 and dot.x <= x2 then
+            if dot.y >= y1 and dot.y <= y2 then
+                table.remove(paintEncoded[frame], i)
+            end
+        end
+    end
+    barmsg = "Cut to '"..board.."'"
+    doRender = true
+    saveToUndoBuffer()
+    keysDown = {}
+    miceDown = {}
+end
+
+local editPaste = function()
+    local board = bottomPrompt("Paste from board: ")
+    renderAllPAIN()
+    renderBottomBar("Click to paste. (top left corner)")
+    if theClipboard[board] then
+        local mevt
+        repeat
+            mevt = {os.pullEvent()}
+        until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
+        for k,v in pairs(theClipboard[board]) do
+            paintEncoded[frame][#paintEncoded[frame]+1] = {
+                x = v.x + paint.scrollX + (mevt[3]),
+                y = v.y + paint.scrollY + (mevt[4]),
+                c = v.c,
+                t = v.t,
+                b = v.b,
+                m = v.m
+            }
+        end
+        paintEncoded[frame] = clearRedundant(paintEncoded[frame])
+        barmsg = "Pasted from '"..board.."'"
+        doRender = true
+        saveToUndoBuffer()
+        keysDown = {}
+        miceDown = {}
+    else
+        barmsg = "No such clipboard."
+        doRender = true
+    end
+end
+
 local displayMenu = function()
 	menuOptions = {"File","Edit","Window","Set","About","Exit"}
 	local diss = " "..tableconcat(menuOptions," ")
@@ -2403,69 +2463,6 @@ local displayMenu = function()
 	local editSpecialCharSelector = function()
 		paint.c = boxCharSelector()
 	end
-	editCopy = function()
-	 local board = bottomPrompt("Copy to board: ")
-	 renderAllPAIN()
-	 renderBottomBar("Select region to copy.")
-	 local selectedDots = selectRegion()
-	 theClipboard[board] = selectedDots
-	 barmsg = "Copied to '"..board.."'"
-	 doRender = true
-	 keysDown = {}
-	 miceDown = {}
-	end
-	editCut = function()
-		local board = bottomPrompt("Cut to board: ")
-		renderAllPAIN()
-		renderBottomBar("Select region to copy.")
-		local selectedDots, x1, y1, x2, y2 = selectRegion()
-		theClipboard[board] = selectedDots
-		local dot
-		for i = #paintEncoded[frame], 1, -1 do
-			dot = paintEncoded[frame][i]
-			if dot.x >= x1 and dot.x <= x2 then
-				if dot.y >= y1 and dot.y <= y2 then
-					table.remove(paintEncoded[frame], i)
-				end
-			end
-		end
-		barmsg = "Cut to '"..board.."'"
-		doRender = true
-		saveToUndoBuffer()
-		keysDown = {}
-		miceDown = {}
-	end
-	editPaste = function()
-		local board = bottomPrompt("Paste from board: ")
-		renderAllPAIN()
-		renderBottomBar("Click to paste. (top left corner)")
-		if theClipboard[board] then
-			local mevt
-			repeat
-				mevt = {os.pullEvent()}
-			until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
-			for k,v in pairs(theClipboard[board]) do
-				paintEncoded[frame][#paintEncoded[frame]+1] = {
-					x = v.x + paint.scrollX + (mevt[3]),
-					y = v.y + paint.scrollY + (mevt[4]),
-					c = v.c,
-					t = v.t,
-					b = v.b,
-					m = v.m
-				}
-			end
-			paintEncoded[frame] = clearRedundant(paintEncoded[frame])
-			barmsg = "Pasted from '"..board.."'"
-			doRender = true
-			saveToUndoBuffer()
-			keysDown = {}
-			miceDown = {}
-		else
-			barmsg = "No such clipboard."
-			doRender = true
-		end
-	end
-
 
 	local windowSetScrSize = function()
 		local x,y
@@ -3482,6 +3479,7 @@ runPainEditor = function(...) --needs to be cleaned up
 	term.clearLine()
 end
 
-if not shell then return end
+if not shell then error("shell API is required, sorry") end
 
 runPainEditor(...)
+\
