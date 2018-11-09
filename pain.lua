@@ -313,9 +313,10 @@ Hotkeys:
   -alone = Looks around the canvas smoothly
 
  "+" (or equals):
-  +left alt   = Swap the current frame with the next frame
-  +left shift = Merge the current frame atop the next frame
-  -alone      = Change to next frame
+  +left alt    = Swap the current frame with the next frame
+  +left shift  = Merge the current frame atop the next frame
+  +right shift = If you are making a new frame, duplicates the last frame
+  -alone       = Change to next frame
 
  "-":
   +left alt   = Swap the current frame with the previous frame
