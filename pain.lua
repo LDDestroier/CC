@@ -5,7 +5,9 @@
 	 pastebin get wJQ7jav0 pain
 	 std ld pain pain
 
-	This is a stable release. You fool!
+	This is a beta release. You fool!
+	To add:
+		+ motherfucking copy/paste regions
 --]]
 local askToSerialize = false
 local defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
@@ -2065,6 +2067,68 @@ local checkIfNFP = function(str) --does not check table format, only string form
 	return true
 end
 
+local selectRegion = function()
+	local position = {}
+	local mevt, id, x1, y1 = os.pullEvent("mouse_click")
+	local x2, y2, pos, redrawID
+	local renderRectangle = true
+	redrawID = os.startTimer(0.5)
+	while true do
+		mevt, id, x2, y2 = os.pullEvent()
+		if mevt == "mouse_up" or mevt == "mouse_drag" or mevt == "mouse_click" then
+			pos = {{
+					x1 < x2 and x1 or x2,
+					y1 < y2 and y1 or y2
+				},{
+					x1 < x2 and x2 or x1,
+					y1 < y2 and y2 or y1
+			}}
+		end
+		if mevt == "mouse_up" then
+			break
+		end
+		if (mevt == "mouse_drag") or (mevt == "timer" and id == redrawID) then
+			renderAllPAIN()
+			if renderRectangle then
+				term.setTextColor(rendback.t)
+				term.setBackgroundColor(rendback.b)
+				for y = pos[1][2], pos[2][2] do
+					if y ~= scr_y then
+						term.setCursorPos(pos[1][1], y)
+						if (y == pos[1][2] or y == pos[2][2]) then
+							term.write(("#"):rep(1 + pos[2][1] - pos[1][1]))
+						else
+							term.write("#")
+							term.setCursorPos(pos[2][1], y)
+							term.write("#")
+						end
+					end
+				end
+			end
+		end
+		if (mevt == "timer" and id == redrawID) then
+			renderRectangle = not renderRectangle
+			redrawID = os.startTimer(0.25)
+		end
+	end
+	local output = {}
+	for k,v in pairs(paintEncoded[frame]) do
+		if v.x >= pos[1][1] and v.x <= pos[2][1] then
+			if v.y >= pos[1][2] and v.y <= pos[2][2] then
+				output[#output+1] = {
+					x = v.x - pos[1][1],
+					y = v.y - pos[1][2],
+					t = v.t,
+					c = v.c,
+					b = v.b,
+					m = v.m
+				}
+			end
+		end
+	end
+	return output, pos[1][1], pos[1][2], pos[2][1], pos[2][2]
+end
+
 local openNewFile = function(fname, allowNonImageNFP)
 	local file = fs.open(fname,"r")
 	local contents = file.readAll()
@@ -2271,13 +2335,22 @@ local displayMenu = function()
 		return exportName
 	end
 
+	local editClear = function(ignorePrompt)
+		local outcum = ignorePrompt and "y" or bottomPrompt("Clear the frame? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
+		if outcum == "y" then
+			paintEncoded[frame] = {}
+			saveToUndoBuffer()
+			barmsg = "Cleared frame "..frame.."."
+		end
+		doRender = true
+	end
+
 	local editDelFrame = function()
 		local outcum = bottomPrompt("Thou art sure? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 		doRender = true
 		if outcum == "y" then
 			if #paintEncoded == 1 then
-				barmsg = "Fat chance."
-				return
+				return editClear(true)
 			end
 			table.remove(paintEncoded,frame)
 			barmsg = "Deleted frame "..frame.."."
@@ -2293,15 +2366,6 @@ local displayMenu = function()
 			end
 			saveToUndoBuffer()
 		end
-	end
-	local editClear = function()
-		local outcum = bottomPrompt("Clear the frame? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
-		if outcum == "y" then
-			paintEncoded[frame] = {}
-			saveToUndoBuffer()
-			barmsg = "Cleared frame "..frame.."."
-		end
-		doRender = true
 	end
 	local editCrop = function()
 		local outcum = bottomPrompt("Crop all but visible? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
@@ -2329,6 +2393,69 @@ local displayMenu = function()
 	local editSpecialCharSelector = function()
 		paint.c = boxCharSelector()
 	end
+	editCopy = function()
+	 local board = bottomPrompt("Copy to board: ")
+	 renderAllPAIN()
+	 renderBottomBar("Select region to copy.")
+	 local selectedDots = selectRegion()
+	 theClipboard[board] = selectedDots
+	 barmsg = "Copied to '"..board.."'"
+	 doRender = true
+	 keysDown = {}
+	 miceDown = {}
+	end
+	editCut = function()
+		local board = bottomPrompt("Cut to board: ")
+		renderAllPAIN()
+		renderBottomBar("Select region to copy.")
+		local selectedDots, x1, y1, x2, y2 = selectRegion()
+		theClipboard[board] = selectedDots
+		local dot
+		for i = #paintEncoded[frame], 1, -1 do
+			dot = paintEncoded[frame][i]
+			if dot.x >= x1 and dot.x <= x2 then
+				if dot.y >= y1 and dot.y <= y2 then
+					table.remove(paintEncoded[frame], i)
+				end
+			end
+		end
+		barmsg = "Cut to '"..board.."'"
+		doRender = true
+		saveToUndoBuffer()
+		keysDown = {}
+		miceDown = {}
+	end
+	editPaste = function()
+		local board = bottomPrompt("Paste from board: ")
+		renderAllPAIN()
+		renderBottomBar("Click to paste. (top left corner)")
+		if theClipboard[board] then
+			local mevt
+			repeat
+				mevt = {os.pullEvent()}
+			until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
+			for k,v in pairs(theClipboard[board]) do
+				paintEncoded[frame][#paintEncoded[frame]+1] = {
+					x = v.x + paint.scrollX + (mevt[3]),
+					y = v.y + paint.scrollY + (mevt[4]),
+					c = v.c,
+					t = v.t,
+					b = v.b,
+					m = v.m
+				}
+			end
+			paintEncoded[frame] = clearRedundant(paintEncoded[frame])
+			barmsg = "Pasted from '"..board.."'"
+			doRender = true
+			saveToUndoBuffer()
+			keysDown = {}
+			miceDown = {}
+		else
+			barmsg = "No such clipboard."
+			doRender = true
+		end
+	end
+
 
 	local windowSetScrSize = function()
 		local x,y
@@ -2433,7 +2560,13 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 		[1] = function() --File
 			while true do
 				--renderAllPAIN()
-				local output, longestLen = makeSubMenu(1,cleary-1,{"Save","Save As","Export","Open",((peripheral.find("printer")) and "Print" or nil)})
+				local output, longestLen = makeSubMenu(1,cleary-1,{
+					"Save",
+					"Save As",
+					"Export",
+					"Open",
+					((peripheral.find("printer")) and "Print" or nil)
+				})
 				doRender = true
 				if output == 1 then -- Save
 					local _fname = fileExport(_,defaultSaveFormat,fileName)
@@ -2486,7 +2619,17 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			end
 		end,
 		[2] = function() --Edit
-			local output = makeSubMenu(6,cleary-1,{"Delete Frame","Clear Frame","Crop Frame","Choose Box Character","Choose Special Character","BLittle Shrink"})
+			local output = makeSubMenu(6,cleary-1,{
+				"Delete Frame",
+				"Clear Frame",
+				"Crop Frame",
+				"Choose Box Character",
+				"Choose Special Character",
+				"BLittle Shrink",
+				"Copy Region",
+				"Cut Region",
+				"Paste Region"
+			})
 			doRender = true
 			if output == 1 then
 				editDelFrame()
@@ -2520,12 +2663,22 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					doRender = true
 					barmsg = "Shrunk image."
 				end
+			elseif output == 7 then
+				editCopy()
+			elseif output == 8 then
+				editCut()
+			elseif output == 9 then
+				editPaste()
 			elseif output == false then
 				return "nobreak"
 			end
 		end,
 		[3] = function() --Window
-			local output = makeSubMenu(11,cleary-1,{"Set Screen Size","Set Scroll XY","Set Grid Colors"})
+			local output = makeSubMenu(11,cleary-1,{
+				"Set Screen Size",
+				"Set Scroll XY",
+				"Set Grid Colors"
+			})
 			doRender = true
 			if output == 1 then
 				windowSetScrSize()
@@ -2571,7 +2724,11 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			saveConfig()
 		end,
 		[5] = function() --About
-			local output = makeSubMenu(17,cleary-1,{"PAIN","File Formats","Help!"})
+			local output = makeSubMenu(17,cleary-1,{
+				"PAIN",
+				"File Formats",
+				"Help!"
+			})
 			doRender = true
 			if output == 1 then
 				aboutPAIN()
@@ -2774,68 +2931,6 @@ local listAllMonitors = function()
 	doRender = true
 end
 
-local selectRegion = function()
-	local position = {}
-	local mevt, id, x1, y1 = os.pullEvent("mouse_click")
-	local x2, y2, pos, redrawID
-	local renderRectangle = true
-	redrawID = os.startTimer(0.5)
-	while true do
-		mevt, id, x2, y2 = os.pullEvent()
-		if mevt == "mouse_up" or mevt == "mouse_drag" or mevt == "mouse_click" then
-			pos = {{
-					x1 < x2 and x1 or x2,
-					y1 < y2 and y1 or y2
-				},{
-					x1 < x2 and x2 or x1,
-					y1 < y2 and y2 or y1
-			}}
-		end
-		if mevt == "mouse_up" then
-			break
-		end
-		if (mevt == "mouse_drag") or (mevt == "timer" and id == redrawID) then
-			renderAllPAIN()
-			if renderRectangle then
-				term.setTextColor(rendback.t)
-				term.setBackgroundColor(rendback.b)
-				for y = pos[1][2], pos[2][2] do
-					if y ~= scr_y then
-						term.setCursorPos(pos[1][1], y)
-						if (y == pos[1][2] or y == pos[2][2]) then
-							term.write(("#"):rep(1 + pos[2][1] - pos[1][1]))
-						else
-							term.write("#")
-							term.setCursorPos(pos[2][1], y)
-							term.write("#")
-						end
-					end
-				end
-			end
-		end
-		if (mevt == "timer" and id == redrawID) then
-			renderRectangle = not renderRectangle
-			redrawID = os.startTimer(0.25)
-		end
-	end
-	local output = {}
-	for k,v in pairs(paintEncoded[frame]) do
-		if v.x >= pos[1][1] and v.x <= pos[2][1] then
-			if v.y >= pos[1][2] and v.y <= pos[2][2] then
-				output[#output+1] = {
-					x = v.x - pos[1][1],
-					y = v.y - pos[1][2],
-					t = v.t,
-					c = v.c,
-					b = v.b,
-					m = v.m
-				}
-			end
-		end
-	end
-	return output, pos[1][1], pos[1][2], pos[2][1], pos[2][2]
-end
-
 local getInput = function() --gotta catch them all
 	local button, x, y, oldmx, oldmy, origx, origy
 	local isDragging = false
@@ -2996,66 +3091,12 @@ local getInput = function() --gotta catch them all
 			end
 			if keysDown[keys.leftAlt] then
 				if (not renderBlittle) then
-					-- you know what's coming
 					if (key == keys.c) then
-						local board = bottomPrompt("Copy to board: ")
-						renderAllPAIN()
-						renderBottomBar("Select region to copy.")
-						local selectedDots = selectRegion()
-						theClipboard[board] = selectedDots
-						barmsg = "Copied to '"..board.."'"
-						doRender = true
-						keysDown = {}
-						miceDown = {}
+						editCopy()
 					elseif (key == keys.x) then
-						local board = bottomPrompt("Cut to board: ")
-						renderAllPAIN()
-						renderBottomBar("Select region to copy.")
-						local selectedDots, x1, y1, x2, y2 = selectRegion()
-						theClipboard[board] = selectedDots
-						local dot
-						for i = #paintEncoded[frame], 1, -1 do
-							dot = paintEncoded[frame][i]
-							if dot.x >= x1 and dot.x <= x2 then
-								if dot.y >= y1 and dot.y <= y2 then
-									table.remove(paintEncoded[frame], i)
-								end
-							end
-						end
-						barmsg = "Cut to '"..board.."'"
-						doRender = true
-						saveToUndoBuffer()
-						keysDown = {}
-						miceDown = {}
+						editCut()
 					elseif (key == keys.v) then
-						local board = bottomPrompt("Paste from board: ")
-						renderAllPAIN()
-						renderBottomBar("Click to paste. (top left corner)")
-						if theClipboard[board] then
-							local mevt
-							repeat
-								mevt = {os.pullEvent()}
-							until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
-							for k,v in pairs(theClipboard[board]) do
-								paintEncoded[frame][#paintEncoded[frame]+1] = {
-									x = v.x + paint.scrollX + (mevt[3]),
-									y = v.y + paint.scrollY + (mevt[4]),
-									c = v.c,
-									t = v.t,
-									b = v.b,
-									m = v.m
-								}
-							end
-							paintEncoded[frame] = clearRedundant(paintEncoded[frame])
-							barmsg = "Pasted from '"..board.."'"
-							doRender = true
-							saveToUndoBuffer()
-							keysDown = {}
-							miceDown = {}
-						else
-							barmsg = "No such clipboard."
-							doRender = true
-						end
+						editPaste()
 					end
 				end
 			else
