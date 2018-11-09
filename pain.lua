@@ -282,23 +282,23 @@ Hotkeys:
  Middle Click, or "T": Place text down with current colors; cancel with X
 
  "Z":
-  +left alt = Redo
-  -alone    = Undo
+  +LeftAlt = Redo
+  -alone   = Undo
 
  "P": Pick colors from position onscreen; cancel with X
 
  "N":
-  +left shift = Change character to that of a special character
-  -alone      = Change box character for drawing
+  +LeftShift = Change character to that of a special character
+  -alone     = Change box character for drawing
   (cancel with CTRL, N, or by clicking outside)
 
  "[" or mouse scroll down:
-  +shift = Change to previous text color
-  -alone = Change to previous background color
+  +LeftShift = Change to previous text color
+  -alone     = Change to previous background color
 
  "]" or mouse scroll up:
-  +shift = Change to next text color
-  -alone = Change to next background color
+  +LeftShift = Change to next text color
+  -alone     = Change to next background color
 
  "F1":
   -alone = Access help screen
@@ -307,24 +307,24 @@ Hotkeys:
   -alone = View all connected monitors
 
  Spacebar:
-  +shift = Toggle background grid
-  -alone = Toggle bar visibility
+  +LeftShift = Toggle background grid
+  -alone     = Toggle bar visibility
 
  Arrow keys:
-  +shift = Displaces the entire frame
-  +tab   = Moves canvas one pixel at a time
-  -alone = Looks around the canvas smoothly
+  +LeftShift = Displaces the entire frame
+  +Tab       = Moves canvas one pixel at a time
+  -alone     = Looks around the canvas smoothly
 
  "+" (or equals):
-  +left alt    = Swap the current frame with the next frame
-  +left shift  = Merge the current frame atop the next frame
-  +right shift = If you are making a new frame, duplicates the last frame
-  -alone       = Change to next frame
+  +LeftAlt    = Swap the current frame with the next frame
+  +LeftShift  = Merge the current frame atop the next frame
+  +RightShift = If you are making a new frame, duplicates the last frame
+  -alone      = Change to next frame
 
  "-":
-  +left alt   = Swap the current frame with the previous frame
-  +left shift = Merge the current frame atop the previous frame
-  -alone      = Change to previous frame
+  +LeftAlt   = Swap the current frame with the previous frame
+  +LeftShift = Merge the current frame atop the previous frame
+  -alone     = Change to previous frame
 
  (oh good, you're actually reading this stuff)
 
@@ -335,8 +335,8 @@ Hotkeys:
  "B": Toggle redirect to blittle, to preview in teletext characters
 
  "c":
-  +alt   = Select region to copy to specified clipboard
-	-alone = Input coordinates to scroll over to
+  +LeftAlt = Select region to copy to specified clipboard
+	-alone   = Input coordinates to scroll over to
 
  "LeftAlt + X": Select region to cut to specified clipboard
 
@@ -347,8 +347,8 @@ Hotkeys:
   If you Save, it saves in grayscale.
 
  "F":
-  +left shift = fill all empty pixels with background color and selected box character
-  -alone      = activate fill tool - click anywhere to fill with color
+  +LeftShift = fill all empty pixels with background color and selected box character
+  -alone     = activate fill tool - click anywhere to fill with color
 
  "M": set metadata for pixels (for game makers, otherwise please ignore)
 
@@ -388,6 +388,16 @@ Hotkeys:
 
  "Edit > BLittle Shrink"
  Shrinks the current frame using the BLittle API. Very lossy, and unreversable without Undo.
+
+ "Edit > Copy"
+ Drag to select a region of the screen, and save it in a clipboard of a specified name.
+
+ "Edit > Cut"
+ Same as Copy, but deletes the selected region on the screen.
+
+ "Edit > Paste"
+ Takes the contents of the specified clipboard, and plops it on the canvas where the mouse is.
+(The mouse will indicate the top-left corner of the pasted selection)
 
  "Set > ..."
  Each option will toggle a config option (or set it's value to something else).
