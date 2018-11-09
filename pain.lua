@@ -2876,7 +2876,7 @@ local getInput = function() --gotta catch them all
 			isDragging = false
 		elseif evt[1] == "key" then
 			local key = evt[2]
-			if (not keysDown[keys.leftShift]) and (keysDown[keys.tab]) then
+			if (isDragging or not keysDown[keys.leftShift]) and (keysDown[keys.tab]) then
 				if key == keys.right and (not keysDown[keys.right]) then
 					paint.scrollX = paint.scrollX + 1
 					doRender = true
@@ -2917,10 +2917,21 @@ local getInput = function() --gotta catch them all
 				doRender = true
 				scr_x, scr_y = term.current().getSize()
 			end
-			if (key == keys.c) and (not renderBlittle) then
-				gotoCoords()
-				resetInputState()
-				doRender = true
+			if keysDown[keys.leftAlt] then
+				if (not renderBlittle) then
+					-- you know what's coming
+					if (key == keys.c) then
+						
+					elseif (key == keys.v) then
+						
+					end
+				end
+			else
+				if (key == keys.c) and (not renderBlittle) then
+					gotoCoords()
+					resetInputState()
+					doRender = true
+				end
 			end
 			if (keysDown[keys.leftShift]) and (not isDragging) then
 				if key == keys.left then
