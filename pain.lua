@@ -3004,7 +3004,7 @@ local getInput = function() --gotta catch them all
 						if not paintEncoded[frame+1] then
 							paintEncoded[frame+1] = {}
 							local sheet = paintEncoded[frame]
-							if keysDown[keys.leftShift] then
+							if keysDown[keys.rightShift] then
 								paintEncoded[frame+1] = deepCopy(sheet)
 							end
 						end
