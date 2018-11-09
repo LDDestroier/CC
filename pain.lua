@@ -2961,8 +2961,33 @@ local getInput = function() --gotta catch them all
 						saveToUndoBuffer()
 					end
 				end
-			end
-			if not keysDown[keys.leftAlt] then
+			elseif keysDown[keys.leftShift] then
+				if #paintEncoded > 1 then
+					if key == keys.equals and paintEncoded[frame+1] then --basically plus
+						for a = 1, #paintEncoded[frame] do
+							paintEncoded[frame+1][#paintEncoded[frame+1] + 1] = paintEncoded[frame][a]
+						end
+						table.remove(paintEncoded, frame)
+						paintEncoded = clearAllRedundant(paintEncoded)
+						barmsg = "Merged next frame."
+						doRender = true
+						changedImage = true
+						saveToUndoBuffer()
+					end
+					if key == keys.minus and paintEncoded[frame-1] then
+						for a = 1, #paintEncoded[frame] do
+							paintEncoded[frame-1][#paintEncoded[frame-1] + 1] = paintEncoded[frame][a]
+						end
+						table.remove(paintEncoded, frame)
+						frame = frame - 1
+						paintEncoded = clearAllRedundant(paintEncoded)
+						barmsg = "Merged previous frame."
+						doRender = true
+						changedImage = true
+						saveToUndoBuffer()
+					end
+				end
+			else
 				if key == keys.equals then --basically 'plus'
 					if renderBlittle then
 						frame = frame + 1
