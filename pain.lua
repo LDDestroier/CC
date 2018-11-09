@@ -2970,6 +2970,9 @@ local getInput = function() --gotta catch them all
 						table.remove(paintEncoded, frame)
 						paintEncoded = clearAllRedundant(paintEncoded)
 						barmsg = "Merged next frame."
+						doRender = true
+						changedImage = true
+						saveToUndoBuffer()
 					end
 					if key == keys.minus and paintEncoded[frame-1] then
 						for a = 1, #paintEncoded[frame] do
@@ -2978,6 +2981,9 @@ local getInput = function() --gotta catch them all
 						table.remove(paintEncoded, frame)
 						paintEncoded = clearAllRedundant(paintEncoded)
 						barmsg = "Merged next frame."
+						doRender = true
+						changedImage = true
+						saveToUndoBuffer()
 					end
 				end
 			else
