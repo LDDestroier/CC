@@ -2964,20 +2964,20 @@ local getInput = function() --gotta catch them all
 			elseif keysDown[keys.leftShift] then
 				if #paintEncoded > 1 then
 					if key == keys.equals and paintEncoded[frame+1] then --basically plus
-						for a = 1, #paintEncoded[frame+1] do
-							paintEncoded[frame][#paintEncoded[frame] + 1] = paintEncoded[frame+1][a]
+						for a = 1, #paintEncoded[frame] do
+							paintEncoded[frame+1][#paintEncoded[frame+1] + 1] = paintEncoded[frame][a]
 						end
-						table.remove(paintEncoded, frame+1)
+						table.remove(paintEncoded, frame)
 						paintEncoded = clearAllRedundant(paintEncoded)
 						barmsg = "Merged next frame."
 					end
 					if key == keys.minus and paintEncoded[frame-1] then
-						for a = 1, #paintEncoded[frame+1] do
-							paintEncoded[frame][#paintEncoded[frame] + 1] = paintEncoded[frame-1][a]
+						for a = 1, #paintEncoded[frame] do
+							paintEncoded[frame-1][#paintEncoded[frame-1] + 1] = paintEncoded[frame][a]
 						end
-						table.remove(paintEncoded, frame-1)
+						table.remove(paintEncoded, frame)
 						paintEncoded = clearAllRedundant(paintEncoded)
-						barmsg = "Merged previous frame."
+						barmsg = "Merged next frame."
 					end
 				end
 			else
