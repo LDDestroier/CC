@@ -4,8 +4,6 @@
 	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/pain.lua pain
 	 pastebin get wJQ7jav0 pain
 	 std ld pain pain
-	
-	This is a stable release. You fool!
 --]]
 local askToSerialize = false
 local defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
@@ -96,6 +94,7 @@ local firstBG = term.getBackgroundColor()
 local firstTX = term.getTextColor()
 local changedImage = false
 local isCurrentlyFilling = false
+local theClipboard = {}
 
 local _
 local tableconcat = table.concat
@@ -165,8 +164,8 @@ end
 local cutString = function(max_line_length, str) -- from stack overflow
    local lines = {}
    local line
-   str:gsub('(%s*)(%S+)', 
-      function(spc, word) 
+   str:gsub('(%s*)(%S+)',
+      function(spc, word)
          if not line or #line + #spc + #word > max_line_length then
             lines[#lines+1] = line
             line = word
@@ -271,31 +270,31 @@ Hotkeys:
  left/right ctrl: Toggle the menu
 
  left click:
-  +left shift = Drag and let go to make a line
-  -alone      = Place pixel
+  +left shift = Drag and let go to draw a line
+  -alone      = Place a dot
 
- right click: delete pixel
+ Right Click: delete pixel
 
- middle click OR "t": Place text down with current colors, cancel with X
+ Middle Click, or "T": Place text down with current colors; cancel with X
 
- "z":
-  +left alt = Redo
-  -alone    = Undo
+ "Z":
+  +LeftAlt = Redo
+  -alone   = Undo
 
- "p": Pick colors from position onscreen; cancel with X
+ "P": Pick colors from position onscreen; cancel with X
 
- "n":
-  +left shift = Change character to that of a special character
-  -alone      = Change box character for drawing
+ "N":
+  +LeftShift = Change character to that of a special character
+  -alone     = Change box character for drawing
   (cancel with CTRL, N, or by clicking outside)
 
  "[" or mouse scroll down:
-  +shift = Change to previous text color
-  -alone = Change to previous background color
+  +LeftShift = Change to previous text color
+  -alone     = Change to previous background color
 
  "]" or mouse scroll up:
-  +shift = Change to next text color
-  -alone = Change to next background color
+  +LeftShift = Change to next text color
+  -alone     = Change to next background color
 
  "F1":
   -alone = Access help screen
@@ -303,45 +302,51 @@ Hotkeys:
  "F3:"
   -alone = View all connected monitors
 
- spacebar:
-  +shift = Toggle background grid
-  -alone = Toggle bar visibility
+ Spacebar:
+  +LeftShift = Toggle background grid
+  -alone     = Toggle bar visibility
 
- arrow keys:
-  +shift = Displaces the entire frame
-  +tab   = Moves canvas one pixel at a time
-  -alone = Looks around the canvas smoothly
+ Arrow keys:
+  +LeftShift = Displaces the entire frame
+  +Tab       = Moves canvas one pixel at a time
+  -alone     = Looks around the canvas smoothly
 
  "+" (or equals):
-  +left alt    = Swap the current frame with the next frame
-  +left shift  = Merge the current frame atop the next frame
-  +right shift = If you are making a new frame, duplicates the last frame
-  -alone       = Change to next frame
+  +LeftAlt    = Swap the current frame with the next frame
+  +LeftShift  = Merge the current frame atop the next frame
+  +RightShift = If you are making a new frame, duplicates the last frame
+  -alone      = Change to next frame
 
  "-":
-  +left alt   = Swap the current frame with the previous frame
-  +left shift = Merge the current frame atop the previous frame
-  -alone      = Change to previous frame
+  +LeftAlt   = Swap the current frame with the previous frame
+  +LeftShift = Merge the current frame atop the previous frame
+  -alone     = Change to previous frame
 
  (oh good, you're actually reading this stuff)
 
- "a": Set the coordinates to 0,0
+ "A": Set the coordinates to 0,0
 
- "n": Open block character selection
+ "N": Open block character selection
 
- "b": Toggle redirect to blittle, to preview in teletext characters
+ "B": Toggle redirect to blittle, to preview in teletext characters
 
- "c": Input coordinates to scroll over to
+ "c":
+  +LeftAlt = Select region to copy to specified clipboard
+	-alone   = Input coordinates to scroll over to
 
- "g": toggle grayscale mode.
+ "LeftAlt + X": Select region to cut to specified clipboard
+
+ "LeftAlt + X": Pastes from specified clipboard
+
+ "G": toggle grayscale mode.
   Everything is in shades of gray.
   If you Save, it saves in grayscale.
 
- "f":
-  +left shift = fill all empty pixels with background color and selected box character
-  -alone      = activate fill tool - click anywhere to fill with color
+ "F":
+  +LeftShift = fill all empty pixels with background color and selected box character
+  -alone     = activate fill tool - click anywhere to fill with color
 
- "m": set metadata for pixels (for game makers, otherwise please ignore)
+ "M": set metadata for pixels (for game makers, otherwise please ignore)
 
 ==================================
  Thy Menu (accessible with CTRL):
@@ -379,6 +384,16 @@ Hotkeys:
 
  "Edit > BLittle Shrink"
  Shrinks the current frame using the BLittle API. Very lossy, and unreversable without Undo.
+
+ "Edit > Copy"
+ Drag to select a region of the screen, and save it in a clipboard of a specified name.
+
+ "Edit > Cut"
+ Same as Copy, but deletes the selected region on the screen.
+
+ "Edit > Paste"
+ Takes the contents of the specified clipboard, and plops it on the canvas where the mouse is.
+(The mouse will indicate the top-left corner of the pasted selection)
 
  "Set > ..."
  Each option will toggle a config option (or set it's value to something else).
@@ -832,7 +847,7 @@ local renderPainyThings = function(xscroll,yscroll,doGrid)
 	local badchar = "/"
 	local blittlelabel = "blittle max"
 	local screenlabel = "screen max"
-	
+
 	local dotBuffChar, dotBuffBack = "", "" --only used if gridBleedThrough is true
 	local doot
 	if doGrid then
@@ -1332,7 +1347,7 @@ local NFPserializeImage = function(str)
 		output[y] = {}
 		for x = 1, #bepis[y] do
 			output[y][x] = BTC(bepis[y]:sub(x,x),true)
-		end	
+		end
 	end
 	return textutils.unserialize(textutils.serialize(output):gsub("\n",""):gsub(" ",""):gsub(",}","}"))
 end
@@ -1414,7 +1429,7 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 					term.setBackgroundColor((paint.doGray and grayOut(d.b) or d.b) or rendback.b)
 					if painconfig.gridBleedThrough then
 						term.setTextColor(rendback.t)
-						term.write(grid[ ro( d.y+2, #grid)+1]:sub(1+ro(d.x+-1,#grid[1]), 1+ro(d.x+-1,#grid[1])))
+						term.write((d.x >= 1 and d.y >= 1) and grid[ ro( d.y+2, #grid)+1]:sub(1+ro(d.x+-1,#grid[1]), 1+ro(d.x+-1,#grid[1])) or "/")
 					else
 						term.setTextColor(      (paint.doGray and grayOut(d.t) or d.t) or rendback.t)
 						term.write(d.c or " ")
@@ -1567,15 +1582,15 @@ local exportToNFT = function(input)
 	local bgcode, txcode = "\30", "\31"
 	local output = ""
 	local text, back
-	
+
 	local doot, pheight, pwidths = tableFormatPE(input)
-	
+
 	for y = 1, pheight do
-		
+
 		text, back = "0", "f"
 		if doot[y] then
 			for x = 1, pwidths[y] do
-				
+
 				if doot[y][x] then
 					if doot[y][x].back ~= back then
 						back = doot[y][x].back
@@ -1589,10 +1604,10 @@ local exportToNFT = function(input)
 				else
 					output = output .. " "
 				end
-				
+
 			end
 		end
-		
+
 		if y < pheight then
 			output = output .. "\n"
 		end
@@ -1975,13 +1990,13 @@ local specialCharSelector = function()
 	end
 	local evt, butt, x, y
 	render()
-	
+
 	term.setCursorPos(1,scr_y)
 	term.setBackgroundColor(colors.lightGray)
 	term.setTextColor(colors.black)
 	term.clearLine()
 	term.write("Press CTRL or 'N' when ready.")
-	
+
 	while true do
 		evt, butt, x, y = os.pullEvent()
 		if (evt == "mouse_click" or evt == "mouse_drag") then
@@ -2058,6 +2073,68 @@ local checkIfNFP = function(str) --does not check table format, only string form
 	return true
 end
 
+local selectRegion = function()
+	local position = {}
+	local mevt, id, x1, y1 = os.pullEvent("mouse_click")
+	local x2, y2, pos, redrawID
+	local renderRectangle = true
+	redrawID = os.startTimer(0.5)
+	while true do
+		mevt, id, x2, y2 = os.pullEvent()
+		if mevt == "mouse_up" or mevt == "mouse_drag" or mevt == "mouse_click" then
+			pos = {{
+					x1 < x2 and x1 or x2,
+					y1 < y2 and y1 or y2
+				},{
+					x1 < x2 and x2 or x1,
+					y1 < y2 and y2 or y1
+			}}
+		end
+		if mevt == "mouse_up" then
+			break
+		end
+		if (mevt == "mouse_drag") or (mevt == "timer" and id == redrawID) then
+			renderAllPAIN()
+			if renderRectangle then
+				term.setTextColor(rendback.t)
+				term.setBackgroundColor(rendback.b)
+				for y = pos[1][2], pos[2][2] do
+					if y ~= scr_y then
+						term.setCursorPos(pos[1][1], y)
+						if (y == pos[1][2] or y == pos[2][2]) then
+							term.write(("#"):rep(1 + pos[2][1] - pos[1][1]))
+						else
+							term.write("#")
+							term.setCursorPos(pos[2][1], y)
+							term.write("#")
+						end
+					end
+				end
+			end
+		end
+		if (mevt == "timer" and id == redrawID) then
+			renderRectangle = not renderRectangle
+			redrawID = os.startTimer(0.25)
+		end
+	end
+	local output = {}
+	for k,v in pairs(paintEncoded[frame]) do
+		if v.x >= pos[1][1] and v.x <= pos[2][1] then
+			if v.y >= pos[1][2] and v.y <= pos[2][2] then
+				output[#output+1] = {
+					x = v.x - pos[1][1],
+					y = v.y - pos[1][2],
+					t = v.t,
+					c = v.c,
+					b = v.b,
+					m = v.m
+				}
+			end
+		end
+	end
+	return output, pos[1][1], pos[1][2], pos[2][1], pos[2][2]
+end
+
 local openNewFile = function(fname, allowNonImageNFP)
 	local file = fs.open(fname,"r")
 	local contents = file.readAll()
@@ -2085,6 +2162,70 @@ local openNewFile = function(fname, allowNonImageNFP)
 	else
 		return tun(contents), 4
 	end
+end
+
+local editCopy = function()
+    local board = bottomPrompt("Copy to board: ")
+    renderAllPAIN()
+    renderBottomBar("Select region to copy.")
+    local selectedDots = selectRegion()
+    theClipboard[board] = selectedDots
+    barmsg = "Copied to '"..board.."'"
+    doRender = true
+    keysDown = {}
+    miceDown = {}
+end
+local editCut = function()
+    local board = bottomPrompt("Cut to board: ")
+    renderAllPAIN()
+    renderBottomBar("Select region to copy.")
+    local selectedDots, x1, y1, x2, y2 = selectRegion()
+    theClipboard[board] = selectedDots
+    local dot
+    for i = #paintEncoded[frame], 1, -1 do
+        dot = paintEncoded[frame][i]
+        if dot.x >= x1 and dot.x <= x2 then
+            if dot.y >= y1 and dot.y <= y2 then
+                table.remove(paintEncoded[frame], i)
+            end
+        end
+    end
+    barmsg = "Cut to '"..board.."'"
+    doRender = true
+    saveToUndoBuffer()
+    keysDown = {}
+    miceDown = {}
+end
+
+local editPaste = function()
+    local board = bottomPrompt("Paste from board: ")
+    renderAllPAIN()
+    renderBottomBar("Click to paste. (top left corner)")
+    if theClipboard[board] then
+        local mevt
+        repeat
+            mevt = {os.pullEvent()}
+        until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
+        for k,v in pairs(theClipboard[board]) do
+            paintEncoded[frame][#paintEncoded[frame]+1] = {
+                x = v.x + paint.scrollX + (mevt[3]),
+                y = v.y + paint.scrollY + (mevt[4]),
+                c = v.c,
+                t = v.t,
+                b = v.b,
+                m = v.m
+            }
+        end
+        paintEncoded[frame] = clearRedundant(paintEncoded[frame])
+        barmsg = "Pasted from '"..board.."'"
+        doRender = true
+        saveToUndoBuffer()
+        keysDown = {}
+        miceDown = {}
+    else
+        barmsg = "No such clipboard."
+        doRender = true
+    end
 end
 
 local displayMenu = function()
@@ -2264,13 +2405,22 @@ local displayMenu = function()
 		return exportName
 	end
 
+	local editClear = function(ignorePrompt)
+		local outcum = ignorePrompt and "y" or bottomPrompt("Clear the frame? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
+		if outcum == "y" then
+			paintEncoded[frame] = {}
+			saveToUndoBuffer()
+			barmsg = "Cleared frame "..frame.."."
+		end
+		doRender = true
+	end
+
 	local editDelFrame = function()
 		local outcum = bottomPrompt("Thou art sure? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 		doRender = true
 		if outcum == "y" then
 			if #paintEncoded == 1 then
-				barmsg = "Fat chance."
-				return
+				return editClear(true)
 			end
 			table.remove(paintEncoded,frame)
 			barmsg = "Deleted frame "..frame.."."
@@ -2286,15 +2436,6 @@ local displayMenu = function()
 			end
 			saveToUndoBuffer()
 		end
-	end
-	local editClear = function()
-		local outcum = bottomPrompt("Clear the frame? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
-		if outcum == "y" then
-			paintEncoded[frame] = {}
-			saveToUndoBuffer()
-			barmsg = "Cleared frame "..frame.."."
-		end
-		doRender = true
 	end
 	local editCrop = function()
 		local outcum = bottomPrompt("Crop all but visible? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
@@ -2368,7 +2509,7 @@ local displayMenu = function()
 	end
 	local aboutPAIN = function()
 		local helpText = [[
- 
+
       
          
        
@@ -2426,7 +2567,13 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 		[1] = function() --File
 			while true do
 				--renderAllPAIN()
-				local output, longestLen = makeSubMenu(1,cleary-1,{"Save","Save As","Export","Open",((peripheral.find("printer")) and "Print" or nil)})
+				local output, longestLen = makeSubMenu(1,cleary-1,{
+					"Save",
+					"Save As",
+					"Export",
+					"Open",
+					((peripheral.find("printer")) and "Print" or nil)
+				})
 				doRender = true
 				if output == 1 then -- Save
 					local _fname = fileExport(_,defaultSaveFormat,fileName)
@@ -2479,7 +2626,17 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			end
 		end,
 		[2] = function() --Edit
-			local output = makeSubMenu(6,cleary-1,{"Delete Frame","Clear Frame","Crop Frame","Choose Box Character","Choose Special Character","BLittle Shrink"})
+			local output = makeSubMenu(6,cleary-1,{
+				"Delete Frame",
+				"Clear Frame",
+				"Crop Frame",
+				"Choose Box Character",
+				"Choose Special Character",
+				"BLittle Shrink",
+				"Copy Region",
+				"Cut Region",
+				"Paste Region"
+			})
 			doRender = true
 			if output == 1 then
 				editDelFrame()
@@ -2513,12 +2670,22 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					doRender = true
 					barmsg = "Shrunk image."
 				end
+			elseif output == 7 then
+				editCopy()
+			elseif output == 8 then
+				editCut()
+			elseif output == 9 then
+				editPaste()
 			elseif output == false then
 				return "nobreak"
 			end
 		end,
 		[3] = function() --Window
-			local output = makeSubMenu(11,cleary-1,{"Set Screen Size","Set Scroll XY","Set Grid Colors"})
+			local output = makeSubMenu(11,cleary-1,{
+				"Set Screen Size",
+				"Set Scroll XY",
+				"Set Grid Colors"
+			})
 			doRender = true
 			if output == 1 then
 				windowSetScrSize()
@@ -2564,7 +2731,11 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			saveConfig()
 		end,
 		[5] = function() --About
-			local output = makeSubMenu(17,cleary-1,{"PAIN","File Formats","Help!"})
+			local output = makeSubMenu(17,cleary-1,{
+				"PAIN",
+				"File Formats",
+				"Help!"
+			})
 			doRender = true
 			if output == 1 then
 				aboutPAIN()
@@ -2819,12 +2990,12 @@ local getInput = function() --gotta catch them all
 			end
 			linePoses = {{x=oldmx,y=oldmy},{x=x,y=y}}
 			miceDown[button] = true
-			doRender = true
 			if y <= scr_y-(renderBlittle and 0 or doRenderBar) then
 				if (button == 3) then
 					putDownText(x,y)
 					miceDown = {}
 					keysDown = {}
+					doRender = true
 				elseif button == 1 then
 					if keysDown[keys.leftShift] and evt[1] == "mouse_click" then
 						isDragging = true
@@ -2834,6 +3005,12 @@ local getInput = function() --gotta catch them all
 							dragPoses[1] = {x=x,y=y}
 						end
 						dragPoses[2] = {x=x,y=y}
+						local points = getDotsInLine(dragPoses[1].x,dragPoses[1].y,dragPoses[2].x,dragPoses[2].y)
+						renderAllPAIN()
+						for a = 1, #points do
+							term.setCursorPos(points[a].x, points[a].y)
+							term.blit(paint.c, CTB(paint.t), CTB(paint.b))
+						end
 					elseif (not dontDragThisTime) then
 						if evt[1] == "mouse_drag" then
 							local points = getDotsInLine(linePoses[1].x,linePoses[1].y,linePoses[2].x,linePoses[2].y)
@@ -2844,11 +3021,13 @@ local getInput = function() --gotta catch them all
 							putDotDown({x=x, y=y})
 						end
 						changedImage = true
+						doRender = true
 					end
 					dontDragThisTime = false
 				elseif button == 2 and y <= scr_y-(renderBlittle and 0 or doRenderBar) then
 					deleteDot(x+paint.scrollX,y+paint.scrollY)
 					changedImage = true
+					doRender = true
 				end
 			elseif origy >= scr_y-(renderBlittle and 0 or doRenderBar) then
 				miceDown = {}
@@ -2876,7 +3055,7 @@ local getInput = function() --gotta catch them all
 			isDragging = false
 		elseif evt[1] == "key" then
 			local key = evt[2]
-			if (not keysDown[keys.leftShift]) and (keysDown[keys.tab]) then
+			if (isDragging or not keysDown[keys.leftShift]) and (keysDown[keys.tab]) then
 				if key == keys.right and (not keysDown[keys.right]) then
 					paint.scrollX = paint.scrollX + 1
 					doRender = true
@@ -2917,10 +3096,22 @@ local getInput = function() --gotta catch them all
 				doRender = true
 				scr_x, scr_y = term.current().getSize()
 			end
-			if (key == keys.c) and (not renderBlittle) then
-				gotoCoords()
-				resetInputState()
-				doRender = true
+			if keysDown[keys.leftAlt] then
+				if (not renderBlittle) then
+					if (key == keys.c) then
+						editCopy()
+					elseif (key == keys.x) then
+						editCut()
+					elseif (key == keys.v) then
+						editPaste()
+					end
+				end
+			else
+				if (key == keys.c) and (not renderBlittle) then
+					gotoCoords()
+					resetInputState()
+					doRender = true
+				end
 			end
 			if (keysDown[keys.leftShift]) and (not isDragging) then
 				if key == keys.left then
@@ -3082,7 +3273,7 @@ local getInput = function() --gotta catch them all
 					changedImage = true
 					isDragging = false
 				end
-				if key == keys.p then 
+				if key == keys.p then
 					renderBottomBar("Pick color with cursor:")
 					paintEncoded = clearAllRedundant(paintEncoded)
 					local mevt
@@ -3218,7 +3409,7 @@ runPainEditor = function(...) --needs to be cleaned up
 	if not (tArg[1] == "-n" or (not tArg[1])) then
 		fileName = shell.resolve(tostring(tArg[1]))
 	end
-	
+
 	if not fileName then
 		paintEncoded = {{}}
 	elseif not fs.exists(fileName) then
@@ -3256,7 +3447,7 @@ runPainEditor = function(...) --needs to be cleaned up
 			return print(defaultSaveFormat)
 		end
 	end
-    
+
     local asyncFillTool = function()
         local event, frameNo, x, y, dot
         isCurrentlyFilling = false
@@ -3269,7 +3460,7 @@ runPainEditor = function(...) --needs to be cleaned up
             reRenderPAIN(doRenderBar == 0)
         end
     end
-	
+
 	if not paintEncoded[frame] then paintEncoded = {paintEncoded} end
 	if pMode == 1 then
 		doRenderBar = 0
@@ -3282,12 +3473,13 @@ runPainEditor = function(...) --needs to be cleaned up
 	lastPaintEncoded = deepCopy(paintEncoded)
 	undoBuffer = {deepCopy(paintEncoded)}
 	parallel.waitForAny(getInput, doNonEventDrivenMovement, asyncFillTool)
-	
+
 	term.setCursorPos(1,scr_y)
 	term.setBackgroundColor(colors.black)
 	term.clearLine()
 end
 
-if not shell then return end
+if not shell then error("shell API is required, sorry") end
 
 runPainEditor(...)
+\
