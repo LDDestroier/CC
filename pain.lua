@@ -3482,4 +3482,3 @@ end
 if not shell then error("shell API is required, sorry") end
 
 runPainEditor(...)
-\
