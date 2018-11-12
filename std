@@ -1,0 +1,625 @@
+--[[
+Super Text Downloader by EldidiStroyrr/LDDestroier
+
+The purpose of this program is to have a single
+unified download script for ComputerCraft, as opposed
+to making multiple programs, each able to download from one site.
+
+The main aspect to make this script more modular is having
+a table (websiteSyntaxes) to store the website that it downloads
+from, as well as what abbreviation it's called with and the
+syntax of the raw download URL.
+Later updates added special prefixes that act in different ways
+that could not work with the standard syntax.
+
+ pastebin get 3PBKGR4k std 
+ std ld std std 
+--]]
+
+if type(std) ~= "table" then std = {} end
+
+std.channelURLs = { --special URLs for getting a list of files.
+	["STD"] = "https://pastebin.com/raw/zVws7eLq", --stock
+	["Discover"] = "https://pastebin.com/raw/9bXfCz6M", --owned by dannysmc95
+	--["OnlineAPPS"] = "https://pastebin.com/raw/g2EnDYLp", --owned by Twijn, but discontinued
+	["STD-Media"] = "https://pastebin.com/raw/3JZHXTGL" --non-program media files
+}
+local goodchan = false
+for k,v in pairs(std.channelURLs) do
+	if std.channel == k then
+		goodchan = true
+		break
+	end
+end
+if not goodchan then
+	std.channel = "STD"
+end
+std.prevChannel = std.channel
+std.std_version = 1.452 -- Number, not string!
+std.stdList = "/."..std.channel:lower().."_list" -- String, path of store listings
+std.websiteList = "/.std_websites" -- String, path of website listings
+local doStore = true -- Boolean, opens up the STD-GUI
+std.serious = true -- why do I do this to myself
+
+local logo = {[[
+  __________________________
+ /  ___________ ______ ____ \
+/ /           | |    | |   \ \
+\ \______     | |    | |    | |
+ \______ \    | |    | |    | |
+        \ \   | |    | |    | |
+  ______/ /   | |    | |___/ /
+ /_______/    |_|    |______/
+    Super    Text    Downloader
+
+]],[[
+  LLL  LLLLL LLL
+ L   L   L   L  L
+ L       L   L   L
+  LLL    L   L   L
+     L   L   L   L
+ L   L   L   L  L
+  LLL    L   LLL
+ Super Text Downloader]]
+
+}
+
+
+-- start Base64
+local b = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local encode = function(data)
+    return ((data:gsub('.', function(x) 
+        local r,b='',x:byte()
+        for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+        return r;
+    end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+        if (#x < 6) then return '' end
+        local c=0
+        for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+        return b:sub(c+1,c+1)
+    end)..({ '', '==', '=' })[#data%3+1])
+end
+local decode = function(data)
+    data = string.gsub(data, '[^'..b..'=]', '')
+    return (data:gsub('.', function(x)
+        if (x == '=') then return '' end
+        local r,f='',(b:find(x)-1)
+        for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+        return r;
+    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+        if (#x ~= 8) then return '' end
+        local c=0
+        for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+        return string.char(c)
+    end))
+end
+-- finished Base64
+
+local runFile = function(path)
+	if not fs.exists(path) then
+		return false, "No such file!"
+	end
+	local file = fs.open(path,"r")
+	local contents = file.readAll()
+	file.close()
+	local func = loadstring(contents)
+	setfenv(func, getfenv())
+	return func()
+end
+
+local function runURL(url, ...)
+	local program = http.get(url)
+	if not program then return false end
+	program = program.readAll()
+	local func = loadstring(program)
+	setfenv(func, getfenv())
+	return func(...)
+end
+
+local function seperateMethods(input)
+	local output={}
+	for key,value in pairs(input) do
+		table.insert(output, {key,value})
+	end
+	return output
+end
+
+local function displayHelp(mode)
+	if mode == 1 then
+		print("std <abbr> <fileid> [output]")
+		print("Do 'std list' to see all codes")
+		print("Do 'std ld' for a GUI")
+		write("Channel '")
+		if term.isColor() then term.setTextColor(colors.yellow) end
+		write(std.channel)
+		term.setTextColor(colors.white)
+		print("' is selected.")
+	elseif mode == 2 then
+		print("List of website codes:")
+		std.websiteSyntaxes["dd"] = {} --Filler
+		std.websiteSyntaxes["dd64"] = {}
+		std.websiteSyntaxes["PB"] = {}
+		for k,v in pairs(std.websiteSyntaxes) do
+			if term.getTextColor then prevColor = term.getTextColor() else prevColor = colors.white end
+			write(" '")
+			if term.isColor() then term.setTextColor(colors.orange) end
+			write(k)
+			term.setTextColor(prevColor)
+			write("' ")
+			if k == "dd" then
+				print("direct download")
+			elseif k == "dd64" then
+				print("direct download + Base64")
+			elseif k == "PB" then
+				print("pastebin.com (safe)")
+			elseif string.find(v.url,"/") then
+				start = string.find(v.url,"://")+3
+				finish = string.find(v.url,"/",9)-1
+				print(string.sub(v.url,start,finish))
+			end
+		end
+	elseif mode == 3 then
+		print(logo[pocket and 2 or 1])
+	end
+end
+
+local function choice(input) --A useful function for input. Similar to the MS-DOS 6.0 command.
+	local event, key
+	repeat
+		event, key = os.pullEvent("key")
+		if type(key) == "number" then key = keys.getName(key) end
+		if key == nil then key = " " end
+	until string.find(string.lower(input), string.lower(key))
+	return string.lower(key)
+end
+
+--This list of websites is used as a backup, should you not be able to connect to pastebin.
+std.websiteSyntaxes = {
+	pb = {
+		url = "https://pastebin.com/raw.php?i=FILECODE",
+		fullName = "Pastebin",
+		codeLength = 6,
+	},
+	hb = {
+		url = "https://hastebin.com/raw/FILECODE",
+		fullName = "Hastebin",
+		codeLength = 10,
+	},
+	pe = {
+		url = "http://pastie.org/pastes/FILECODE/download",
+		fullName = "Pastie",
+		codeLength = 0,
+	},
+	fn = {
+		url = "https://fnpaste.com/FILECODE/raw",
+		fullName = "fnPaste",
+		codeLength = 4,
+	},
+	gh = {
+		url = "https://raw.githubusercontent.com/FILECODE",
+		fullName = "Github",
+		codeLength = 0,
+	},
+	gg = {
+		url = "https://gist.githubusercontent.com/FILECODE/raw/",
+		fullName = "Github Gist",
+		codeLength = 0,
+	},
+	sn = {
+		url = "http://s.drk.sc/FILECODE",
+		fullName = "Snippt",
+		codeLength = 6,
+	},
+	cp = {
+		url = "http://codepad.org/FILECODE/raw.txt",
+		fullName = "Codepad",
+		codeLength = 8,
+	},
+	id = {
+		url = "https://ideone.com/plain/FILECODE",
+		fullName = "Ideone",
+		codeLength = 6,
+	},
+	db = {
+		url = "https://www.dropbox.com/s/FILECODE?raw=true",
+		fullName = "Dropbox",
+		codeLength = 0,
+	},
+	dd = {
+		url = "FILECODE",
+		fullName = "Direct Download",
+		codeLength = 0,
+	},
+}
+
+local tArg = {...}
+if shell then
+	std_file = shell.getRunningProgram()
+else
+	std_file = ""
+end
+
+local getTableSize = function(tbl)
+	local amnt = 0
+	for k,v in pairs(tbl) do
+		amnt = amnt + 1
+	end
+	return amnt
+end
+
+std.getSTDList = function(prevChannel)
+	local weburl = "http://pastebin.com/raw/FSCzZRUk" --URL of URL list.
+	local storeurl = std.channelURLs[std.channel] --URL of store list.
+	local webcontents = http.get(weburl)
+	local storecontents = http.get(storeurl)
+	if not (webcontents and storecontents) then
+		if shell then
+			print("Couldn't update list!")
+		end
+		return false, "Couldn't update list!"
+	else
+		local uut = runFile(std.stdList)
+		if not uut then std.storeURLs = nil end
+		local beforeSize = getTableSize(std.storeURLs or {})
+		local webprog = webcontents.readAll()
+		local storeprog = storecontents.readAll()
+		local webfile = fs.open(std.websiteList,"w")
+		local storefile = fs.open(std.stdList,"w")
+		webfile.writeLine(webprog)
+		webfile.close()
+		storefile.writeLine(storeprog)
+		storefile.close()
+		runFile(std.websiteList)
+		local outcome = runFile(std.stdList)
+		if outcome == false then
+			std.channel = prevChannel
+			return std.getSTDList("STD")
+		end
+		local afterSize = getTableSize(std.storeURLs or {})
+		return true, "Downloaded to "..std.stdList, afterSize-beforeSize
+	end
+end
+
+if tArg[1] == "update" or not fs.exists(std.stdList) then
+	local updateChan = tArg[2]
+	if (updateChan) and (not std.channelURLs[updateChan]) and tArg[1] == "update" then
+		printError("No such channel.")
+		for k,v in pairs(std.channelURLs) do
+			term.setTextColor(colors.white)
+			write(" ")
+			if k == std.channel then
+				write("@")
+				if term.isColor() then term.setTextColor(colors.yellow) end
+			else
+				write("O")
+			end
+			print(" "..k)
+		end
+		term.setTextColor(colors.white)
+		return
+	end
+	write("Updating list...")
+	if updateChan and std.channelURLs[updateChan] then
+		std.prevChannel = std.channel
+		std.channel = updateChan
+	end
+	local success,_,diff = std.getSTDList(std.prevChannel)
+	if not success then
+		if std.serious then
+			return printError("FAIL!")
+		else
+			return printError("IT'S NO USE!")
+		end
+	else
+		if std.serious then
+			write("good!")
+			if diff > 0 then
+				print(" (got "..diff.." new store entries)")
+			else
+				write("\n")
+			end
+		else
+			write("excellent!")
+			if diff > 0 then
+				print(" (now you've got "..diff.." more things!)")
+			else
+				write("\n")
+			end
+		end
+		if tArg[1] == "update" then return true end
+	end
+end
+
+if not shell then return end
+
+local websiteCode = tArg[1]
+local fileCode = tArg[2]
+local retrieveName = tArg[3]
+
+if (websiteCode == "list") and (not fileCode) then
+	displayHelp(2)
+	return false
+elseif (websiteCode == "you foolish fool") and (not fileCode) then
+	displayHelp(3)
+	return false
+elseif (websiteCode ~= "ld") and (not fileCode) then
+	displayHelp(1)
+	return false
+end
+
+local getFile = function(filename,url)
+	if fs.isReadOnly(filename) then
+		return false, "access denied"
+	end
+	local prog
+	if type(url) == "table" then
+		prog = contextualGet(url[1])
+	else
+		prog = http.get(url)
+	end
+	if not prog then
+		return false, "could not connect"
+	end
+	prog = prog.readAll()
+	local fyle = fs.open(filename,"w")
+	fyle.write(prog)
+	fyle.close()
+	return true, fs.getSize(filename)
+end
+
+runFile(std.stdList)
+runFile(std.websiteList)
+local pastebinUpload = function(sName,sText)
+    write( "Connecting to pastebin.com... " )
+    local key = "0ec2eb25b6166c0c27a394ae118ad829"
+    local response = http.post(
+        "http://pastebin.com/api/api_post.php", 
+        "api_option=paste&"..
+        "api_dev_key="..key.."&"..
+        "api_paste_format=lua&"..
+        "api_paste_name="..textutils.urlEncode(sName).."&"..
+        "api_paste_code="..textutils.urlEncode(sText)
+    )
+    if response then
+        print( "Success." )
+        local sResponse = response.readAll()
+        response.close()
+        return string.match( sResponse, "[^/]+$" )
+    end
+	return false
+end
+
+local fileURL
+if websiteCode == "ld" then
+	if not fileCode then
+		if doStore then
+			runURL("http://pastebin.com/raw/P9dDhQ2m")
+			return
+		else
+			return print("GUI Store has been disabled.")
+		end
+	else
+		if not std.storeURLs then
+			if std.serious then
+				write("Updating list...")
+			else
+				write("just a sec, looking around...")
+			end
+			std.getSTDList()
+		end
+		if not std.storeURLs[fileCode] then
+			if std.serious then
+				return printError("Invalid store code '" .. fileCode .. "'")
+			else
+				return printError("ld code "..fileCode.." is no good!")
+			end
+		else
+			fileURL = tostring(std.storeURLs[fileCode].url)
+		end
+	end
+elseif websiteCode == "PB" then --Hope it's not confusing.
+	fileURL = "https://pastebin.com/"..fileCode:sub(1,8)
+	write("Conntecting to '"..fileURL.."' safely...")
+	local prog = http.get(fileURL)
+	if not prog then
+		return printError("FAIL!")
+	else
+		if term.isColor() then term.setTextColor(colors.green) end
+		print("GOOD!")
+		term.setTextColor(colors.white)
+		local rawget = prog.readAll()
+		local s = string.find(rawget,"<textarea id=\"paste_code\"")+103
+		local e = string.find(rawget,"</textarea>")-1
+		local contents = string.gsub(string.sub(rawget,s,e),"&quot;","\"")
+		contents = contents:gsub("&lt;","<")
+		contents = contents:gsub("&gt;",">")
+		if retrieveName and shell then
+			local dlname = fs.combine(shell.dir(),retrieveName)
+			if fs.exists(dlname) then
+				if std.serious then
+					print("'" .. dlname .. "' exists! Overwrite?")
+					write("[Y,N]?")
+				else
+					print("you already got a '"..dlname.."'! sacrifice it?")
+					write("[why,enn]??")
+				end
+				local key = choice("yn")
+				print(string.upper(key))
+				if key == "n" then
+					if std.serious then
+						print("Cancelled.")
+					else
+						print("whatever")
+					end
+					sleep(0)
+					return false
+				end
+			end
+			local file = fs.open(dlname, "w")
+			file.writeLine(contents)
+			file.close()
+			if std.serious then
+				print("Done! DL'd " .. fs.getSize(dlname) .. " bytes.")
+			else
+				print("You've done it! File name is " .. fs.getSize(dlname)*2 .. " nibbles")
+			end
+		else
+			local func = loadstring(contents)
+			setfenv(func, getfenv())
+			func()
+		end
+		sleep(0)
+		return
+	end
+elseif websiteCode == "dd64" then
+	write("Conntecting to '"..fileCode.."'...")
+	local cont = http.get(fileCode)
+	local dlname = fs.combine(shell.dir(),retrieveName)
+	if cont then
+		if term.isColor() then term.setTextColor(colors.green) end
+		print("GOOD!")
+		term.setTextColor(colors.white)
+		cont = decode(cont.readAll())
+		local file = fs.open(dlname,"w")
+		file.write(cont)
+		file.close()
+		if std.serious then
+			print("Done! DL'd " .. fs.getSize(dlname) .. " bytes.")
+		else
+			print("You've done it! File name is " .. fs.getSize(dlname)*2 .. " nibbles")
+		end
+		return true
+	else
+		return printError("FAIL!")
+	end
+elseif websiteCode == "pbupload" then
+	fileCode = fs.combine("",fileCode)
+	if not fs.exists(fileCode) then
+		return printError("NO SUCH FILE!")
+	else
+		local file = fs.open(fileCode,"r")
+		local cont = file.readAll()
+		file.close()
+		local sCode = pastebinUpload(fileCode,cont)
+		if sCode then
+			write("Uploaded with code:")
+			if term.isColor() then term.setTextColor(colors.yellow) end
+			print(sCode)
+			term.setTextColor(colors.white)
+			print("Don't forget it!")
+		else
+			return printError("FAIL!")
+		end
+		return true
+	end
+elseif websiteCode == "pbupload64" then
+	fileCode = fs.combine("",fileCode)
+	if not fs.exists(fileCode) then
+		return printError("NO SUCH FILE!")
+	else
+		local file = fs.open(fileCode,"r")
+		local cont = encode(file.readAll())
+		file.close()
+		local sCode = pastebinUpload(fileCode,cont)
+		if sCode then
+			write("Uploaded with Base64 with code:")
+			if term.isColor() then term.setTextColor(colors.yellow) end
+			print(sCode)
+			term.setTextColor(colors.white)
+			print("Don't forget it!")
+		else
+			return printError("FAIL!")
+		end
+		return true
+	end
+else
+	if not std.websiteSyntaxes[websiteCode] then
+		if std.serious then
+			return printError("Invalid website code '" .. websiteCode .. "'")
+		else
+			return printError("this '"..websiteCode.."' is no good!")
+		end
+	else
+		if (std.websiteSyntaxes[websiteCode].codeLength == 0) or (not std.websiteSyntaxes[websiteCode].codeLength) then
+			fileURL = string.gsub(std.websiteSyntaxes[websiteCode].url, "FILECODE", fileCode)
+		else
+			fileURL = string.gsub(std.websiteSyntaxes[websiteCode].url, "FILECODE", string.sub(fileCode,1,std.websiteSyntaxes[websiteCode].codeLength))
+		end
+	end
+	sleep(0)
+end
+
+if std.serious then
+	write("Connecting to '" .. fileURL .. "'...")
+else
+	if math.random(1,2) == 1 then
+		write("getting around to '"..fileURL.."'...")
+	else
+		write("looking at '"..fileURL.."'...")
+	end
+end
+local contents = http.get(fileURL)
+if not contents then
+	if term.isColor() then
+		term.setTextColor(colors.red)
+	end
+	if std.serious then
+		print("NOPE!")
+	else
+		print("NEIN!")
+	end
+	sleep(0)
+	return false
+else
+	if term.getTextColor then
+		prevColor = term.getTextColor()
+	else
+		prevColor = colors.white
+	end
+	if term.isColor() then
+		term.setTextColor(colors.green)
+	end
+	if std.serious then
+		print("good!")
+	else
+		print("tubular!")
+	end
+	term.setTextColor(prevColor)
+	if retrieveName and shell then
+		local dlname = fs.combine(shell.dir(),retrieveName)
+		if fs.exists(dlname) then
+			if std.serious then
+				print("'" .. dlname .. "' exists! Overwrite?")
+				write("[Y,N]?")
+			else
+				print("yoo alreddy got a '"..dlname.."'!! redu eet?")
+				write("[why,enn]??")
+			end
+			local key = choice("yn")
+			print(string.upper(key))
+			if key == "n" then
+				if std.serious then
+					print("Cancelled.")
+				else
+					print("whatever")
+				end
+				sleep(0)
+				return false
+			end
+		end
+		local file = fs.open(dlname, "w")
+		file.writeLine(contents.readAll())
+		file.close()
+		if std.serious then
+			print("Done! DL'd " .. fs.getSize(dlname) .. " bytes.")
+		else
+			print("You've done it! File name is " .. fs.getSize(dlname)*2 .. " nibbles")
+		end
+	else
+		local contents = loadstring(contents.readAll())
+		setfenv(contents, getfenv())
+		contents()
+	end
+	sleep(0)
+	return true
+end
