@@ -42,6 +42,7 @@ local gridBack = {
 }
 for y = 1, gridFore do
 	gridFore[y] = gridFore[y]:gsub("#","\127")
+end
 
 --draws grid and background at scroll 'x' and 'y'
 local drawGrid = function(x, y)
