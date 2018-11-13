@@ -55,8 +55,8 @@ local drawGrid = function(x, y)
 			adjY = (sy - y)
 			foreX = 1 + (sx - x) % #gridFore[1]
 			foreY = 1 + (sy - y) % #gridFore
-			backX = 1 + (sx - (x * 2)) % #gridBack[1]
-			backY = 1 + (sy - (y * 2)) % #gridBack
+			backX = 1 + math.floor(sx - (x / 2)) % #gridBack[1]
+			backY = 1 + math.floor(sy - (y / 2)) % #gridBack
 			if adjX <= grid.x1 or adjX >= grid.x2 or adjY <= grid.y1 or adjY >= grid.y2 then
 				bg[1][sy] = bg[1][sy] .. grid.border
 				bg[2][sy] = bg[2][sy] .. grid.voidcol
