@@ -1,0 +1,87 @@
+local scr_x, scr_y = term.getSize()
+
+local grid = {
+	x1 = -60,
+	y1 = -60,
+	x2 = 60,
+	y2 = 60,
+	border = "#"
+	voidcol = "f",
+	forecol = "8",
+	backcol = "7",
+	edgecol = "0"
+}
+
+local scrollX = 0
+local scrollY = 0
+
+local player = {
+	x = 0,
+	y = 0,
+	color = colors.blue
+}
+
+--draws grid and background at scroll 'x' and 'y'
+local drawGrid = function(x, y)
+	local gridBack = {
+		"         ",
+		" ########",
+		" ########",
+		" ########",
+		" ########",
+		" ########",
+	}
+	local gridFore = {
+		"+-----",
+		"|     ",
+		"|     ",
+		"|     "
+	}
+	local bg = {{},{},{}}
+	local foreX, foreY
+	local backX, backY
+	local adjX, adjY
+	for sy = 1, scr_y do
+		bg[1][sy] = ""
+		bg[2][sy] = ""
+		bg[3][sy] = ""
+		for sx = 1, scr_x do
+			adjX = (sx - x)
+			adjY = (sy - y)
+			foreX = 1 + (sx - x) % #gridFore[1]
+			foreY = 1 + (sy - y) % #gridFore
+			backX = 1 + (sx - (x * 2)) % #gridBack[1]
+			backY = 1 + (sy - (y * 2)) % #gridBack
+			if adjX <= grid.x1 or adjX >= grid.x2 or adjY <= grid.y1 or adjY >= grid.y2 then
+				bg[1][sy] = bg[1][sy] .. grid.border
+				bg[2][sy] = bg[2][sy] .. grid.voidcol
+				bg[3][sy] = bg[3][sy] .. grid.edgecol
+			else
+				if gridFore[foreY]:sub(foreX,foreX) ~= " " then
+					bg[1][sy] = bg[1][sy] .. gridFore[foreY]:sub(foreX,foreX)
+					bg[2][sy] = bg[2][sy] .. grid.forecol
+					bg[3][sy] = bg[3][sy] .. grid.voidcol
+				elseif gridFore[backY]:sub(backX,backX) ~= " " then
+					bg[1][sy] = bg[1][sy] .. gridFore[backY]:sub(backX,backX)
+					bg[2][sy] = bg[2][sy] .. grid.backcol
+					bg[3][sy] = bg[3][sy] .. grid.voidcol
+				else
+					bg[1][sy] = bg[1][sy] .. " "
+					bg[2][sy] = bg[2][sy] .. grid.voidcol
+					bg[3][sy] = bg[3][sy] .. grid.voidcol
+				end
+			end
+		end
+	end
+	for sy = 1, scr_y do
+		term.setCursorPos(1,sy)
+		term.blit(bg[1][sy], bg[2][sy], bg[3][sy])
+	end
+end
+
+-- test background drawing
+
+for x = grid.x1-10, grid.x2+10 do
+	drawGrid(x, 0)
+	sleep(0.05)
+end
