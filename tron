@@ -23,6 +23,7 @@ local player = {
 
 --draws grid and background at scroll 'x' and 'y'
 local drawGrid = function(x, y)
+	x, y = math.floor(x + 0.5), math.floor(y + 0.5)
 	local gridBack = {
 		"              ",
 		"              ",
