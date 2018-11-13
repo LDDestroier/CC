@@ -21,6 +21,22 @@ local player = {
 	color = colors.blue
 }
 
+local control = {
+	up = keys.up,
+	down = keys.down,
+	left = keys.left,
+	right = keys.right,
+	lookUp = keys.w,
+	lookDown = keys.s,
+	lookLeft = keys.a,
+	lookRight = keys.d,
+	release = keys.space
+}
+
+-- keeps track of where you are
+local gamemode = ""
+
+-- foreground grid
 local gridFore = {
 	"+-------",
 	"|       ",
@@ -29,6 +45,8 @@ local gridFore = {
 	"|       "
 
 }
+
+-- background grid
 local gridBack = {
 	"+------------",
 	"|            ",
@@ -39,9 +57,6 @@ local gridBack = {
 	"|            ",
 	"|            "
 }
-for y = 1, #gridFore do
-	gridFore[y] = gridFore[y]:gsub("#","\127")
-end
 
 --draws grid and background at scroll 'x' and 'y'
 local drawGrid = function(x, y)
@@ -91,6 +106,88 @@ local drawGrid = function(x, y)
 		term.blit(bg[1][sy], bg[2][sy], bg[3][sy])
 	end
 end
+
+local deepCopy
+deepCopy = function(tbl)
+	local output = {}
+	for k,v in pairs(tbl) do
+		if type(v) == "table" then
+			output[k] = deepCopy(v)
+		else
+			output[k] = v
+		end
+	end
+	return output
+end
+
+local makeMenu = function(options, x, y)
+	local cpos = 1
+	local cursor = "> "
+	local render = function()
+		for i = 1, #options do
+			term.setCursorPos(x, y + (i - 1))
+			if i == cpos then
+				term.setTextColor(colors.white)
+				term.write(cursor .. options[i])
+			else
+				term.setTextColor(colors.gray)
+				term.write((" "):rep(#cursor) .. options[i])
+			end
+		end
+	end
+	-- finish please
+end
+
+local titleScreen = function()
+	local logo = {
+		{
+			"",
+			"          ",
+			"     ",
+			"                ",
+			"         ",
+			"            ",
+			"                  ",
+			"                      ",
+		},
+		{
+			"",
+			" f7777777777777777777f   f77777f  7f    f777",
+			" f99979999979999999999f 799999799 77f7  f997",
+			"     799          79999f997ffff9977997f f997",
+			"     799    7797777fffff997ffff9977997797997",
+			"     799    799 799977f7797fff7997799  79797",
+			"     799    799   7797f 797999997 799    797",
+			"     777    777    7777  7777777  777     77",
+		},
+		{
+			"",
+			" 7999999999f9999999997   7999997  97    799f",
+			" 7777997777f77777779997 997777997 997f  799f",
+			"     997          f7777799ffff799f99997 799f",
+			"     997    997f9997fff799ffff799f997ff7999f",
+			"     997    997 f7999fff999777997f997  f799f",
+			"     997    997   f9997 f7999977f 997    f7f",
+			"     fff    fff    ffff  fffffff  fff     ff",
+		}
+	}
+	
+	local drawLogo = function(x, y, darkmod)
+		local cx, cy = term.getCursorPos()
+		for iy = 1, #logo[1] do
+			term.setCursorPos(x,y+(iy-1))
+			term.blit(logo[1][iy], logo[2][iy], logo[3][iy])
+		end
+		term.setCursorPos(cx,cy)
+	end
+
+	term.clear()
+	drawLogo(3,2)
+	
+end
+
+titleScreen()
+
 
 -- test background drawing
 
