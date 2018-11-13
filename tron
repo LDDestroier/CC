@@ -21,27 +21,31 @@ local player = {
 	color = colors.blue
 }
 
+local gridFore = {
+	"               ",
+	"               ",
+	"               ",
+	"   ############",
+	"   ############",
+	"   ############",
+	"   ############",
+	"   ############",
+	"   ############",
+	"   ############",
+}
+local gridBack = {
+	"+-------",
+	"|       ",
+	"|       ",
+	"|       ",
+	"|       "
+}
+for y = 1, gridFore do
+	gridFore[y] = gridFore[y]:gsub("#","\127")
+
 --draws grid and background at scroll 'x' and 'y'
 local drawGrid = function(x, y)
 	x, y = math.floor(x + 0.5), math.floor(y + 0.5)
-	local gridBack = {
-		"              ",
-		"              ",
-		"  ############",
-		"  ############",
-		"  ############",
-		"  ############",
-		"  ############",
-		"  ############",
-		"  ############",
-	}
-	local gridFore = {
-		"+-------",
-		"|       ",
-		"|       ",
-		"|       ",
-		"|       "
-	}
 	local bg = {{},{},{}}
 	local foreX, foreY
 	local backX, backY
