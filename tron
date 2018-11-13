@@ -1,10 +1,10 @@
 local scr_x, scr_y = term.getSize()
 
 local grid = {
-	x1 = -60,
-	y1 = -60,
-	x2 = 60,
-	y2 = 60,
+	x1 = -80,
+	y1 = -80,
+	x2 = 80,
+	y2 = 80,
 	border = "#",
 	voidcol = "f",
 	forecol = "8",
@@ -22,22 +22,22 @@ local player = {
 }
 
 local gridFore = {
-	"             ",
-	"             ",
-	"  ##### #####",
-	"  ##### #####",
-	"  ##### #####",
-	"             ",
-	"  ##### #####",
-	"  ##### #####",
-	"  ##### #####",
-}
-local gridBack = {
 	"+-------",
 	"|       ",
 	"|       ",
 	"|       ",
 	"|       "
+
+}
+local gridBack = {
+	"+------------",
+	"|            ",
+	"|            ",
+	"|            ",
+	"|            ",
+	"|            ",
+	"|            ",
+	"|            "
 }
 for y = 1, #gridFore do
 	gridFore[y] = gridFore[y]:gsub("#","\127")
@@ -59,9 +59,13 @@ local drawGrid = function(x, y)
 			adjY = (sy - y)
 			foreX = 1 + (sx - x) % #gridFore[1]
 			foreY = 1 + (sy - y) % #gridFore
-			backX = 1 + math.floor(sx - (x / 2)) % #gridBack[1]
-			backY = 1 + math.floor(sy - (y / 2)) % #gridBack
-			if adjX <= grid.x1 or adjX >= grid.x2 or adjY <= grid.y1 or adjY >= grid.y2 then
+			backX = 1 + math.floor(sx - (x / 3)) % #gridBack[1]
+			backY = 1 + math.floor(sy - (y / 3)) % #gridBack
+			if adjX < grid.x1 or adjX > grid.x2 or adjY < grid.y1 or adjY > grid.y2 then
+				bg[1][sy] = bg[1][sy] .. " "
+				bg[2][sy] = bg[2][sy] .. grid.voidcol
+				bg[3][sy] = bg[3][sy] .. grid.voidcol
+			elseif adjX == grid.x1 or adjX == grid.x2 or adjY == grid.y1 or adjY == grid.y2 then
 				bg[1][sy] = bg[1][sy] .. grid.border
 				bg[2][sy] = bg[2][sy] .. grid.voidcol
 				bg[3][sy] = bg[3][sy] .. grid.edgecol
@@ -90,9 +94,34 @@ end
 
 -- test background drawing
 
-local y = 0
-for x = grid.x1-10, grid.x2+10 do
-	y = math.sin(math.rad(x * 10)) * 30
-	drawGrid(x, y)
-	sleep(0.05)
+local evt
+local keysDown = {}
+local getInput = function()
+	while true do
+		evt = {os.pullEvent()}
+		if evt[1] == "key" then
+			keysDown[evt[2]] = true
+		elseif evt[1] == "key_up" then
+			keysDown[evt[2]] = false
+		end
+	end
 end
+local gridDemo = function()
+	while true do
+		if keysDown[keys.left] then
+			scrollX = scrollX + 1
+		end
+		if keysDown[keys.right] then
+			scrollX = scrollX - 1
+		end
+		if keysDown[keys.up] then
+			scrollY = scrollY + 1
+		end
+		if keysDown[keys.down] then
+			scrollY = scrollY - 1
+		end
+		drawGrid(scrollX, scrollY)
+		sleep(0.05)
+	end
+end
+parallel.waitForAny(getInput, gridDemo)
