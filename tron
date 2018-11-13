@@ -24,18 +24,22 @@ local player = {
 --draws grid and background at scroll 'x' and 'y'
 local drawGrid = function(x, y)
 	local gridBack = {
-		"         ",
-		" ########",
-		" ########",
-		" ########",
-		" ########",
-		" ########",
+		"              ",
+		"              ",
+		"  ############",
+		"  ############",
+		"  ############",
+		"  ############",
+		"  ############",
+		"  ############",
+		"  ############",
 	}
 	local gridFore = {
-		"+-----",
-		"|     ",
-		"|     ",
-		"|     "
+		"+-------",
+		"|       ",
+		"|       ",
+		"|       ",
+		"|       "
 	}
 	local bg = {{},{},{}}
 	local foreX, foreY
@@ -81,7 +85,9 @@ end
 
 -- test background drawing
 
+local y = 0
 for x = grid.x1-10, grid.x2+10 do
-	drawGrid(x, 0)
+	y = math.sin(math.rad(x * 10)) * 30
+	drawGrid(x, y)
 	sleep(0.05)
 end
