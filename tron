@@ -25,7 +25,7 @@ local player
 local resetPlayers = function()
 	player = {
 		[1] = {
-			x = 2,
+			x = -2,
 			y = -5,
 			direction = -1,
 			char = "@",
@@ -44,7 +44,7 @@ local resetPlayers = function()
 			putTrail = true
 		},
 		[2] = {
-			x = -2,
+			x = 2,
 			y = -5,
 			direction = -1,
 			char = "@",
@@ -117,6 +117,7 @@ local toblit = {
 }
 
 local you = 1
+local nou = 2
 
 local control = {
 	up = keys.up,
@@ -397,6 +398,9 @@ local gridDemo = function()
 		if keysDown[keys.down] then
 			scrollY = scrollY + 1
 		end
+		if keysDown[keys.q] then
+			return "end"
+		end
 		drawGrid(scrollX, scrollY)
 		ageTrails()
 		sleep(0.05)
@@ -405,6 +409,7 @@ end
 
 local moveTick = function()
 	local p
+	local deadGuys = {}
 	for i = 1, #player do
 		p = player[i]
 		if not p.dead then
@@ -412,26 +417,38 @@ local moveTick = function()
 			p.y = p.y + math.floor(math.sin(math.rad(p.direction * 90)))
 			if getTrail(p.x, p.y) or (p.x == grid.x1 or p.x == grid.x2 or p.y == grid.y1 or p.y == grid.y2) then
 				p.dead = true
+				deadGuys[i] = true
 				p.char = "X"
 				lockInput = true
-				term.setTextColor(colors.white)
-				if i ~= you then
-					scrollToPosition(p.x, p.y)
-					term.setCursorPos(1,scr_y)
-					term.write("You're winner!")
-					sleep(1.5)
-					return "end"
-				else
-					sleep(0.5)
-					term.setCursorPos(1,scr_y)
-					term.write("You're loser.")
-					sleep(1.5)
-					return "end"
-				end
 			else
 				if p.putTrail then
 					putTrail(p)
 				end
+			end
+		end
+	end
+	if deadGuys[you] or deadGuys[nou] then
+		term.setTextColor(colors.white)
+		if deadGuys[you] and deadGuys[nou] then
+			scrollToPosition(player[nou].x, player[nou].y)
+			scrollToPosition(player[you].x, player[you].y)
+			term.setCursorPos(1,scr_y)
+			term.write("It's a tie!")
+			sleep(1.5)
+			return "end"
+		else
+			if deadGuys[you] then
+				sleep(0.5)
+				term.setCursorPos(1,scr_y)
+				term.write("You're loser.")
+				sleep(1.5)
+				return "end"
+			elseif deadGuys[nou] then
+				scrollToPosition(player[nou].x, player[nou].y)
+				term.setCursorPos(1,scr_y)
+				term.write("You're winner!")
+				sleep(1.5)
+				return "end"
 			end
 		end
 	end
