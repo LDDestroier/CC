@@ -184,8 +184,8 @@ local drawGrid = function(x, y)
 			adjY = (sy + y)
 			foreX = 1 + (sx + x) % #gridFore[1]
 			foreY = 1 + (sy + y) % #gridFore
-			backX = 1 + math.floor(sx + (x / 3)) % #gridBack[1]
-			backY = 1 + math.floor(sy + (y / 3)) % #gridBack
+			backX = 1 + math.floor(sx + (x / 2)) % #gridBack[1]
+			backY = 1 + math.floor(sy + (y / 2)) % #gridBack
 			trailChar, trailColor, trailAge = getTrail(adjX, adjY)
 			isPlayer = false
 			for i = 1, #player do
@@ -385,6 +385,7 @@ scrollToPosition = function(x, y)
 end
 
 local gridDemo = function()
+	keysDown = {}
 	while true do
 		if keysDown[keys.left] then
 			scrollX = scrollX - 1
