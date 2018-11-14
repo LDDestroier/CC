@@ -36,14 +36,15 @@ local nou = 2
 local keysDown = {}
 local netKeysDown = {}
 
+-- the scrolling of the screen
 local scrollX = 0
 local scrollY = 0
 
+-- used when panning with WASD
 local scrollAdjX = 0
 local scrollAdjY = 0
 
 local lockInput = false
-
 local player
 
 local resetPlayers = function()
@@ -570,6 +571,11 @@ local sendInfo = function(gameID)
 	})
 end
 
+local waitForKey = function(time)
+	sleep(time or 0.1)
+	os.pullEvent("char")
+end
+
 local deadAnimation = function(doSend)
 	for k,v in pairs(deadGuys) do
 		player[k].char = "X"
@@ -584,19 +590,19 @@ local deadAnimation = function(doSend)
 			scrollToPosition(player[nou].x, player[nou].y)
 			scrollToPosition(player[you].x, player[you].y)
 			drawImage(images.tie, math.floor(scr_x / 2 - images.tie.x / 2), math.floor(scr_y / 2 - images.tie.y / 2))
-			sleep(1.5)
+			waitForKey(1)
 			return "end"
 		else
 			if deadGuys[you] then
 				scrollX, scrollY = player[nou].x - scr_x / 2, player[nou].y - scr_y / 2
 				scrollToPosition(player[you].x, player[you].y)
 				drawImage(images.lose, math.floor(scr_x / 2 - images.lose.x / 2), math.floor(scr_y / 2 - images.lose.y / 2))
-				sleep(1.5)
+				waitForKey(1)
 				return "end"
 			elseif deadGuys[nou] then
 				scrollToPosition(player[nou].x, player[nou].y)
 				drawImage(images.win, math.floor(scr_x / 2 - images.win.x / 2), math.floor(scr_y / 2 - images.win.y / 2))
-				sleep(1.5)
+				waitForKey(1)
 				return "end"
 			end
 		end
