@@ -13,6 +13,10 @@ else
 --	error("You should attach a modem.")
 end
 
+local gamename = ""
+
+local waitingForGame = true
+
 local grid = {
 	x1 = -80,
 	y1 = -80,
@@ -24,6 +28,9 @@ local grid = {
 	backcol = "7",
 	edgecol = "0"
 }
+
+local you = 1
+local nou = 2
 
 local scrollX = 0
 local scrollY = 0
@@ -128,9 +135,6 @@ local toblit = {
 	[colors.red] = "e",
 	[colors.black] = "f"
 }
-
-local you = 1
-local nou = 2
 
 local control = {
 	up = keys.up,
@@ -254,6 +258,8 @@ end
 local render = function()
 	local p = player[you]
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
+	term.setCursorPos(1,1)
+	term.write(gamename)
 end
 
 local deepCopy
@@ -374,6 +380,7 @@ local evt
 local keysDown = {}
 
 local getInput = function()
+	os.pullEvent("new_game")
 	while true do
 		evt = {os.pullEvent()}
 		if lockInput then
@@ -469,9 +476,17 @@ local moveTick = function()
 	ageTrails()
 end
 
+local sendInfo = function(gameID)
+	modem.transmit(port, port, {
+		player = player,
+		gameID = gameID
+	})
+end
+
 local game = function()
-	local p = player[you]
 	local outcome
+	os.pullEvent("new_game")
+	local p = player[you]
 	while true do
 		p.putTrail = not keysDown[control.release]
 		if keysDown[control.left] and p.direction ~= 0 then
@@ -501,6 +516,7 @@ local game = function()
 		scrollAdjY = scrollAdjY * 0.8
 		
 		outcome = moveTick()
+		sendInfo(gameID)
 		
 		if outcome == "end" then
 			return
@@ -516,13 +532,54 @@ end
 
 local decision
 
+local networking = function()
+	local evt, side, channel, repchannel, msg, distance
+	while true do
+		evt, side, channel, repchannel, msg, distance = os.pullEvent("modem_message")
+		if channel == port and repchannel == port and type(msg) == "table" then
+			if type(msg.player) == "table" and type(msg.gameID) == "string" then
+				
+				if waitingForGame and (type(msg.new) == "number") then
+					local time = os.time()
+					if msg.new < time then
+						you, nou = nou, you
+						gamename = msg.gameID
+						--error("okay what")
+					end
+					you, nou = nou, you
+					modem.transmit(port, port, {
+						player = player,
+						gameID = gamename,
+						new = (msg.new < time) and (os.time() + 10) or (os.time() - 10)
+					})
+					waitingForGame = false
+					os.queueEvent("new_game", gameID)
+				elseif msg.gameID == gamename then
+					player[nou] = msg.player[nou]
+				end
+				
+			end
+		end
+	end
+end
+
 while true do
 	decision = titleScreen()
 	lockInput = false
 	if decision == "start" then
 		trail = {}
 		resetPlayers()
-		parallel.waitForAny(getInput, game)
+		gamename = ""
+		for i = 1, 32 do
+			gamename = gamename .. string.char(math.random(1,126))
+		end
+		waitingForGame = true
+		modem.transmit(port, port, {
+			player = player,
+			gameID = gamename,
+			new = os.time()
+		})
+		parallel.waitForAny(getInput, game, networking)
 	elseif decision == "demo" then
 		parallel.waitForAny(getInput, gridDemo)
 	elseif decision == "exit" then
