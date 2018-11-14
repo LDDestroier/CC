@@ -1,3 +1,10 @@
+--[[
+	TRON Light Cycle Game
+	programmed by LDDestroier
+	
+	wget https://raw.githubusercontent.com/LDDestroier/CC/master/tron
+--]]
+
 local port = 701
 
 local scr_x, scr_y = term.getSize()
@@ -489,14 +496,17 @@ local titleScreen = function()
 	
 	local choice = makeMenu(2, scr_y - 4, {
 		"Start Game",
+		"How to Play",
 		"Grid Demo",
 		"Exit"
 	})
 	if choice == 1 then
 		return "start"
 	elseif choice == 2 then
-		return "demo"
+		return "help"
 	elseif choice == 3 then
+		return "demo"
+	elseif choice == 4 then
 		return "exit"
 	end
 end
@@ -734,6 +744,22 @@ local networking = function()
 	end
 end
 
+helpScreen = function()
+	term.setBackgroundColor(colors.black)
+	term.setTextColor(colors.white)
+	term.clear()
+	term.setCursorPos(1,2)
+	print([[
+		Move with arrow keys.
+		Pan the camera with WASD.
+		Hold SPACE to create gaps.
+		
+		That's basically it.
+		Press any key to go back.
+	]])
+	waitForKey(0.25)
+end
+
 while true do
 	decision = titleScreen()
 	lockInput = false
@@ -754,6 +780,8 @@ while true do
 		})
 		parallel.waitForAny(pleaseWait, networking)
 		parallel.waitForAny(getInput, game, networking)
+	elseif decision == "help" then
+		helpScreen()
 	elseif decision == "demo" then
 		parallel.waitForAny(getInput, gridDemo)
 	elseif decision == "exit" then
