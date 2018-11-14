@@ -15,11 +15,108 @@ local grid = {
 local scrollX = 0
 local scrollY = 0
 
-local player = {
-	x = 0,
-	y = 0,
-	color = colors.blue
+local scrollAdjX = 0
+local scrollAdjY = 0
+
+local lockInput = false
+
+local player
+
+local resetPlayers = function()
+	player = {
+		[1] = {
+			x = 2,
+			y = -5,
+			direction = -1,
+			char = "@",
+			color = {
+				colors.blue,
+				colors.blue,
+				colors.blue,
+				colors.cyan,
+				colors.cyan,
+				colors.lightBlue,
+				colors.lightBlue,
+				colors.cyan,
+				colors.cyan
+			},
+			dead = false,
+			putTrail = true
+		},
+		[2] = {
+			x = -2,
+			y = -5,
+			direction = -1,
+			char = "@",
+			color = {
+				colors.red,
+				colors.red,
+				colors.red,
+				colors.orange,
+				colors.orange,
+				colors.yellow,
+				colors.yellow,
+				colors.orange,
+				colors.orange
+			},
+			dead = false,
+			putTrail = true
+		}
+	}
+end
+resetPlayers()
+
+local trail = {}
+
+local putTrail = function(p)
+	trail[p.y] = trail[p.y] or {}
+	trail[p.y][p.x] = {
+		player = p,
+		age = 0
+	}
+end
+
+local getTrail = function(x, y)
+	if trail[y] then
+		if trail[y][x] then
+			if doAge then
+				trail[y][x].age = trail[y][x].age + 1
+			end
+			return trail[y][x].player.char, trail[y][x].player.color, trail[y][x].age
+		end
+	end
+	return false
+end
+
+local ageTrails = function()
+	for y,l in pairs(trail) do
+		for x,v in pairs(l) do
+			trail[y][x].age = trail[y][x].age + 1
+		end
+	end
+end
+
+local toblit = {
+	[0] = " ",
+	[colors.white] = "0",
+	[colors.orange] = "1",
+	[colors.magenta] = "2",
+	[colors.lightBlue] = "3",
+	[colors.yellow] = "4",
+	[colors.lime] = "5",
+	[colors.pink] = "6",
+	[colors.gray] = "7",
+	[colors.lightGray] = "8",
+	[colors.cyan] = "9",
+	[colors.purple] = "a",
+	[colors.blue] = "b",
+	[colors.brown] = "c",
+	[colors.green] = "d",
+	[colors.red] = "e",
+	[colors.black] = "f"
 }
+
+local you = 1
 
 local control = {
 	up = keys.up,
@@ -58,6 +155,17 @@ local gridBack = {
 	"|            "
 }
 
+local dirArrow = {
+	[-1] = "^",
+	[0] = ">",
+	[1] = "V",
+	[2] = "<"
+}
+
+local doesIntersectBorder = function(x, y)
+	return x == grid.x1 or x == grid.x2 or y == grid.y1 or y == grid.y2
+end
+
 --draws grid and background at scroll 'x' and 'y'
 local drawGrid = function(x, y)
 	x, y = math.floor(x + 0.5), math.floor(y + 0.5)
@@ -65,38 +173,60 @@ local drawGrid = function(x, y)
 	local foreX, foreY
 	local backX, backY
 	local adjX, adjY
+	local trailChar, trailColor, trailAge, isPlayer
 	for sy = 1, scr_y do
 		bg[1][sy] = ""
 		bg[2][sy] = ""
 		bg[3][sy] = ""
 		for sx = 1, scr_x do
-			adjX = (sx - x)
-			adjY = (sy - y)
-			foreX = 1 + (sx - x) % #gridFore[1]
-			foreY = 1 + (sy - y) % #gridFore
-			backX = 1 + math.floor(sx - (x / 3)) % #gridBack[1]
-			backY = 1 + math.floor(sy - (y / 3)) % #gridBack
-			if adjX < grid.x1 or adjX > grid.x2 or adjY < grid.y1 or adjY > grid.y2 then
-				bg[1][sy] = bg[1][sy] .. " "
-				bg[2][sy] = bg[2][sy] .. grid.voidcol
+			adjX = (sx + x)
+			adjY = (sy + y)
+			foreX = 1 + (sx + x) % #gridFore[1]
+			foreY = 1 + (sy + y) % #gridFore
+			backX = 1 + math.floor(sx + (x / 3)) % #gridBack[1]
+			backY = 1 + math.floor(sy + (y / 3)) % #gridBack
+			trailChar, trailColor, trailAge = getTrail(adjX, adjY)
+			isPlayer = false
+			for i = 1, #player do
+				if player[i].x == adjX and player[i].y == adjY then
+					isPlayer = i
+					break
+				end
+			end
+			if isPlayer and not (doesIntersectBorder(adjX, adjY)) then
+				bg[1][sy] = bg[1][sy] .. dirArrow[player[isPlayer].direction]
+				bg[2][sy] = bg[2][sy] .. toblit[player[isPlayer].color[1]]
 				bg[3][sy] = bg[3][sy] .. grid.voidcol
-			elseif adjX == grid.x1 or adjX == grid.x2 or adjY == grid.y1 or adjY == grid.y2 then
-				bg[1][sy] = bg[1][sy] .. grid.border
-				bg[2][sy] = bg[2][sy] .. grid.voidcol
-				bg[3][sy] = bg[3][sy] .. grid.edgecol
 			else
-				if gridFore[foreY]:sub(foreX,foreX) ~= " " then
-					bg[1][sy] = bg[1][sy] .. gridFore[foreY]:sub(foreX,foreX)
-					bg[2][sy] = bg[2][sy] .. grid.forecol
-					bg[3][sy] = bg[3][sy] .. grid.voidcol
-				elseif gridBack[backY]:sub(backX,backX) ~= " " then
-					bg[1][sy] = bg[1][sy] .. gridBack[backY]:sub(backX,backX)
-					bg[2][sy] = bg[2][sy] .. grid.backcol
+				if trailChar and trailColor then
+					trailColor = trailColor[1 + ((trailAge - 1) % #trailColor)]
+					bg[1][sy] = bg[1][sy] .. trailChar
+					bg[2][sy] = bg[2][sy] .. toblit[trailColor]
 					bg[3][sy] = bg[3][sy] .. grid.voidcol
 				else
-					bg[1][sy] = bg[1][sy] .. " "
-					bg[2][sy] = bg[2][sy] .. grid.voidcol
-					bg[3][sy] = bg[3][sy] .. grid.voidcol
+					if adjX < grid.x1 or adjX > grid.x2 or adjY < grid.y1 or adjY > grid.y2 then
+						bg[1][sy] = bg[1][sy] .. " "
+						bg[2][sy] = bg[2][sy] .. grid.voidcol
+						bg[3][sy] = bg[3][sy] .. grid.voidcol
+					elseif doesIntersectBorder(adjX, adjY) then
+						bg[1][sy] = bg[1][sy] .. grid.border
+						bg[2][sy] = bg[2][sy] .. grid.voidcol
+						bg[3][sy] = bg[3][sy] .. grid.edgecol
+					else
+						if gridFore[foreY]:sub(foreX,foreX) ~= " " then
+							bg[1][sy] = bg[1][sy] .. gridFore[foreY]:sub(foreX,foreX)
+							bg[2][sy] = bg[2][sy] .. grid.forecol
+							bg[3][sy] = bg[3][sy] .. grid.voidcol
+						elseif gridBack[backY]:sub(backX,backX) ~= " " then
+							bg[1][sy] = bg[1][sy] .. gridBack[backY]:sub(backX,backX)
+							bg[2][sy] = bg[2][sy] .. grid.backcol
+							bg[3][sy] = bg[3][sy] .. grid.voidcol
+						else
+							bg[1][sy] = bg[1][sy] .. " "
+							bg[2][sy] = bg[2][sy] .. grid.voidcol
+							bg[3][sy] = bg[3][sy] .. grid.voidcol
+						end
+					end
 				end
 			end
 		end
@@ -107,8 +237,13 @@ local drawGrid = function(x, y)
 	end
 end
 
+local render = function()
+	local p = player[you]
+	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
+end
+
 local deepCopy
-deepCopy = function(tbl)
+deepCopy = function(tbl, ...)
 	local output = {}
 	for k,v in pairs(tbl) do
 		if type(v) == "table" then
@@ -117,10 +252,13 @@ deepCopy = function(tbl)
 			output[k] = v
 		end
 	end
+	for i = 1, #arg do
+		output[#output+1] = arg[i]
+	end
 	return output
 end
 
-local makeMenu = function(options, x, y)
+local makeMenu = function(x, y, options)
 	local cpos = 1
 	local cursor = "> "
 	local render = function()
@@ -135,13 +273,25 @@ local makeMenu = function(options, x, y)
 			end
 		end
 	end
-	-- finish please
+	local evt
+	while true do
+		render()
+		evt = {os.pullEvent()}
+		if evt[1] == "key" then
+			if evt[2] == keys.up then
+				cpos = math.max(cpos - 1, 1)
+			elseif evt[2] == keys.down then
+				cpos = math.min(cpos + 1, #options)
+			elseif evt[2] == keys.enter then
+				return cpos
+			end
+		end
+	end
 end
 
 local titleScreen = function()
 	local logo = {
 		{
-			"",
 			"          ",
 			"     ",
 			"                ",
@@ -151,7 +301,6 @@ local titleScreen = function()
 			"                      ",
 		},
 		{
-			"",
 			" f7777777777777777777f   f77777f  7f    f777",
 			" f99979999979999999999f 799999799 77f7  f997",
 			"     799          79999f997ffff9977997f f997",
@@ -161,7 +310,6 @@ local titleScreen = function()
 			"     777    777    7777  7777777  777     77",
 		},
 		{
-			"",
 			" 7999999999f9999999997   7999997  97    799f",
 			" 7777997777f77777779997 997777997 997f  799f",
 			"     997          f7777799ffff799f99997 799f",
@@ -182,43 +330,171 @@ local titleScreen = function()
 	end
 
 	term.clear()
-	drawLogo(3,2)
+	drawLogo(3,3)
 	
+	local choice = makeMenu(2, scr_y - 4, {
+		"Start Game",
+		"Grid Demo",
+		"Exit"
+	})
+	if choice == 1 then
+		return "start"
+	elseif choice == 2 then
+		return "demo"
+	elseif choice == 3 then
+		return "exit"
+	end
 end
 
-titleScreen()
-
+local cleanExit = function()
+	term.setBackgroundColor(colors.black)
+	term.setTextColor(colors.white)
+	term.clear()
+	term.setCursorPos(1,1)
+	print("Buh-bye.")
+end
 
 -- test background drawing
 
 local evt
 local keysDown = {}
+
 local getInput = function()
 	while true do
 		evt = {os.pullEvent()}
-		if evt[1] == "key" then
-			keysDown[evt[2]] = true
-		elseif evt[1] == "key_up" then
-			keysDown[evt[2]] = false
+		if lockInput then
+			keysDown = {}
+		else
+			if evt[1] == "key" then
+				keysDown[evt[2]] = true
+			elseif evt[1] == "key_up" then
+				keysDown[evt[2]] = false
+			end
 		end
 	end
 end
-local gridDemo = function()
-	while true do
-		if keysDown[keys.left] then
-			scrollX = scrollX + 1
-		end
-		if keysDown[keys.right] then
-			scrollX = scrollX - 1
-		end
-		if keysDown[keys.up] then
-			scrollY = scrollY + 1
-		end
-		if keysDown[keys.down] then
-			scrollY = scrollY - 1
-		end
-		drawGrid(scrollX, scrollY)
+
+scrollToPosition = function(x, y)
+	for i = 1, 16 do
+		scrollX = (scrollX + x - (scr_x/2)) / 2
+		scrollY = (scrollY + y - (scr_y/2)) / 2
+		render()
 		sleep(0.05)
 	end
 end
-parallel.waitForAny(getInput, gridDemo)
+
+local gridDemo = function()
+	while true do
+		if keysDown[keys.left] then
+			scrollX = scrollX - 1
+		end
+		if keysDown[keys.right] then
+			scrollX = scrollX + 1
+		end
+		if keysDown[keys.up] then
+			scrollY = scrollY - 1
+		end
+		if keysDown[keys.down] then
+			scrollY = scrollY + 1
+		end
+		drawGrid(scrollX, scrollY)
+		ageTrails()
+		sleep(0.05)
+	end
+end
+
+local moveTick = function()
+	local p
+	for i = 1, #player do
+		p = player[i]
+		if not p.dead then
+			p.x = p.x + math.floor(math.cos(math.rad(p.direction * 90)))
+			p.y = p.y + math.floor(math.sin(math.rad(p.direction * 90)))
+			if getTrail(p.x, p.y) or (p.x == grid.x1 or p.x == grid.x2 or p.y == grid.y1 or p.y == grid.y2) then
+				p.dead = true
+				p.char = "X"
+				lockInput = true
+				term.setTextColor(colors.white)
+				if i ~= you then
+					scrollToPosition(p.x, p.y)
+					term.setCursorPos(1,scr_y)
+					term.write("You're winner!")
+					sleep(1.5)
+					return "end"
+				else
+					sleep(0.5)
+					term.setCursorPos(1,scr_y)
+					term.write("You're loser.")
+					sleep(1.5)
+					return "end"
+				end
+			else
+				if p.putTrail then
+					putTrail(p)
+				end
+			end
+		end
+	end
+	ageTrails()
+end
+
+local game = function()
+	local p = player[you]
+	local outcome
+	while true do
+		p.putTrail = not keysDown[control.release]
+		if keysDown[control.left] and p.direction ~= 0 then
+			p.direction = 2
+		elseif keysDown[control.right] and p.direction ~= 2 then
+			p.direction = 0
+		end
+		if keysDown[control.up] and p.direction ~= 1 then
+			p.direction = -1
+		elseif keysDown[control.down] and p.direction ~= -1 then
+			p.direction = 1
+		end
+		
+		if keysDown[control.lookLeft] then
+			scrollAdjX = scrollAdjX - 2
+		end
+		if keysDown[control.lookRight] then
+			scrollAdjX = scrollAdjX + 2
+		end
+		if keysDown[control.lookUp] then
+			scrollAdjY = scrollAdjY - 1.5
+		end
+		if keysDown[control.lookDown] then
+			scrollAdjY = scrollAdjY + 1.5
+		end
+		scrollAdjX = scrollAdjX * 0.8
+		scrollAdjY = scrollAdjY * 0.8
+		
+		outcome = moveTick()
+		
+		if outcome == "end" then
+			return
+		else
+			scrollX = p.x - math.floor(scr_x / 2)
+			scrollY = p.y - math.floor(scr_y / 2)
+
+			render()
+			sleep(0.05)
+		end
+	end
+end
+
+local decision
+
+while true do
+	decision = titleScreen()
+	lockInput = false
+	if decision == "start" then
+		trail = {}
+		resetPlayers()
+		parallel.waitForAny(getInput, game)
+	elseif decision == "demo" then
+		parallel.waitForAny(getInput, gridDemo)
+	elseif decision == "exit" then
+		return cleanExit()
+	end
+end
