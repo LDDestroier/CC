@@ -52,6 +52,7 @@ local scrollAdjX = 0
 local scrollAdjY = 0
 
 local lockInput = false
+local gameDelay = 0.05
 local player
 
 local resetPlayers = function()
@@ -516,14 +517,11 @@ local cleanExit = function()
 	term.setTextColor(colors.white)
 	term.clear()
 	term.setCursorPos(1,1)
-	print("Buh-bye.")
+	print("Thanks for playing!")
 end
-
--- test background drawing
 
 local getInput = function()
 	local evt
---	os.pullEvent("new_game")
 	while true do
 		evt = {os.pullEvent()}
 		if lockInput then
@@ -538,12 +536,12 @@ local getInput = function()
 	end
 end
 
-scrollToPosition = function(x, y)
+local scrollToPosition = function(x, y)
 	for i = 1, 16 do
 		scrollX = (scrollX + x - (scr_x/2)) / 2
 		scrollY = (scrollY + y - (scr_y/2)) / 2
 		render()
-		sleep(0.05)
+		sleep(gameDelay)
 	end
 end
 
@@ -567,7 +565,7 @@ local gridDemo = function()
 		end
 		drawGrid(scrollX, scrollY)
 		ageTrails()
-		sleep(0.05)
+		sleep(gameDelay)
 	end
 end
 
@@ -577,7 +575,8 @@ local sendInfo = function(gameID)
 		gameID = gameID,
 		keysDown = keysDown,
 		trail = isHost and trail or nil,
-		deadGuys = isHost and deadGuys or {}
+		deadGuys = isHost and deadGuys or {},
+		gameDelay = gameDelay
 	})
 end
 
@@ -698,7 +697,7 @@ local game = function()
 			scrollY = p.y - math.floor(scr_y / 2)
 
 			render()
-			sleep(0.05)
+			sleep(gameDelay)
 		end
 	end
 end
@@ -734,6 +733,7 @@ local networking = function()
 						player = msg.player
 						trail = msg.trail
 						deadGuys = msg.deadGuys
+						gameDelay = tonumber(msg.gameDelay) or 0.05
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 					end
