@@ -452,6 +452,7 @@ local moveTick = function()
 			return "end"
 		else
 			if deadGuys[you] then
+				render()
 				sleep(0.5)
 				term.setCursorPos(1,scr_y)
 				term.write("You're loser.")
