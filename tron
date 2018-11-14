@@ -25,7 +25,23 @@ local isHost
 
 local waitingForGame = true
 
-local grid = {
+local deepCopy
+deepCopy = function(tbl, ...)
+	local output = {}
+	for k,v in pairs(tbl) do
+		if type(v) == "table" then
+			output[k] = deepCopy(v)
+		else
+			output[k] = v
+		end
+	end
+	for i = 1, #arg do
+		output[#output+1] = arg[i]
+	end
+	return output
+end
+
+local gridInit = {
 	x1 = -80,
 	y1 = -80,
 	x2 = 80,
@@ -36,6 +52,7 @@ local grid = {
 	backcol = "7",
 	edgecol = "0"
 }
+grid = deepCopy(gridInit)
 
 local you = 1
 local nou = 2
@@ -52,7 +69,7 @@ local scrollAdjX = 0
 local scrollAdjY = 0
 
 local lockInput = false
-local gameDelay = 0.05
+local gameDelayInit = 0.05
 local player
 
 local resetPlayers = function()
@@ -444,22 +461,6 @@ local pleaseWait = function()
 	end
 end
 
-local deepCopy
-deepCopy = function(tbl, ...)
-	local output = {}
-	for k,v in pairs(tbl) do
-		if type(v) == "table" then
-			output[k] = deepCopy(v)
-		else
-			output[k] = v
-		end
-	end
-	for i = 1, #arg do
-		output[#output+1] = arg[i]
-	end
-	return output
-end
-
 local makeMenu = function(x, y, options)
 	local cpos = 1
 	local cursor = "> "
@@ -541,7 +542,7 @@ local scrollToPosition = function(x, y)
 		scrollX = (scrollX + x - (scr_x/2)) / 2
 		scrollY = (scrollY + y - (scr_y/2)) / 2
 		render()
-		sleep(gameDelay)
+		sleep(0.05)
 	end
 end
 
@@ -576,7 +577,8 @@ local sendInfo = function(gameID)
 		keysDown = keysDown,
 		trail = isHost and trail or nil,
 		deadGuys = isHost and deadGuys or {},
-		gameDelay = gameDelay
+		gameDelay = (gameDelay or gameDelayInit),
+		grid = grid
 	})
 end
 
@@ -715,6 +717,8 @@ local networking = function()
 					if msg.new < os.time() then
 						gamename = msg.gameID
 						isHost = false
+						gameDelay = tonumber(msg.gameDelay) or 0.05
+						grid = deepCopy(msg.grid or gridInit)
 					else
 						you, nou = nou, you
 						isHost = true
@@ -733,7 +737,6 @@ local networking = function()
 						player = msg.player
 						trail = msg.trail
 						deadGuys = msg.deadGuys
-						gameDelay = tonumber(msg.gameDelay) or 0.05
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 					end
@@ -766,6 +769,7 @@ while true do
 	if decision == "start" then
 		trail = {}
 		deadGuys = {}
+		gameDelay = gameDelayInit
 		resetPlayers()
 		you, nou = 1, 2
 		gamename = ""
