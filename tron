@@ -482,9 +482,9 @@ local makeMenu = function(x, y, options)
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
 			if evt[2] == keys.up then
-				cpos = math.max(cpos - 1, 1)
+				cpos = (cpos - 1) % #options
 			elseif evt[2] == keys.down then
-				cpos = math.min(cpos + 1, #options)
+				cpos = (cpos % #options) + 1
 			elseif evt[2] == keys.enter then
 				return cpos
 			end
