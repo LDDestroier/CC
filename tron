@@ -461,6 +461,21 @@ local moveTick = function()
 	ageTrails()
 end
 
+local modem = peripheral.find("modem")
+
+if modem then
+	modem.open(modemID)
+else
+	error("You need a modem.")
+end
+
+local sendInfo = function(gameID)
+	modem.transmit(modemID, modemID, {
+		player = player,
+		gameID = gameID
+	})
+end
+
 local game = function()
 	local p = player[you]
 	local outcome
@@ -509,19 +524,6 @@ local game = function()
 end
 
 local decision
-local modem = peripheral.find("modem")
-if modem then
-	modem.open(modemID)
-else
-	error("You need a modem.")
-end
-
-local sendInfo = function(gameID)
-	modem.transmit(modemID, modemID, {
-		player = player,
-		gameID = gameID
-	})
-end
 
 local networking = function()
 	local evt, side, channel, repchannel, msg, distance
