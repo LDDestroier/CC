@@ -10,7 +10,7 @@ end
 if modem then
 	modem.open(port)
 else
---	error("You should attach a modem.")
+	error("You should attach a modem.")
 end
 
 local gamename = ""
