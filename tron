@@ -14,6 +14,7 @@ else
 end
 
 local gamename = ""
+local isHost
 
 local waitingForGame = true
 
@@ -31,6 +32,9 @@ local grid = {
 
 local you = 1
 local nou = 2
+
+local keysDown = {}
+local netKeysDown = {}
 
 local scrollX = 0
 local scrollY = 0
@@ -84,8 +88,151 @@ local resetPlayers = function()
 		}
 	}
 end
+
 resetPlayers()
 
+local images = {
+	logo = {
+		{
+			"          ",
+			"     ",
+			"                ",
+			"         ",
+			"            ",
+			"                  ",
+			"                      ",
+		},
+		{
+			" f7777777777777777777f   f77777f  7f    f777",
+			" f99979999979999999999f 799999799 77f7  f997",
+			"     799          79999f997ffff9977997f f997",
+			"     799    7797777fffff997ffff9977997797997",
+			"     799    799 799977f7797fff7997799  79797",
+			"     799    799   7797f 797999997 799    797",
+			"     777    777    7777  7777777  777     77",
+		},
+		{
+			" 7999999999f9999999997   7999997  97    799f",
+			" 7777997777f77777779997 997777997 997f  799f",
+			"     997          f7777799ffff799f99997 799f",
+			"     997    997f9997fff799ffff799f997ff7999f",
+			"     997    997 f7999fff999777997f997  f799f",
+			"     997    997   f9997 f7999977f 997    f7f",
+			"     fff    fff    ffff  fffffff  fff     ff",
+		}
+	},
+	win = {
+		{
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+		},
+		{
+			"fffffffffffffffffffffffffffffff",
+			"f55ffffff55f555555f5ffffff5f55f",
+			"f55ffffff5555f55f5f55f5fff5f55f",
+			"f55fff5ff55fff55fff5555fff5f55f",
+			"f55ff55ff55fff55fff55f5fff5f55f",
+			"f5f55f5ff55f5f55fff55fff555ff5f",
+			"f555ffff555f555555f55fffff5f55f",
+			"fffffffffffffffffffffffffffffff",
+		},
+		{
+			"                               ",
+			" 5fffffff5f5555555f55ffff55f5ff",
+			" 5fffffff5ffff5ffff555fff55f5ff",
+			" 5fff5fff5ffff5ffff5ff55f55f5ff",
+			" 5f55f55f5ffff5ffff5fff5555f5ff",
+			" 555fff555f5ff5ff5f5fffff55f5ff",
+			" 5fffffff5f5555555f5fffff55f5ff",
+			"                               ",
+		}
+	},
+	lose = {
+		{
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+		},
+		{
+			"fffffffffffffffffffffffffffffffff",
+			"feeffffffffeeefeffeeeeeffeeeeeeef",
+			"feeffffffeeefefefeefffeefeefffeef",
+			"feeffffffeeffffefeeffffffeffffeff",
+			"feeffffffeeffffefeeeeefefeeeeeeff",
+			"feeffffffefefffeffeffffefeeffffff",
+			"feeeeeeefefeeeeeffeeeeeefeeeeeeef",
+			"fffffffffffffffffffffffffffffffff",
+		},
+		{
+			"                                 ",
+			" efffffffeeeeeeffeeeeeeefeeeeeeef",
+			" efffffffeffffeefefffffffefffffff",
+			" efffffffeffffeefeeeeeeefeeeeefff",
+			" efffffffeffffeeffffffeefefffffff",
+			" efffffffeeffeeefeffffeefeffffeef",
+			" eeeeeeeffeeeefffeeeeeeffeeeeeeef",
+			"                                 ",
+		}
+	},
+	tie = {
+		{
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+			"",
+		},
+		{
+			"ffffffffffffffffffffffffff",
+			"f77888800f0000000f0888877f",
+			"ffff88fff00ff0ff0f08ffff7f",
+			"ffff88fffffff0ffff0ffff7ff",
+			"ffff88fffffff0ffff088887ff",
+			"ffff88ffff0ff0ffff08ffffff",
+			"ffff88ffff0000000f0888877f",
+			"ffffffffffffffffffffffffff",
+		},
+		{
+			"                          ",
+			" 7788880f00000000f0888877f",
+			"    8fffffff00ffff0fffffff",
+			"    8fffffff00ffff08888fff",
+			"    8fffffff00ffff0fffffff",
+			"    8ffff0ff00ff0f0fffff7f",
+			"    8ffff00000000f0888877f",
+			"                          ",
+		},
+	}
+}
+for k,v in pairs(images) do
+	v.x = #v[1][1]
+	v.y = #v[1]
+end
+
+local drawImage = function(im, x, y)
+	local cx, cy = term.getCursorPos()
+	for iy = 1, #im[1] do
+		term.setCursorPos(x,y+(iy-1))
+		term.blit(im[1][iy], im[2][iy], im[3][iy])
+	end
+	term.setCursorPos(cx,cy)
+end
+
+local deadGuys = {}
 local trail = {}
 
 local putTrail = function(p)
@@ -259,7 +406,33 @@ local render = function()
 	local p = player[you]
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
 	term.setCursorPos(1,1)
-	term.write(gamename)
+	term.setTextColor(player[you].color[1])
+	term.write("P" .. you)
+end
+
+local pleaseWait = function()
+	local periods = 1
+	local maxPeriods = 5
+	term.setBackgroundColor(colors.black)
+	term.setTextColor(colors.gray)
+	term.clear()
+	
+	local tID = os.startTimer(0.2)	
+	local evt
+	local txt = "Waiting for game"
+	
+	while true do
+		term.setCursorPos(math.floor(scr_x / 2 - (#txt + maxPeriods) / 2), scr_y - 2)
+		term.write(txt .. ("."):rep(periods))
+		evt = {os.pullEvent()}
+		if evt[1] == "timer" and evt[2] == tID then
+			tID = os.startTimer(0.5)
+			periods = (periods % maxPeriods) + 1
+			term.clearLine()
+		elseif evt[1] == "new_game" then
+			return evt[2]
+		end
+	end
 end
 
 local deepCopy
@@ -310,47 +483,8 @@ local makeMenu = function(x, y, options)
 end
 
 local titleScreen = function()
-	local logo = {
-		{
-			"          ",
-			"     ",
-			"                ",
-			"         ",
-			"            ",
-			"                  ",
-			"                      ",
-		},
-		{
-			" f7777777777777777777f   f77777f  7f    f777",
-			" f99979999979999999999f 799999799 77f7  f997",
-			"     799          79999f997ffff9977997f f997",
-			"     799    7797777fffff997ffff9977997797997",
-			"     799    799 799977f7797fff7997799  79797",
-			"     799    799   7797f 797999997 799    797",
-			"     777    777    7777  7777777  777     77",
-		},
-		{
-			" 7999999999f9999999997   7999997  97    799f",
-			" 7777997777f77777779997 997777997 997f  799f",
-			"     997          f7777799ffff799f99997 799f",
-			"     997    997f9997fff799ffff799f997ff7999f",
-			"     997    997 f7999fff999777997f997  f799f",
-			"     997    997   f9997 f7999977f 997    f7f",
-			"     fff    fff    ffff  fffffff  fff     ff",
-		}
-	}
-	
-	local drawLogo = function(x, y, darkmod)
-		local cx, cy = term.getCursorPos()
-		for iy = 1, #logo[1] do
-			term.setCursorPos(x,y+(iy-1))
-			term.blit(logo[1][iy], logo[2][iy], logo[3][iy])
-		end
-		term.setCursorPos(cx,cy)
-	end
-
 	term.clear()
-	drawLogo(3,3)
+	drawImage(images.logo, 3,3)
 	
 	local choice = makeMenu(2, scr_y - 4, {
 		"Start Game",
@@ -376,11 +510,9 @@ end
 
 -- test background drawing
 
-local evt
-local keysDown = {}
-
 local getInput = function()
-	os.pullEvent("new_game")
+	local evt
+--	os.pullEvent("new_game")
 	while true do
 		evt = {os.pullEvent()}
 		if lockInput then
@@ -428,76 +560,97 @@ local gridDemo = function()
 	end
 end
 
-local moveTick = function()
-	local p
-	local deadGuys = {}
-	for i = 1, #player do
-		p = player[i]
-		if not p.dead then
-			p.x = p.x + math.floor(math.cos(math.rad(p.direction * 90)))
-			p.y = p.y + math.floor(math.sin(math.rad(p.direction * 90)))
-			if getTrail(p.x, p.y) or (p.x == grid.x1 or p.x == grid.x2 or p.y == grid.y1 or p.y == grid.y2) then
-				p.dead = true
-				deadGuys[i] = true
-				p.char = "X"
-				lockInput = true
-			else
-				if p.putTrail then
-					putTrail(p)
-				end
-			end
-		end
+local sendInfo = function(gameID)
+	modem.transmit(port, port, {
+		player = player,
+		gameID = gameID,
+		keysDown = keysDown,
+		trail = isHost and trail or nil,
+		deadGuys = isHost and deadGuys or {}
+	})
+end
+
+local deadAnimation = function(doSend)
+	for k,v in pairs(deadGuys) do
+		player[k].char = "X"
+		lockInput = true
+	end
+	if doSend then
+		sendInfo(gamename)
 	end
 	if deadGuys[you] or deadGuys[nou] then
 		term.setTextColor(colors.white)
 		if deadGuys[you] and deadGuys[nou] then
 			scrollToPosition(player[nou].x, player[nou].y)
 			scrollToPosition(player[you].x, player[you].y)
-			term.setCursorPos(1,scr_y)
-			term.write("It's a tie!")
+			drawImage(images.tie, math.floor(scr_x / 2 - images.tie.x / 2), math.floor(scr_y / 2 - images.tie.y / 2))
 			sleep(1.5)
 			return "end"
 		else
 			if deadGuys[you] then
-				sleep(0.5)
-				term.setCursorPos(1,scr_y)
-				term.write("You're loser.")
+				scrollX, scrollY = player[nou].x - scr_x / 2, player[nou].y - scr_y / 2
+				scrollToPosition(player[you].x, player[you].y)
+				drawImage(images.lose, math.floor(scr_x / 2 - images.lose.x / 2), math.floor(scr_y / 2 - images.lose.y / 2))
 				sleep(1.5)
 				return "end"
 			elseif deadGuys[nou] then
 				scrollToPosition(player[nou].x, player[nou].y)
-				term.setCursorPos(1,scr_y)
-				term.write("You're winner!")
+				drawImage(images.win, math.floor(scr_x / 2 - images.win.x / 2), math.floor(scr_y / 2 - images.win.y / 2))
 				sleep(1.5)
 				return "end"
 			end
 		end
 	end
-	ageTrails()
 end
 
-local sendInfo = function(gameID)
-	modem.transmit(port, port, {
-		player = player,
-		gameID = gameID
-	})
+local moveTick = function(doSend)
+	local p
+	for i = 1, #player do
+		p = player[i]
+		if not p.dead then
+			if isHost then
+				p.x = p.x + math.floor(math.cos(math.rad(p.direction * 90)))
+				p.y = p.y + math.floor(math.sin(math.rad(p.direction * 90)))
+			end
+			if getTrail(p.x, p.y) or (p.x == grid.x1 or p.x == grid.x2 or p.y == grid.y1 or p.y == grid.y2) then
+				p.dead = true
+				deadGuys[i] = true
+			elseif isHost then
+				if p.putTrail then
+					putTrail(p)
+				end
+			end
+		end
+	end
+	ageTrails()
+	return deadAnimation(doSend)
+end
+
+local setDirection = function(keylist, p)
+	p.putTrail = not keylist[control.release]
+	if keylist[control.left] and p.direction ~= 0 then
+		p.direction = 2
+	elseif keylist[control.right] and p.direction ~= 2 then
+		p.direction = 0
+	end
+	if keylist[control.up] and p.direction ~= 1 then
+		p.direction = -1
+	elseif keylist[control.down] and p.direction ~= -1 then
+		p.direction = 1
+	end
 end
 
 local game = function()
 	local outcome
-	os.pullEvent("new_game")
-	local p = player[you]
+--	os.pullEvent("new_game")
+	local p, np
 	while true do
-		p.putTrail = not keysDown[control.release]
-		if keysDown[control.left] and p.direction ~= 0 then
-			p.direction = 2
-		elseif keysDown[control.right] and p.direction ~= 2 then
-			p.direction = 0
-		end
-		if keysDown[control.up] and p.direction ~= 1 then
-			p.direction = -1
-		elseif keysDown[control.down] and p.direction ~= -1 then
-			p.direction = 1
+		p = player[you]
+		np = player[nou]
+		
+		setDirection(keysDown, p)
+		if isHost then
+			setDirection(netKeysDown, np)
 		end
 		
 		if keysDown[control.lookLeft] then
@@ -512,11 +665,15 @@ local game = function()
 		if keysDown[control.lookDown] then
 			scrollAdjY = scrollAdjY + 1.5
 		end
+		
 		scrollAdjX = scrollAdjX * 0.8
 		scrollAdjY = scrollAdjY * 0.8
-		
-		outcome = moveTick()
-		sendInfo(gameID)
+
+		if isHost then
+			outcome = moveTick(true)
+		else
+			outcome = deadAnimation(true)
+		end
 		
 		if outcome == "end" then
 			return
@@ -540,22 +697,30 @@ local networking = function()
 			if type(msg.player) == "table" and type(msg.gameID) == "string" then
 				
 				if waitingForGame and (type(msg.new) == "number") then
-					local time = os.time()
-					if msg.new < time then
-						you, nou = nou, you
+					if msg.new < os.time() then
 						gamename = msg.gameID
-						--error("okay what")
+						isHost = false
+					else
+						you, nou = nou, you
+						isHost = true
 					end
 					you, nou = nou, you
 					modem.transmit(port, port, {
 						player = player,
 						gameID = gamename,
-						new = (msg.new < time) and (os.time() + 10) or (os.time() - 10)
+						new = isHost and (-math.huge) or (math.huge)
 					})
 					waitingForGame = false
+					netKeysDown = {}
 					os.queueEvent("new_game", gameID)
 				elseif msg.gameID == gamename then
-					player[nou] = msg.player[nou]
+					if not isHost then
+						player = msg.player
+						trail = msg.trail
+						deadGuys = msg.deadGuys
+					elseif type(msg.keysDown) == "table" then
+						netKeysDown = msg.keysDown
+					end
 				end
 				
 			end
@@ -568,7 +733,9 @@ while true do
 	lockInput = false
 	if decision == "start" then
 		trail = {}
+		deadGuys = {}
 		resetPlayers()
+		you, nou = 1, 2
 		gamename = ""
 		for i = 1, 32 do
 			gamename = gamename .. string.char(math.random(1,126))
@@ -579,6 +746,7 @@ while true do
 			gameID = gamename,
 			new = os.time()
 		})
+		parallel.waitForAny(pleaseWait, networking)
 		parallel.waitForAny(getInput, game, networking)
 	elseif decision == "demo" then
 		parallel.waitForAny(getInput, gridDemo)
