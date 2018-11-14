@@ -22,6 +22,7 @@ end
 
 local gamename = ""
 local isHost
+local squareGrid = true
 
 local waitingForGame = true
 
@@ -41,18 +42,18 @@ deepCopy = function(tbl, ...)
 	return output
 end
 
-local gridInit = {
-	x1 = -80,
-	y1 = -80,
-	x2 = 80,
-	y2 = 80,
+local initGrid = {
+	x1 = -100,
+	y1 = -100,
+	x2 = 100,
+	y2 = 100,
 	border = "#",
 	voidcol = "f",
 	forecol = "8",
 	backcol = "7",
 	edgecol = "0"
 }
-grid = deepCopy(gridInit)
+grid = deepCopy(initGrid)
 
 local you = 1
 local nou = 2
@@ -324,27 +325,45 @@ local control = {
 -- keeps track of where you are
 local gamemode = ""
 
--- foreground grid
-local gridFore = {
-	"+-------",
-	"|       ",
-	"|       ",
-	"|       ",
-	"|       "
 
-}
-
--- background grid
-local gridBack = {
-	"+------------",
-	"|            ",
-	"|            ",
-	"|            ",
-	"|            ",
-	"|            ",
-	"|            ",
-	"|            "
-}
+local gridFore, gridBack
+if squareGrid then
+	gridFore = {
+		"+-------",
+		"|       ",
+		"|       ",
+		"|       ",
+		"|       "
+	}
+	gridBack = {
+		"+------------",
+		"|            ",
+		"|            ",
+		"|            ",
+		"|            ",
+		"|            ",
+		"|            ",
+		"|            "
+	}
+else
+	gridFore = {
+		"    /      ",
+		"   /       ",
+		"  /        ",
+		" /         ",
+		"/__________"
+	}
+	gridBack = {
+		"       /        ",
+		"      /         ",
+		"     /          ",
+		"    /           ",
+		"   /            ",
+		"  /             ",
+		" /              ",
+		"/_______________"
+	}
+end
 
 local dirArrow = {
 	[-1] = "^",
@@ -482,7 +501,7 @@ local makeMenu = function(x, y, options)
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
 			if evt[2] == keys.up then
-				cpos = (cpos - 1) % #options
+				cpos = (cpos - 2) % #options + 1
 			elseif evt[2] == keys.down then
 				cpos = (cpos % #options) + 1
 			elseif evt[2] == keys.enter then
@@ -577,8 +596,6 @@ local sendInfo = function(gameID)
 		keysDown = keysDown,
 		trail = isHost and trail or nil,
 		deadGuys = isHost and deadGuys or {},
-		gameDelay = (gameDelay or gameDelayInit),
-		grid = grid
 	})
 end
 
@@ -659,7 +676,6 @@ end
 
 local game = function()
 	local outcome
---	os.pullEvent("new_game")
 	local p, np
 	while true do
 		p = player[you]
@@ -718,7 +734,7 @@ local networking = function()
 						gamename = msg.gameID
 						isHost = false
 						gameDelay = tonumber(msg.gameDelay) or 0.05
-						grid = deepCopy(msg.grid or gridInit)
+						grid = msg.grid or deepCopy(initGrid)
 					else
 						you, nou = nou, you
 						isHost = true
@@ -727,11 +743,13 @@ local networking = function()
 					modem.transmit(port, port, {
 						player = player,
 						gameID = gamename,
-						new = isHost and (-math.huge) or (math.huge)
+						new = isHost and (-math.huge) or (math.huge),
+						grid = initGrid
 					})
 					waitingForGame = false
 					netKeysDown = {}
 					os.queueEvent("new_game", gameID)
+					
 				elseif msg.gameID == gamename then
 					if not isHost then
 						player = msg.player
@@ -770,6 +788,7 @@ while true do
 		trail = {}
 		deadGuys = {}
 		gameDelay = gameDelayInit
+		grid = deepCopy(initGrid)
 		resetPlayers()
 		you, nou = 1, 2
 		gamename = ""
@@ -782,7 +801,7 @@ while true do
 			gameID = gamename,
 			new = os.time(),
 			gameDelay = gameDelayInit,
-			grid = gridInit
+			grid = initGrid
 		})
 		parallel.waitForAny(pleaseWait, networking)
 		parallel.waitForAny(getInput, game, networking)
