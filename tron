@@ -461,6 +461,10 @@ local moveTick = function()
 	ageTrails()
 end
 
+if ccemux and not peripheral.find("modem") then
+	ccemux.attach("top","wireless_modem")
+end
+
 local modem = peripheral.find("modem")
 
 if modem then
