@@ -780,7 +780,9 @@ while true do
 		modem.transmit(port, port, {
 			player = player,
 			gameID = gamename,
-			new = os.time()
+			new = os.time(),
+			gameDelay = gameDelayInit,
+			grid = gridInit
 		})
 		parallel.waitForAny(pleaseWait, networking)
 		parallel.waitForAny(getInput, game, networking)
