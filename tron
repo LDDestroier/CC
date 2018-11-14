@@ -583,7 +583,7 @@ end
 
 local waitForKey = function(time)
 	sleep(time or 0.1)
-	os.pullEvent("char")
+	os.pullEvent("key")
 end
 
 local deadAnimation = function(doSend)
