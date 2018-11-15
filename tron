@@ -367,8 +367,8 @@ local doesIntersectBorder = function(x, y)
 	return x == grid.x1 or x == grid.x2 or y == grid.y1 or y == grid.y2
 end
 
---draws grid and background at scroll 'x' and 'y'
-local drawGrid = function(x, y)
+--draws grid and background at scroll 'x' and 'y', along with trails and players
+local drawGrid = function(x, y, onlyDrawGrid)
 	x, y = math.floor(x + 0.5), math.floor(y + 0.5)
 	local bg = {{},{},{}}
 	local foreX, foreY
@@ -388,10 +388,12 @@ local drawGrid = function(x, y)
 			backY = 1 + math.floor(sy + (y / 2)) % #gridBack
 			trailChar, trailColor, trailAge = getTrail(adjX, adjY)
 			isPlayer = false
-			for i = 1, #player do
-				if player[i].x == adjX and player[i].y == adjY then
-					isPlayer = i
-					break
+			if not onlyDrawGrid then
+				for i = 1, #player do
+					if player[i].x == adjX and player[i].y == adjY then
+						isPlayer = i
+						break
+					end
 				end
 			end
 			if isPlayer and not (doesIntersectBorder(adjX, adjY)) then
@@ -399,17 +401,17 @@ local drawGrid = function(x, y)
 				bg[2][sy] = bg[2][sy] .. toblit[player[isPlayer].color[1]]
 				bg[3][sy] = bg[3][sy] .. grid.voidcol
 			else
-				if trailChar and trailColor then
+				if (not onlyDrawGrid) and trailChar and trailColor then
 					trailColor = trailColor[1 + ((trailAge - 1) % #trailColor)]
 					bg[1][sy] = bg[1][sy] .. trailChar
 					bg[2][sy] = bg[2][sy] .. toblit[trailColor]
 					bg[3][sy] = bg[3][sy] .. grid.voidcol
 				else
-					if adjX < grid.x1 or adjX > grid.x2 or adjY < grid.y1 or adjY > grid.y2 then
+					if (not onlyDrawGrid) and (adjX < grid.x1 or adjX > grid.x2 or adjY < grid.y1 or adjY > grid.y2) then
 						bg[1][sy] = bg[1][sy] .. " "
 						bg[2][sy] = bg[2][sy] .. grid.voidcol
 						bg[3][sy] = bg[3][sy] .. grid.voidcol
-					elseif doesIntersectBorder(adjX, adjY) then
+					elseif (not onlyDrawGrid) and doesIntersectBorder(adjX, adjY) then
 						bg[1][sy] = bg[1][sy] .. grid.border
 						bg[2][sy] = bg[2][sy] .. grid.voidcol
 						bg[3][sy] = bg[3][sy] .. grid.edgecol
@@ -498,32 +500,68 @@ local startCountdown = function()
 	end
 end
 
-local makeMenu = function(x, y, options)
+local makeMenu = function(x, y, options, doAnimate)
 	local cpos = 1
 	local cursor = "> "
+	local gsX, gsY = 0, 0
+	local step = 0
+	local lastPos = cpos
+	if not doAnimate then
+		drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 2)
+	end
 	local rend = function()
+		if doAnimate then
+			drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 2)
+		end
 		for i = 1, #options do
-			term.setCursorPos(x, y + (i - 1))
 			if i == cpos then
+				term.setCursorPos(x, y + (i - 1))
 				term.setTextColor(colors.white)
 				term.write(cursor .. options[i])
 			else
+				if i == lastPos then
+					term.setCursorPos(x, y + (i - 1))
+					term.write((" "):rep(#cursor))
+					lastPos = nil
+				else
+					term.setCursorPos(x + #cursor, y + (i - 1))
+				end
 				term.setTextColor(colors.gray)
-				term.write((" "):rep(#cursor) .. options[i])
+				term.write(options[i])
 			end
 		end
 	end
-	local evt
+	local gstID, evt = math.random(1,65535)
+	if doAnimate then
+		os.queueEvent("timer", gstID)
+	end
 	while true do
 		rend()
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
 			if evt[2] == keys.up then
+				lastPos = cpos
 				cpos = (cpos - 2) % #options + 1
 			elseif evt[2] == keys.down then
+				lastPos = cpos
 				cpos = (cpos % #options) + 1
+			elseif evt[2] == keys.home then
+				lastPos = cpos
+				cpos = 1
+			elseif evt[2] == keys["end"] then
+				lastPos = cpos
+				cpos = #options
 			elseif evt[2] == keys.enter then
 				return cpos
+			end
+		elseif evt[1] == "timer" and evt[2] == gstID then
+			gstID = os.startTimer(0.05)
+			drawGrid(gsX, gsY, true)
+			step = step + 1
+			if math.ceil(step / 100) % 2 == 1 then
+				gsX = gsX + 1
+			else
+				gsY = gsY - 1
 			end
 		end
 	end
@@ -531,14 +569,13 @@ end
 
 local titleScreen = function()
 	term.clear()
-	drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 2)
 	
 	local choice = makeMenu(2, scr_y - 4, {
 		"Start Game",
 		"How to Play",
 		"Grid Demo",
 		"Exit"
-	})
+	}, true)
 	if choice == 1 then
 		return "start"
 	elseif choice == 2 then
