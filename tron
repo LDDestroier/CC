@@ -492,7 +492,7 @@ local startCountdown = function()
 		end
 	end
 	local cMessage = "You are "
-	for i = 3, 1 do
+	for i = 3, 1, -1 do
 		render()
 		term.setCursorPos(math.floor(scr_x / 2 - (#cMessage + #cName) / 2), math.floor(scr_y / 2))
 		term.setTextColor(colors.white)
