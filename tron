@@ -76,6 +76,7 @@ local player
 local resetPlayers = function()
 	player = {
 		[1] = {
+			num = 1,
 			x = -2,
 			y = -5,
 			direction = -1,
@@ -95,6 +96,7 @@ local resetPlayers = function()
 			putTrail = true
 		},
 		[2] = {
+			num = 2,
 			x = 2,
 			y = -5,
 			direction = -1,
@@ -252,13 +254,18 @@ end
 
 local deadGuys = {}
 local trail = {}
+local lastTrails = {}
 
-local putTrail = function(p)
-	trail[p.y] = trail[p.y] or {}
-	trail[p.y][p.x] = {
-		player = p,
+local putTrailXY = function(x, y, p)
+	trail[y] = trail[y] or {}
+	trail[y][x] = {
+		player = player[p],
 		age = 0
 	}
+end
+
+local putTrail = function(p)
+	putTrailXY(p.x, p.y, p.num)
 end
 
 local getTrail = function(x, y)
@@ -649,7 +656,7 @@ local sendInfo = function(gameID)
 		player = player,
 		gameID = gameID,
 		keysDown = keysDown,
-		trail = isHost and trail or nil,
+		trail = isHost and lastTrails or {},
 		deadGuys = isHost and deadGuys or {},
 	})
 end
@@ -705,6 +712,10 @@ local moveTick = function(doSend)
 					deadGuys[i] = true
 				elseif p.putTrail then
 					putTrail(p)
+					lastTrails[#lastTrails+1] = {p.x, p.y, p.num}
+					if #lastTrails > #player then
+						table.remove(lastTrails, 1)
+					end
 				end
 			end
 			for a = 1, #player do
@@ -720,7 +731,6 @@ local moveTick = function(doSend)
 			end
 		end
 	end
-	ageTrails()
 	return deadAnimation(doSend)
 end
 
@@ -741,6 +751,9 @@ local game = function()
 	local outcome
 	local p, np
 	while true do
+		if not isHost then
+			os.pullEvent("move_tick")
+		end
 		p = player[you]
 		np = player[nou]
 		
@@ -772,7 +785,7 @@ local game = function()
 		else
 			outcome = deadAnimation(true)
 		end
-		
+		ageTrails()
 		if outcome == "end" then
 			return
 		else
@@ -780,7 +793,9 @@ local game = function()
 			scrollY = p.y - math.floor(scr_y / 2)
 
 			render()
-			sleep(gameDelay)
+			if isHost then
+				sleep(gameDelay)
+			end
 		end
 	end
 end
@@ -818,8 +833,11 @@ local networking = function()
 				elseif msg.gameID == gamename then
 					if not isHost then
 						player = msg.player
-						trail = msg.trail
+						for i = 1, #msg.trail do
+							putTrailXY(unpack(msg.trail[i]))
+						end
 						deadGuys = msg.deadGuys
+						os.queueEvent("move_tick")
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 					end
