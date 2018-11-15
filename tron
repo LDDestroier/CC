@@ -475,8 +475,34 @@ local pleaseWait = function()
 			periods = (periods % maxPeriods) + 1
 			term.clearLine()
 		elseif evt[1] == "new_game" then
+			sleep(0.1)
 			return evt[2]
 		end
+	end
+end
+
+local startCountdown = function()
+	local cName = "PLAYER " .. you
+	local col = colors.white
+	for k,v in pairs(colors) do
+		if player[you].color[1] == v then
+			cName = k:upper()
+			col = v
+			break
+		end
+	end
+	local cMessage = "You are "
+	for i = 3, 1 do
+		render()
+		term.setCursorPos(math.floor(scr_x / 2 - (#cMessage + #cName) / 2), math.floor(scr_y / 2))
+		term.setTextColor(colors.white)
+		term.write(cMessage)
+		term.setTextColor(col)
+		term.write(cName)
+		term.setTextColor(colors.white)
+		term.setCursorPos(math.floor(scr_x / 2 - 2), math.floor(scr_y / 2) + 2)
+		term.write(i .. "...")
+		sleep(1)
 	end
 end
 
@@ -804,6 +830,7 @@ while true do
 			grid = initGrid
 		})
 		parallel.waitForAny(pleaseWait, networking)
+		startCountdown()
 		parallel.waitForAny(getInput, game, networking)
 	elseif decision == "help" then
 		helpScreen()
