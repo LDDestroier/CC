@@ -655,15 +655,18 @@ local moveTick = function(doSend)
 				p.x = p.x + math.floor(math.cos(math.rad(p.direction * 90)))
 				p.y = p.y + math.floor(math.sin(math.rad(p.direction * 90)))
 			end
-			if getTrail(p.x, p.y) or doesIntersectBorder(p.x, p.y) then
-				p.dead = true
-				deadGuys[i] = true
-			end
 		end
 		if isHost then
 			if p.putTrail then
 				putTrail(p)
 			end
+		end
+	end
+	for i = 1, #player do
+		p = player[i]
+		if getTrail(p.x, p.y) or doesIntersectBorder(p.x, p.y) then
+			p.dead = true
+			deadGuys[i] = true
 		end
 	end
 	ageTrails()
