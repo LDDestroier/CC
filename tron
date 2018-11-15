@@ -492,7 +492,7 @@ end
 local makeMenu = function(x, y, options)
 	local cpos = 1
 	local cursor = "> "
-	local render = function()
+	local rend = function()
 		for i = 1, #options do
 			term.setCursorPos(x, y + (i - 1))
 			if i == cpos then
@@ -506,7 +506,7 @@ local makeMenu = function(x, y, options)
 	end
 	local evt
 	while true do
-		render()
+		rend()
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
 			if evt[2] == keys.up then
@@ -775,7 +775,7 @@ local networking = function()
 	end
 end
 
-helpScreen = function()
+local helpScreen = function()
 	term.setBackgroundColor(colors.black)
 	term.setTextColor(colors.white)
 	term.clear()
