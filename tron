@@ -669,22 +669,22 @@ local moveTick = function(doSend)
 	return deadAnimation(doSend)
 end
 
-local setDirection = function(keylist, p)
+local setDirection = function(keylist, p, checkDir)
 	p.putTrail = not keylist[control.release]
-	if keylist[control.left] and p.direction ~= 0 then
+	if keylist[control.left] and (checkDir or p.direction) ~= 0 then
 		p.direction = 2
-	elseif keylist[control.right] and p.direction ~= 2 then
+	elseif keylist[control.right] and (checkDir or p.direction) ~= 2 then
 		p.direction = 0
 	end
-	if keylist[control.up] and p.direction ~= 1 then
+	if keylist[control.up] and (checkDir or p.direction) ~= 1 then
 		p.direction = -1
-	elseif keylist[control.down] and p.direction ~= -1 then
+	elseif keylist[control.down] and (checkDir or p.direction) ~= -1 then
 		p.direction = 1
 	end
 end
 
 -- to counter P2's ability to turn twice in one tick
-local inMidTurn = false
+local dlDirection
 
 local game = function()
 	local outcome
@@ -697,9 +697,8 @@ local game = function()
 		if isHost then
 			setDirection(keysDown, p)
 			setDirection(netKeysDown, np)
-		elseif not inMidTurn then
-			setDirection(keysDown, p)
-			inMidTurn = true
+		else then
+			setDirection(keysDown, p, dlDirection)
 		end
 		
 		if keysDown[control.lookLeft] then
@@ -769,9 +768,9 @@ local networking = function()
 				elseif msg.gameID == gamename then
 					if not isHost then
 						player = msg.player
+						dlDirection = player[you].direction
 						trail = msg.trail
 						deadGuys = msg.deadGuys
-						inMidTurn = false
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 					end
