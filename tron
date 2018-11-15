@@ -598,9 +598,10 @@ local gridDemo = function()
 	end
 end
 
-local sendInfo = function(gameID)
+local sendInfo = function(gameID, nextTurn)
 	modem.transmit(port, port, {
 		player = player,
+		nextTurn = nextTurn,
 		gameID = gameID,
 		keysDown = keysDown,
 		trail = isHost and trail or nil,
@@ -613,13 +614,16 @@ local waitForKey = function(time)
 	os.pullEvent("key")
 end
 
+-- to counter P2's ability to turn twice in one tick
+local nextTurn, nextPut
+
 local deadAnimation = function(doSend)
 	for k,v in pairs(deadGuys) do
 		player[k].char = "X"
 		lockInput = true
 	end
 	if doSend then
-		sendInfo(gamename)
+		sendInfo(gamename, nextTurn)
 	end
 	if deadGuys[you] or deadGuys[nou] then
 		term.setTextColor(colors.white)
@@ -669,22 +673,21 @@ local moveTick = function(doSend)
 	return deadAnimation(doSend)
 end
 
-local setDirection = function(keylist, p)
-	p.putTrail = not keylist[control.release]
-	if keylist[control.left] and p.direction ~= 0 then
-		p.direction = 2
-	elseif keylist[control.right] and p.direction ~= 2 then
-		p.direction = 0
+local setDirection = function(keylist, checkDir)
+	local outTrail = not keylist[control.release]
+	local outDir
+	if keylist[control.left] and checkDir ~= 0 then
+		outDir = 2
+	elseif keylist[control.right] and checkDir ~= 2 then
+		outDir = 0
 	end
-	if keylist[control.up] and p.direction ~= 1 then
-		p.direction = -1
-	elseif keylist[control.down] and p.direction ~= -1 then
-		p.direction = 1
+	if keylist[control.up] and checkDir ~= 1 then
+		outDir = -1
+	elseif keylist[control.down] and checkDir ~= -1 then
+		outDir = 1
 	end
+	return outTrail, outDir
 end
-
--- to counter P2's ability to turn twice in one tick
-local inMidTurn = false
 
 local game = function()
 	local outcome
@@ -693,13 +696,11 @@ local game = function()
 		p = player[you]
 		np = player[nou]
 		
-		
 		if isHost then
-			setDirection(keysDown, p)
-			setDirection(netKeysDown, np)
-		elseif not inMidTurn then
-			setDirection(keysDown, p)
-			inMidTurn = true
+			p.putTrail, p.direction = setDirection(keysDown, p.direction)
+			np.putTrail, np.direction = setDirection(netKeysDown, np.direction)
+		else
+			nextPut, nextTurn = setDirection(keysDown, p.direction)
 		end
 		
 		if keysDown[control.lookLeft] then
@@ -771,10 +772,10 @@ local networking = function()
 						player = msg.player
 						trail = msg.trail
 						deadGuys = msg.deadGuys
-						inMidTurn = false
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 					end
+					nextTurn = nil
 				end
 				
 			end
