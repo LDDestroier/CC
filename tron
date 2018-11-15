@@ -664,9 +664,11 @@ local moveTick = function(doSend)
 			for a = 1, #player do
 				if (a ~= i) and (player[a].x == p.x and player[a].y == p.y) then
 					p.dead = true
-					player[a].dead = true
 					deadGuys[i] = true
-					deadGuys[a] = true
+					if (p.direction + 2) % 4 == player[a].direction % 4 then
+						player[a].dead = true
+						deadGuys[a] = true
+					end
 					break
 				end
 			end
