@@ -675,8 +675,7 @@ local setDirection = function(keylist, p, checkDir)
 		p.direction = 2
 	elseif keylist[control.right] and (checkDir or p.direction) ~= 2 then
 		p.direction = 0
-	end
-	if keylist[control.up] and (checkDir or p.direction) ~= 1 then
+	elseif keylist[control.up] and (checkDir or p.direction) ~= 1 then
 		p.direction = -1
 	elseif keylist[control.down] and (checkDir or p.direction) ~= -1 then
 		p.direction = 1
@@ -692,7 +691,6 @@ local game = function()
 	while true do
 		p = player[you]
 		np = player[nou]
-		
 		
 		if isHost then
 			setDirection(keysDown, p)
