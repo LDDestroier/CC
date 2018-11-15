@@ -651,7 +651,7 @@ local moveTick = function(doSend)
 	for i = 1, #player do
 		p = player[i]
 		if not p.dead then
-			if getTrail(p.x, p.y) or doesIntersectBorder(p.x, p.y) then
+			if (p.x == player[nou].x and p.y == player[nou].y) then
 				p.dead = true
 				deadGuys[i] = true
 			else
