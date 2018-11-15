@@ -475,7 +475,6 @@ local pleaseWait = function()
 			periods = (periods % maxPeriods) + 1
 			term.clearLine()
 		elseif evt[1] == "new_game" then
-			sleep(0.1)
 			return evt[2]
 		end
 	end
@@ -492,6 +491,8 @@ local startCountdown = function()
 		end
 	end
 	local cMessage = "You are "
+	scrollX = player[you].x - math.floor(scr_x / 2)
+	scrollY = player[you].y - math.floor(scr_y / 2)
 	for i = 3, 1, -1 do
 		render()
 		term.setCursorPos(math.floor(scr_x / 2 - (#cMessage + #cName) / 2), math.floor(scr_y / 2))
@@ -830,8 +831,7 @@ while true do
 			grid = initGrid
 		})
 		parallel.waitForAny(pleaseWait, networking)
-		scrollX = player[you].x - math.floor(scr_x / 2)
-		scrollY = player[you].y - math.floor(scr_y / 2)
+		sleep(0.1)
 		startCountdown()
 		parallel.waitForAny(getInput, game, networking)
 	elseif decision == "help" then
