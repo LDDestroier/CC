@@ -540,7 +540,7 @@ end
 
 local titleScreen = function()
 	term.clear()
-	drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 3)
+	drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 2)
 	
 	local choice = makeMenu(2, scr_y - 4, {
 		"Start Game",
