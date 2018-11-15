@@ -230,13 +230,22 @@ local images = {
 for k,v in pairs(images) do
 	v.x = #v[1][1]
 	v.y = #v[1]
+	for i = 2, #v do
+		for line = 1, #v[i] do
+			images[k][i][line] = v[i][line]:gsub("f", " ")
+		end
+	end
 end
 
 local drawImage = function(im, x, y)
 	local cx, cy = term.getCursorPos()
 	for iy = 1, #im[1] do
-		term.setCursorPos(x,y+(iy-1))
-		term.blit(im[1][iy], im[2][iy], im[3][iy])
+		for ix = 1, #im[1][iy] do
+			term.setCursorPos(x+(ix-1),y+(iy-1))
+			if not (im[2][iy]:sub(ix,ix) == " " and im[3][iy]:sub(ix,ix) == " ") then
+				term.blit(im[1][iy]:sub(ix,ix), im[2][iy]:sub(ix,ix), im[3][iy]:sub(ix,ix))
+			end
+		end
 	end
 	term.setCursorPos(cx,cy)
 end
