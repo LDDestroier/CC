@@ -817,6 +817,7 @@ while true do
 		grid = deepCopy(initGrid)
 		resetPlayers()
 		you, nou = 1, 2
+		scrollX, scrollY = player[you].x - math.floor(scr_x / 2), player[you].x - math.floor(scr_y / 2)
 		gamename = ""
 		for i = 1, 32 do
 			gamename = gamename .. string.char(math.random(1,126))
