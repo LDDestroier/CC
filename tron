@@ -817,7 +817,6 @@ while true do
 		grid = deepCopy(initGrid)
 		resetPlayers()
 		you, nou = 1, 2
-		scrollX, scrollY = player[you].x - math.floor(scr_x / 2), player[you].x - math.floor(scr_y / 2)
 		gamename = ""
 		for i = 1, 32 do
 			gamename = gamename .. string.char(math.random(1,126))
@@ -831,6 +830,8 @@ while true do
 			grid = initGrid
 		})
 		parallel.waitForAny(pleaseWait, networking)
+		scrollX = player[you].x - math.floor(scr_x / 2)
+		scrollY = player[you].y - math.floor(scr_y / 2)
 		startCountdown()
 		parallel.waitForAny(getInput, game, networking)
 	elseif decision == "help" then
