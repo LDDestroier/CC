@@ -682,9 +682,6 @@ local setDirection = function(keylist, p, checkDir)
 	end
 end
 
--- to counter P2's ability to turn twice in one tick
-local dlDirection
-
 local game = function()
 	local outcome
 	local p, np
@@ -696,7 +693,7 @@ local game = function()
 			setDirection(keysDown, p)
 			setDirection(netKeysDown, np)
 		else
-			setDirection(keysDown, p, dlDirection)
+			setDirection(keysDown, p)
 		end
 		
 		if keysDown[control.lookLeft] then
@@ -766,7 +763,6 @@ local networking = function()
 				elseif msg.gameID == gamename then
 					if not isHost then
 						player = msg.player
-						dlDirection = player[you].direction
 						trail = msg.trail
 						deadGuys = msg.deadGuys
 					elseif type(msg.keysDown) == "table" then
