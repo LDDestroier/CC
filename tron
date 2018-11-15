@@ -770,6 +770,9 @@ local networking = function()
 				elseif msg.gameID == gamename then
 					if not isHost then
 						player = msg.player
+						if nextTurn then
+							player[nou].direction = nextTurn
+						end
 						trail = msg.trail
 						deadGuys = msg.deadGuys
 					elseif type(msg.keysDown) == "table" then
