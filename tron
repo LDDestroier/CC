@@ -70,7 +70,7 @@ local scrollAdjX = 0
 local scrollAdjY = 0
 
 local lockInput = false
-local gameDelayInit = 0.05
+local gameDelayInit = 0.1 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local player
 
 local resetPlayers = function()
