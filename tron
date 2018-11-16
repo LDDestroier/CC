@@ -241,7 +241,7 @@ end
 
 local drawImage = function(im, x, y)
 	local cx, cy = term.getCursorPos()
-	term.setBackgroundColor(initGrid.voidvol)
+	term.setBackgroundColor(colors.black)
 	for iy = 1, #im[1] do
 		for ix = 1, #im[1][iy] do
 			term.setCursorPos(x+(ix-1),y+(iy-1))
