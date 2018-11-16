@@ -659,11 +659,11 @@ end
 
 local sendInfo = function(gameID)
 	modem.transmit(port, port, {
-		player = player,
+		player = isHost and player or nil,
 		gameID = gameID,
-		keysDown = keysDown,
-		trail = isHost and lastTrails or {},
-		deadGuys = isHost and deadGuys or {},
+		keysDown = isHost and nil or keysDown,
+		trail = isHost and lastTrails or nil,
+		deadGuys = isHost and deadGuys or nil,
 	})
 end
 
@@ -813,7 +813,7 @@ local networking = function()
 	while true do
 		evt, side, channel, repchannel, msg, distance = os.pullEvent("modem_message")
 		if channel == port and repchannel == port and type(msg) == "table" then
-			if type(msg.player) == "table" and type(msg.gameID) == "string" then
+			if type(msg.gameID) == "string" then
 				
 				if waitingForGame and (type(msg.new) == "number") then
 					if msg.new < os.time() then
@@ -838,12 +838,14 @@ local networking = function()
 					
 				elseif msg.gameID == gamename then
 					if not isHost then
-						player = msg.player
-						for i = 1, #msg.trail do
-							putTrailXY(unpack(msg.trail[i]))
+						if type(msg.player) == "table" then
+							player = msg.player
+							for i = 1, #msg.trail do
+								putTrailXY(unpack(msg.trail[i]))
+							end
+							deadGuys = msg.deadGuys
+							os.queueEvent("move_tick")
 						end
-						deadGuys = msg.deadGuys
-						os.queueEvent("move_tick")
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 					end
