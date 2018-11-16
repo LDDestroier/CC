@@ -2118,6 +2118,10 @@ local selectRegion = function()
 		end
 	end
 	local output = {}
+	pos[1][1] = pos[1][1] + paint.scrollX
+	pos[2][1] = pos[1][1] + paint.scrollX
+	pos[1][2] = pos[1][1] + paint.scrollY
+	pos[2][2] = pos[1][1] + paint.scrollY
 	for k,v in pairs(paintEncoded[frame]) do
 		if v.x >= pos[1][1] and v.x <= pos[2][1] then
 			if v.y >= pos[1][2] and v.y <= pos[2][2] then
@@ -2178,7 +2182,7 @@ end
 local editCut = function()
     local board = bottomPrompt("Cut to board: ")
     renderAllPAIN()
-    renderBottomBar("Select region to copy.")
+    renderBottomBar("Select region to cut.")
     local selectedDots, x1, y1, x2, y2 = selectRegion()
     theClipboard[board] = selectedDots
     local dot
