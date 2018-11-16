@@ -122,6 +122,8 @@ local nou = 2
 
 local keysDown = {}
 local netKeysDown = {}
+local lastDirectionPressed
+local netLastDirectionPressed
 
 -- the scrolling of the screen
 local scrollX = 0
@@ -330,7 +332,7 @@ local ageTrails = function()
 	end
 end
 
-local control = {
+local control, revControl = {
 	up = keys.up,
 	down = keys.down,
 	left = keys.left,
@@ -340,7 +342,10 @@ local control = {
 	lookLeft = keys.a,
 	lookRight = keys.d,
 	release = keys.space
-}
+}, {}
+for k,v in pairs(control) do
+	revControl[v] = k
+end
 
 -- keeps track of where you are
 local gamemode = ""
@@ -481,7 +486,6 @@ local render = function()
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
-	termwrite("P" .. you)
 	tsv(true)
 end
 
@@ -639,6 +643,14 @@ local getInput = function()
 			keysDown = {}
 		else
 			if evt[1] == "key" then
+				if (not keysDown[evt[2]]) and (
+					evt[2] == control.up or
+					evt[2] == control.down or
+					evt[2] == control.left or
+					evt[2] == control.right
+				) then
+					lastDirectionPressed = revControl[evt[2]]
+				end
 				keysDown[evt[2]] = true
 			elseif evt[1] == "key_up" then
 				keysDown[evt[2]] = false
@@ -687,6 +699,7 @@ local sendInfo = function(gameID)
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
 		deadGuys = isHost and deadGuys or nil,
+		lastDir = lastDirectionPressed
 	})
 end
 
@@ -763,15 +776,14 @@ local moveTick = function(doSend)
 	return deadAnimation(doSend)
 end
 
-local setDirection = function(keylist, p, checkDir)
-	p.putTrail = not keylist[control.release]
-	if keylist[control.left] and (checkDir or p.direction) ~= 0 then
+local setDirection = function(p, checkDir, lastDir)
+	if (lastDir == control.left) and (checkDir or p.direction) ~= 0 then
 		p.direction = 2
-	elseif keylist[control.right] and (checkDir or p.direction) ~= 2 then
+	elseif (lastDir == control.right) and (checkDir or p.direction) ~= 2 then
 		p.direction = 0
-	elseif keylist[control.up] and (checkDir or p.direction) ~= 1 then
+	elseif (lastDir == control.up) and (checkDir or p.direction) ~= 1 then
 		p.direction = -1
-	elseif keylist[control.down] and (checkDir or p.direction) ~= -1 then
+	elseif (lastDir == control.down) and (checkDir or p.direction) ~= -1 then
 		p.direction = 1
 	end
 end
@@ -787,11 +799,12 @@ local game = function()
 		np = player[nou]
 		
 		if isHost then
-			setDirection(keysDown, p)
-			setDirection(netKeysDown, np)
+			setDirection(p, nil, control[lastDirectionPressed])
+			setDirection(np, nil, control[netLastDirectionPressed])
 		else
-			setDirection(keysDown, p)
+			setDirection(p, nil, control[lastDirectionPressed])
 		end
+		p.putTrail = not keysDown[control.release]
 		
 		if keysDown[control.lookLeft] then
 			scrollAdjX = scrollAdjX - 2
@@ -871,6 +884,7 @@ local networking = function()
 						end
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
+						netLastDirectionPressed = msg.lastDir
 					end
 				end
 				
@@ -895,37 +909,45 @@ local helpScreen = function()
 	waitForKey(0.25)
 end
 
-while true do
-	decision = titleScreen()
-	lockInput = false
-	if decision == "start" then
-		trail = {}
-		deadGuys = {}
-		gameDelay = gameDelayInit
-		grid = deepCopy(initGrid)
-		player = resetPlayers()
-		you, nou = 1, 2
-		gamename = ""
-		for i = 1, 32 do
-			gamename = gamename .. string.char(math.random(1,126))
+local main = function()
+	while true do
+		decision = titleScreen()
+		lockInput = false
+		if decision == "start" then
+			-- reset all info between games
+			trail = {}
+			deadGuys = {}
+			lastDirectionPressed = nil
+			netLastDirectionPressed = nil
+			gameDelay = gameDelayInit
+			grid = deepCopy(initGrid)
+			player = resetPlayers()
+			you, nou = 1, 2
+			gamename = ""
+			for i = 1, 32 do
+				gamename = gamename .. string.char(math.random(1,126))
+			end
+			
+			waitingForGame = true
+			transmit(port, {
+				player = player,
+				gameID = gamename,
+				new = os.time(),
+				gameDelay = gameDelayInit,
+				grid = initGrid
+			})
+			parallel.waitForAny(pleaseWait, networking)
+			sleep(0.1)
+			startCountdown()
+			parallel.waitForAny(getInput, game, networking)
+		elseif decision == "help" then
+			helpScreen()
+		elseif decision == "demo" then
+			parallel.waitForAny(getInput, gridDemo)
+		elseif decision == "exit" then
+			return cleanExit()
 		end
-		waitingForGame = true
-		transmit(port, {
-			player = player,
-			gameID = gamename,
-			new = os.time(),
-			gameDelay = gameDelayInit,
-			grid = initGrid
-		})
-		parallel.waitForAny(pleaseWait, networking)
-		sleep(0.1)
-		startCountdown()
-		parallel.waitForAny(getInput, game, networking)
-	elseif decision == "help" then
-		helpScreen()
-	elseif decision == "demo" then
-		parallel.waitForAny(getInput, gridDemo)
-	elseif decision == "exit" then
-		return cleanExit()
 	end
 end
+
+main()
