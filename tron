@@ -487,6 +487,7 @@ local render = function()
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
+	term.write("P" .. you)
 	tsv(true)
 end
 
