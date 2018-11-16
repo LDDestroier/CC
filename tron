@@ -596,7 +596,7 @@ local makeMenu = function(x, y, options, doAnimate)
 				return cpos
 			end
 		elseif evt[1] == "timer" and evt[2] == gstID then
-			gstID = os.startTimer(0.05)
+			gstID = os.startTimer(gameDelayInit)
 			drawGrid(gsX, gsY, true, true)
 			step = step + 1
 			if mathceil(step / 100) % 2 == 1 then
@@ -855,7 +855,7 @@ local networking = function()
 					if msg.new < os.time() then
 						gamename = msg.gameID
 						isHost = false
-						gameDelay = tonumber(msg.gameDelay) or 0.05
+						gameDelay = tonumber(msg.gameDelay) or gameDelayInit
 						grid = msg.grid or deepCopy(initGrid)
 					else
 						you, nou = nou, you
