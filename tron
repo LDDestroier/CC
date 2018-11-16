@@ -241,7 +241,8 @@ end
 
 local drawImage = function(im, x, y)
 	local cx, cy = term.getCursorPos()
-	term.setBackgroundColor(colors.black)
+	term.setBackgroundColor(tocolors[initGrid.voidcol])
+	term.setTextColor(tocolors[initGrid.voidcol])
 	for iy = 1, #im[1] do
 		for ix = 1, #im[1][iy] do
 			term.setCursorPos(x+(ix-1),y+(iy-1))
@@ -288,7 +289,7 @@ local ageTrails = function()
 		end
 	end
 end
-
+local tocolors
 local toblit = {
 	[0] = " ",
 	[colors.white] = "0",
@@ -308,6 +309,9 @@ local toblit = {
 	[colors.red] = "e",
 	[colors.black] = "f"
 }
+for k,v in pairs(toblit) do
+	tocolors[v] = k
+end
 
 local control = {
 	up = keys.up,
