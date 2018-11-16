@@ -239,7 +239,7 @@ for k,v in pairs(images) do
 	end
 end
 
-local tocolors
+local tocolors = {}
 local toblit = {
 	[0] = " ",
 	[colors.white] = "0",
