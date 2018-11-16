@@ -6,42 +6,9 @@
 --]]
 
 local port = 701
-
 local scr_x, scr_y = term.getSize()
-local modem = peripheral.find("modem")
-if (not modem) and ccemux then
-	ccemux.attach("top", "wireless_modem")
-	modem = peripheral.find("modem")
-end
 
-if modem then
-	modem.open(port)
-else
-	error("You should attach a modem.")
-end
-
-local gamename = ""
-local isHost
-local squareGrid = true
-
-local waitingForGame = true
-
-local deepCopy
-deepCopy = function(tbl, ...)
-	local output = {}
-	for k,v in pairs(tbl) do
-		if type(v) == "table" then
-			output[k] = deepCopy(v)
-		else
-			output[k] = v
-		end
-	end
-	for i = 1, #arg do
-		output[#output+1] = arg[i]
-	end
-	return output
-end
-
+local gameDelayInit = 0.1 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local initGrid = {
 	x1 = -100,
 	y1 = -100,
@@ -53,28 +20,8 @@ local initGrid = {
 	backcol = "7",
 	edgecol = "0"
 }
-grid = deepCopy(initGrid)
-
-local you = 1
-local nou = 2
-
-local keysDown = {}
-local netKeysDown = {}
-
--- the scrolling of the screen
-local scrollX = 0
-local scrollY = 0
-
--- used when panning with WASD
-local scrollAdjX = 0
-local scrollAdjY = 0
-
-local lockInput = false
-local gameDelayInit = 0.1 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
-local player
-
 local resetPlayers = function()
-	player = {
+	return {
 		[1] = {
 			num = 1,
 			x = -2,
@@ -118,7 +65,76 @@ local resetPlayers = function()
 	}
 end
 
-resetPlayers()
+local modem = peripheral.find("modem")
+if (not modem) and ccemux then
+	ccemux.attach("top", "wireless_modem")
+	modem = peripheral.find("modem")
+end
+
+local transmit = function(port, message)
+	modem.transmit(port, port, message)
+end
+
+if modem then
+	modem.open(port)
+else
+	error("You should attach a modem.")
+end
+
+local gamename = ""
+local isHost
+local squareGrid = true
+
+local waitingForGame = true
+
+local termblit, termwrite, termclear = term.blit, term.write, term.clear
+local termsetCursorPos, termgetCursorPos = term.setCursorPos, term.getCursorPos
+local tableunpack, tableremove = unpack, table.remove
+local mathfloor, mathceil, mathcos, mathsin = math.floor, math.ceil, math.cos, math.sin
+local termsetTextColor, termsetBackgroundColor = term.setTextColor, term.setBackgroundColor
+
+local tsv = function(visible)
+	if term.current().setVisible then
+		term.current().setVisible(visible)
+	end
+end
+
+local deepCopy
+deepCopy = function(tbl, ...)
+	local output = {}
+	for k,v in pairs(tbl) do
+		if type(v) == "table" then
+			output[k] = deepCopy(v)
+		else
+			output[k] = v
+		end
+	end
+	for i = 1, #arg do
+		output[#output+1] = arg[i]
+	end
+	return output
+end
+
+grid = deepCopy(initGrid)
+
+local you = 1
+local nou = 2
+
+local keysDown = {}
+local netKeysDown = {}
+
+-- the scrolling of the screen
+local scrollX = 0
+local scrollY = 0
+
+-- used when panning with WASD
+local scrollAdjX = 0
+local scrollAdjY = 0
+
+local lockInput = false
+local player
+
+player = resetPlayers()
 
 local images = {
 	logo = {
@@ -264,18 +280,18 @@ for k,v in pairs(toblit) do
 end
 
 local drawImage = function(im, x, y)
-	local cx, cy = term.getCursorPos()
-	term.setBackgroundColor(tocolors[initGrid.voidcol])
-	term.setTextColor(tocolors[initGrid.voidcol])
+	local cx, cy = termgetCursorPos()
+	termsetBackgroundColor(tocolors[initGrid.voidcol])
+	termsetTextColor(tocolors[initGrid.voidcol])
 	for iy = 1, #im[1] do
 		for ix = 1, #im[1][iy] do
-			term.setCursorPos(x+(ix-1),y+(iy-1))
+			termsetCursorPos(x+(ix-1),y+(iy-1))
 			if not (im[2][iy]:sub(ix,ix) == " " and im[3][iy]:sub(ix,ix) == " ") then
-				term.blit(im[1][iy]:sub(ix,ix), im[2][iy]:sub(ix,ix), im[3][iy]:sub(ix,ix))
+				termblit(im[1][iy]:sub(ix,ix), im[2][iy]:sub(ix,ix), im[3][iy]:sub(ix,ix))
 			end
 		end
 	end
-	term.setCursorPos(cx,cy)
+	termsetCursorPos(cx,cy)
 end
 
 local deadGuys = {}
@@ -382,7 +398,7 @@ end
 
 --draws grid and background at scroll 'x' and 'y', along with trails and players
 local drawGrid = function(x, y, onlyDrawGrid)
-	x, y = math.floor(x + 0.5), math.floor(y + 0.5)
+	x, y = mathfloor(x + 0.5), mathfloor(y + 0.5)
 	local bg = {{},{},{}}
 	local foreX, foreY
 	local backX, backY
@@ -397,8 +413,8 @@ local drawGrid = function(x, y, onlyDrawGrid)
 			adjY = (sy + y)
 			foreX = 1 + (sx + x) % #gridFore[1]
 			foreY = 1 + (sy + y) % #gridFore
-			backX = 1 + math.floor(sx + (x / 2)) % #gridBack[1]
-			backY = 1 + math.floor(sy + (y / 2)) % #gridBack
+			backX = 1 + mathfloor(sx + (x / 2)) % #gridBack[1]
+			backY = 1 + mathfloor(sy + (y / 2)) % #gridBack
 			trailChar, trailColor, trailAge = getTrail(adjX, adjY)
 			isPlayer = false
 			if not onlyDrawGrid then
@@ -448,33 +464,35 @@ local drawGrid = function(x, y, onlyDrawGrid)
 		end
 	end
 	for sy = 1, scr_y do
-		term.setCursorPos(1,sy)
-		term.blit(bg[1][sy], bg[2][sy], bg[3][sy])
+		termsetCursorPos(1,sy)
+		termblit(bg[1][sy], bg[2][sy], bg[3][sy])
 	end
 end
 
 local render = function()
+	tsv(false)
 	local p = player[you]
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
-	term.setCursorPos(1,1)
-	term.setTextColor(player[you].color[1])
-	term.write("P" .. you)
+	termsetCursorPos(1,1)
+	termsetTextColor(player[you].color[1])
+	termwrite("P" .. you)
+	tsv(true)
 end
 
 local pleaseWait = function()
 	local periods = 1
 	local maxPeriods = 5
-	term.setBackgroundColor(colors.black)
-	term.setTextColor(colors.gray)
-	term.clear()
+	termsetBackgroundColor(colors.black)
+	termsetTextColor(colors.gray)
+	termclear()
 	
 	local tID = os.startTimer(0.2)	
 	local evt
 	local txt = "Waiting for game"
 	
 	while true do
-		term.setCursorPos(math.floor(scr_x / 2 - (#txt + maxPeriods) / 2), scr_y - 2)
-		term.write(txt .. ("."):rep(periods))
+		termsetCursorPos(mathfloor(scr_x / 2 - (#txt + maxPeriods) / 2), scr_y - 2)
+		termwrite(txt .. ("."):rep(periods))
 		evt = {os.pullEvent()}
 		if evt[1] == "timer" and evt[2] == tID then
 			tID = os.startTimer(0.5)
@@ -497,18 +515,18 @@ local startCountdown = function()
 		end
 	end
 	local cMessage = "You are "
-	scrollX = player[you].x - math.floor(scr_x / 2)
-	scrollY = player[you].y - math.floor(scr_y / 2)
+	scrollX = player[you].x - mathfloor(scr_x / 2)
+	scrollY = player[you].y - mathfloor(scr_y / 2)
 	for i = 3, 1, -1 do
 		render()
-		term.setCursorPos(math.floor(scr_x / 2 - (#cMessage + #cName) / 2), math.floor(scr_y / 2) + 2)
-		term.setTextColor(colors.white)
-		term.write(cMessage)
-		term.setTextColor(col)
-		term.write(cName)
-		term.setTextColor(colors.white)
-		term.setCursorPos(math.floor(scr_x / 2 - 2), math.floor(scr_y / 2) + 4)
-		term.write(i .. "...")
+		termsetCursorPos(mathfloor(scr_x / 2 - (#cMessage + #cName) / 2), mathfloor(scr_y / 2) + 2)
+		termsetTextColor(colors.white)
+		termwrite(cMessage)
+		termsetTextColor(col)
+		termwrite(cName)
+		termsetTextColor(colors.white)
+		termsetCursorPos(mathfloor(scr_x / 2 - 2), mathfloor(scr_y / 2) + 4)
+		termwrite(i .. "...")
 		sleep(1)
 	end
 end
@@ -520,27 +538,27 @@ local makeMenu = function(x, y, options, doAnimate)
 	local step = 0
 	local lastPos = cpos
 	if not doAnimate then
-		drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 2)
+		drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
 	end
 	local rend = function()
 		if doAnimate then
-			drawImage(images.logo, math.ceil(scr_x / 2 - images.logo.x / 2), 2)
+			drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
 		end
 		for i = 1, #options do
 			if i == cpos then
-				term.setCursorPos(x, y + (i - 1))
-				term.setTextColor(colors.white)
-				term.write(cursor .. options[i])
+				termsetCursorPos(x, y + (i - 1))
+				termsetTextColor(colors.white)
+				termwrite(cursor .. options[i])
 			else
 				if i == lastPos then
-					term.setCursorPos(x, y + (i - 1))
-					term.write((" "):rep(#cursor))
+					termsetCursorPos(x, y + (i - 1))
+					termwrite((" "):rep(#cursor))
 					lastPos = nil
 				else
-					term.setCursorPos(x + #cursor, y + (i - 1))
+					termsetCursorPos(x + #cursor, y + (i - 1))
 				end
-				term.setTextColor(colors.gray)
-				term.write(options[i])
+				termsetTextColor(colors.gray)
+				termwrite(options[i])
 			end
 		end
 	end
@@ -571,7 +589,7 @@ local makeMenu = function(x, y, options, doAnimate)
 			gstID = os.startTimer(0.05)
 			drawGrid(gsX, gsY, true)
 			step = step + 1
-			if math.ceil(step / 100) % 2 == 1 then
+			if mathceil(step / 100) % 2 == 1 then
 				gsX = gsX + 1
 			else
 				gsY = gsY - 1
@@ -581,8 +599,7 @@ local makeMenu = function(x, y, options, doAnimate)
 end
 
 local titleScreen = function()
-	term.clear()
-	
+	termclear()
 	local choice = makeMenu(2, scr_y - 4, {
 		"Start Game",
 		"How to Play",
@@ -601,10 +618,10 @@ local titleScreen = function()
 end
 
 local cleanExit = function()
-	term.setBackgroundColor(colors.black)
-	term.setTextColor(colors.white)
-	term.clear()
-	term.setCursorPos(1,1)
+	termsetBackgroundColor(colors.black)
+	termsetTextColor(colors.white)
+	termclear()
+	termsetCursorPos(1,1)
 	print("Thanks for playing!")
 end
 
@@ -658,7 +675,7 @@ local gridDemo = function()
 end
 
 local sendInfo = function(gameID)
-	modem.transmit(port, port, {
+	transmit(port, {
 		player = isHost and player or nil,
 		gameID = gameID,
 		keysDown = isHost and nil or keysDown,
@@ -681,23 +698,23 @@ local deadAnimation = function(doSend)
 		sendInfo(gamename)
 	end
 	if deadGuys[you] or deadGuys[nou] then
-		term.setTextColor(colors.white)
+		termsetTextColor(colors.white)
 		if deadGuys[you] and deadGuys[nou] then
 			scrollToPosition(player[nou].x, player[nou].y)
 			scrollToPosition(player[you].x, player[you].y)
-			drawImage(images.tie, math.ceil(scr_x / 2 - images.tie.x / 2), math.floor(scr_y / 2 - images.tie.y / 2))
+			drawImage(images.tie, mathceil(scr_x / 2 - images.tie.x / 2), mathfloor(scr_y / 2 - images.tie.y / 2))
 			waitForKey(1)
 			return "end"
 		else
 			if deadGuys[you] then
 				scrollX, scrollY = player[nou].x - scr_x / 2, player[nou].y - scr_y / 2
 				scrollToPosition(player[you].x, player[you].y)
-				drawImage(images.lose, math.ceil(scr_x / 2 - images.lose.x / 2), math.floor(scr_y / 2 - images.lose.y / 2))
+				drawImage(images.lose, mathceil(scr_x / 2 - images.lose.x / 2), mathfloor(scr_y / 2 - images.lose.y / 2))
 				waitForKey(1)
 				return "end"
 			elseif deadGuys[nou] then
 				scrollToPosition(player[nou].x, player[nou].y)
-				drawImage(images.win, math.ceil(scr_x / 2 - images.win.x / 2), math.floor(scr_y / 2 - images.win.y / 2))
+				drawImage(images.win, mathceil(scr_x / 2 - images.win.x / 2), mathfloor(scr_y / 2 - images.win.y / 2))
 				waitForKey(1)
 				return "end"
 			end
@@ -711,8 +728,8 @@ local moveTick = function(doSend)
 		p = player[i]
 		if not p.dead then
 			if isHost then
-				p.x = p.x + math.floor(math.cos(math.rad(p.direction * 90)))
-				p.y = p.y + math.floor(math.sin(math.rad(p.direction * 90)))
+				p.x = p.x + mathfloor(mathcos(math.rad(p.direction * 90)))
+				p.y = p.y + mathfloor(mathsin(math.rad(p.direction * 90)))
 				if doesIntersectBorder(p.x, p.y) or getTrail(p.x, p.y) then
 					p.dead = true
 					deadGuys[i] = true
@@ -720,7 +737,7 @@ local moveTick = function(doSend)
 					putTrail(p)
 					lastTrails[#lastTrails+1] = {p.x, p.y, p.num}
 					if #lastTrails > #player then
-						table.remove(lastTrails, 1)
+						tableremove(lastTrails, 1)
 					end
 				end
 			end
@@ -795,8 +812,8 @@ local game = function()
 		if outcome == "end" then
 			return
 		else
-			scrollX = p.x - math.floor(scr_x / 2)
-			scrollY = p.y - math.floor(scr_y / 2)
+			scrollX = p.x - mathfloor(scr_x / 2)
+			scrollY = p.y - mathfloor(scr_y / 2)
 
 			render()
 			if isHost then
@@ -826,7 +843,7 @@ local networking = function()
 						isHost = true
 					end
 					you, nou = nou, you
-					modem.transmit(port, port, {
+					transmit(port, {
 						player = player,
 						gameID = gamename,
 						new = isHost and (-math.huge) or (math.huge),
@@ -857,10 +874,10 @@ local networking = function()
 end
 
 local helpScreen = function()
-	term.setBackgroundColor(colors.black)
-	term.setTextColor(colors.white)
-	term.clear()
-	term.setCursorPos(1,2)
+	termsetBackgroundColor(colors.black)
+	termsetTextColor(colors.white)
+	termclear()
+	termsetCursorPos(1,2)
 	print([[
 		Move with arrow keys.
 		Pan the camera with WASD.
@@ -880,14 +897,14 @@ while true do
 		deadGuys = {}
 		gameDelay = gameDelayInit
 		grid = deepCopy(initGrid)
-		resetPlayers()
+		player = resetPlayers()
 		you, nou = 1, 2
 		gamename = ""
 		for i = 1, 32 do
 			gamename = gamename .. string.char(math.random(1,126))
 		end
 		waitingForGame = true
-		modem.transmit(port, port, {
+		transmit(port, {
 			player = player,
 			gameID = gamename,
 			new = os.time(),
