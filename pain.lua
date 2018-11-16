@@ -21,7 +21,7 @@ local progname = fs.getName(shell.getRunningProgram())
 local apipath = ".painapi"
 
 local painconfig = {
-	undoBufferSize = 8,			-- amount of times undo will save your neck
+	undoBufferSize = 8,		-- amount of times undo will save your neck
 	readNonImageAsNFP = true,	-- reads non-image files as NFP images
 	useFlattenGIF = true,		-- will flatten compressed GIFs
 	gridBleedThrough = false,	-- will draw grid instead of character value of dots
