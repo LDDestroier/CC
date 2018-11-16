@@ -299,6 +299,7 @@ end
 local deadGuys = {}
 local trail = {}
 local lastTrails = {}
+isPuttingDown = false
 
 local putTrailXY = function(x, y, p)
 	trail[y] = trail[y] or {}
@@ -695,6 +696,7 @@ end
 local sendInfo = function(gameID)
 	transmit(port, {
 		player = isHost and player or nil,
+		putTrail = isPuttingDown,
 		gameID = gameID,
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
@@ -801,10 +803,11 @@ local game = function()
 		if isHost then
 			setDirection(p, nil, control[lastDirectionPressed])
 			setDirection(np, nil, control[netLastDirectionPressed])
+			p.putTrail = not keysDown[control.release]
 		else
 			setDirection(p, nil, control[lastDirectionPressed])
+			isPuttingDown = not keysDown[control.release]
 		end
-		p.putTrail = not keysDown[control.release]
 		
 		if keysDown[control.lookLeft] then
 			scrollAdjX = scrollAdjX - 2
@@ -885,6 +888,7 @@ local networking = function()
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
 						netLastDirectionPressed = msg.lastDir
+						player[nou].putTrail = msg.putTrail
 					end
 				end
 				
