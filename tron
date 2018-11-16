@@ -857,13 +857,14 @@ local networking = function()
 				
 				if waitingForGame and (type(msg.new) == "number") then
 					if msg.new < os.time() then
-						gamename = msg.gameID
 						isHost = false
+						gamename = msg.gameID
 						gameDelay = tonumber(msg.gameDelay) or gameDelayInit
 						grid = msg.grid or deepCopy(initGrid)
+						player = msg.player or player
 					else
-						you, nou = nou, you
 						isHost = true
+						you, nou = nou, you
 					end
 					you, nou = nou, you
 					transmit(port, {
