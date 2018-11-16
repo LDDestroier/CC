@@ -239,6 +239,30 @@ for k,v in pairs(images) do
 	end
 end
 
+local tocolors
+local toblit = {
+	[0] = " ",
+	[colors.white] = "0",
+	[colors.orange] = "1",
+	[colors.magenta] = "2",
+	[colors.lightBlue] = "3",
+	[colors.yellow] = "4",
+	[colors.lime] = "5",
+	[colors.pink] = "6",
+	[colors.gray] = "7",
+	[colors.lightGray] = "8",
+	[colors.cyan] = "9",
+	[colors.purple] = "a",
+	[colors.blue] = "b",
+	[colors.brown] = "c",
+	[colors.green] = "d",
+	[colors.red] = "e",
+	[colors.black] = "f"
+}
+for k,v in pairs(toblit) do
+	tocolors[v] = k
+end
+
 local drawImage = function(im, x, y)
 	local cx, cy = term.getCursorPos()
 	term.setBackgroundColor(tocolors[initGrid.voidcol])
@@ -288,29 +312,6 @@ local ageTrails = function()
 			trail[y][x].age = trail[y][x].age + 1
 		end
 	end
-end
-local tocolors
-local toblit = {
-	[0] = " ",
-	[colors.white] = "0",
-	[colors.orange] = "1",
-	[colors.magenta] = "2",
-	[colors.lightBlue] = "3",
-	[colors.yellow] = "4",
-	[colors.lime] = "5",
-	[colors.pink] = "6",
-	[colors.gray] = "7",
-	[colors.lightGray] = "8",
-	[colors.cyan] = "9",
-	[colors.purple] = "a",
-	[colors.blue] = "b",
-	[colors.brown] = "c",
-	[colors.green] = "d",
-	[colors.red] = "e",
-	[colors.black] = "f"
-}
-for k,v in pairs(toblit) do
-	tocolors[v] = k
 end
 
 local control = {
