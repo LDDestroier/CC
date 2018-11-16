@@ -397,7 +397,10 @@ local doesIntersectBorder = function(x, y)
 end
 
 --draws grid and background at scroll 'x' and 'y', along with trails and players
-local drawGrid = function(x, y, onlyDrawGrid)
+local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
+	if useSetVisible then
+		tsv(false)
+	end
 	x, y = mathfloor(x + 0.5), mathfloor(y + 0.5)
 	local bg = {{},{},{}}
 	local foreX, foreY
@@ -466,6 +469,9 @@ local drawGrid = function(x, y, onlyDrawGrid)
 	for sy = 1, scr_y do
 		termsetCursorPos(1,sy)
 		termblit(bg[1][sy], bg[2][sy], bg[3][sy])
+	end
+	if useSetVisible then
+		tsv(true)
 	end
 end
 
@@ -587,7 +593,7 @@ local makeMenu = function(x, y, options, doAnimate)
 			end
 		elseif evt[1] == "timer" and evt[2] == gstID then
 			gstID = os.startTimer(0.05)
-			drawGrid(gsX, gsY, true)
+			drawGrid(gsX, gsY, true, true)
 			step = step + 1
 			if mathceil(step / 100) % 2 == 1 then
 				gsX = gsX + 1
