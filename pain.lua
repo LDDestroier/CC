@@ -1141,21 +1141,6 @@ lddfm.scrollMenu = function(amount,list,y1,y2)
 	end
 end
 
---[[
- a quick explanation of the arguments for lddfm.makeMenu:
-
-x1 and y1: top-left corner coordinates of menu window. defaults to the top-left corner of the screen
-x2 and y2: bottom-right corner coordinates of menu window. defaults to the bottom-right corner of the screen
-_path: path to start viewing. defaults to "/"
-_noFiles: whether or not to view files in the menu, mainly for picking a path for installing something. defaults to false
-_noFolders: whether or not to view folders in the menu, mainly for choosing a file to run or whatever. defaults to false
-_noCD: whether or not you can change the directory, mainly to limit choices to a single folder. defaults to false
-_noSelectFolders: whether or not you can select folders to return. defaults to false
-_doHidden: whether or not to hide hidden files (starts with "."). defaults to false
-_p: the palate. has: bg, d_txt, d_bg, f_txt, t_bg, p_txt, p_bg, scr, scrbar. 'd' is for directory, 'f' is for file, 'p' is for path bar.
-_canClose: whether or not you can click on the little top-right "Cancel" button.
---]]
-
 lddfm.makeMenu = function(_x1,_y1,_x2,_y2,_path,_noFiles,_noFolders,_noCD,_noSelectFolders,_doHidden,_p,_canClose)
 	if _noFiles and _noFolders then
 		return false, "C'mon, man..."
@@ -2119,9 +2104,9 @@ local selectRegion = function()
 	end
 	local output = {}
 	pos[1][1] = pos[1][1] + paint.scrollX
-	pos[2][1] = pos[1][1] + paint.scrollX
-	pos[1][2] = pos[1][1] + paint.scrollY
-	pos[2][2] = pos[1][1] + paint.scrollY
+	pos[2][1] = pos[2][1] + paint.scrollX
+	pos[1][2] = pos[1][2] + paint.scrollY
+	pos[2][2] = pos[2][2] + paint.scrollY
 	for k,v in pairs(paintEncoded[frame]) do
 		if v.x >= pos[1][1] and v.x <= pos[2][1] then
 			if v.y >= pos[1][2] and v.y <= pos[2][2] then
