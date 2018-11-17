@@ -152,8 +152,8 @@ local images = {
 		{
 			" f7777777777777777777f   f77777f  7f    f777",
 			" f99979999979999999999f 799999799 77f7  f997",
-			"     799          79999f997ffff9977997f f997",
-			"     799    7797777fffff997ffff9977997797997",
+			"     799          79999f997    9977997f f997",
+			"     799    7797777fffff997    9977997797997",
 			"     799    799 799977f7797fff7997799  79797",
 			"     799    799   7797f 797999997 799    797",
 			"     777    777    7777  7777777  777     77",
@@ -161,8 +161,8 @@ local images = {
 		{
 			" 7999999999f9999999997   7999997  97    799f",
 			" 7777997777f77777779997 997777997 997f  799f",
-			"     997          f7777799ffff799f99997 799f",
-			"     997    997f9997fff799ffff799f997ff7999f",
+			"     997          f7777799    799f99997 799f",
+			"     997    997f9997fff799    799f997ff7999f",
 			"     997    997 f7999fff999777997f997  f799f",
 			"     997    997   f9997 f7999977f 997    f7f",
 			"     fff    fff    ffff  fffffff  fff     ff",
@@ -178,20 +178,20 @@ local images = {
 			"",
 		},
 		{
-			"55ffffff55f555555f5ffffff5f55",
-			"55ffffff5555f55f5f55f5fff5f55",
-			"55fff5ff55fff55fff5555fff5f55",
-			"55ff55ff55fff55fff55f5fff5f55",
-			"5f55f5ff55f5f55fff55fff555ff5",
-			"555ffff555f555555f55fffff5f55",
+			"55      55 555555 5      5 55",
+			"55      5555 55 5 55 5   5 55",
+			"55   5  55   55   5555   5 55",
+			"55  55  55   55   55 5   5 55",
+			"5 55 5  55 5 55   55   555  5",
+			"555    555 555555 55     5 55",
 		},
 		{
-			"5fffffff5f5555555f55ffff55f5f",
-			"5fffffff5ffff5ffff555fff55f5f",
-			"5fff5fff5ffff5ffff5ff55f55f5f",
-			"5f55f55f5ffff5ffff5fff5555f5f",
-			"555fff555f5ff5ff5f5fffff55f5f",
-			"5fffffff5f5555555f5fffff55f5f",
+			"5       5 5555555 55    55 5 ",
+			"5       5    5    555   55 5 ",
+			"5   5   5    5    5  55 55 5 ",
+			"5 55 55 5    5    5   5555 5 ",
+			"555   555 5  5  5 5     55 5 ",
+			"5       5 5555555 5     55 5 ",
 		}
 	},
 	lose = {
@@ -204,20 +204,20 @@ local images = {
 			"",
 		},
 		{
-			"eeffffffffeeefeffeeeeeffeeeeeee",
-			"eeffffffeeefefefeefffeefeefffee",
-			"eeffffffeeffffefeeffffffeffffef",
-			"eeffffffeeffffefeeeeefefeeeeeef",
-			"eeffffffefefffeffeffffefeefffff",
-			"eeeeeeefefeeeeeffeeeeeefeeeeeee",
+			"ee        eee e  eeeee  eeeeeee",
+			"ee      eee e e ee   ee ee   ee",
+			"ee      ee    e ee      e    e ",
+			"ee      ee    e eeeee e eeeeee ",
+			"ee      e e   e  e    e ee     ",
+			"eeeeeee e eeeee  eeeeee eeeeeee",
 		},
 		{
-			"efffffffeeeeeeffeeeeeeefeeeeeee",
-			"efffffffeffffeefefffffffeffffff",
-			"efffffffeffffeefeeeeeeefeeeeeff",
-			"efffffffeffffeeffffffeefeffffff",
-			"efffffffeeffeeefeffffeefeffffee",
-			"eeeeeeeffeeeefffeeeeeeffeeeeeee",
+			"e       eeeeee  eeeeeee eeeeeee",
+			"e       e    ee e       e      ",
+			"e       e    ee eeeeeee eeeee  ",
+			"e       e    ee      ee e      ",
+			"e       ee  eee e    ee e    ee",
+			"eeeeeee  eeee   eeeeee  eeeeeee",
 		}
 	},
 	tie = {
@@ -230,31 +230,33 @@ local images = {
 			"",
 		},
 		{
-			"77888800f0000000f0888877",
-			"fff88fff00ff0ff0f08ffff7",
-			"fff88fffffff0ffff0ffff7f",
-			"fff88fffffff0ffff088887f",
-			"fff88ffff0ff0ffff08fffff",
-			"fff88ffff0000000f0888877",
+			"77888800 0000000 0888877",
+			"   88   00  0  0 08    7",
+			"   88       0    0    7 ",
+			"   88       0    088887 ",
+			"   88    0  0    08     ",
+			"   88    0000000 0888877",
 		},
 		{
-			"7788880f00000000f0888877",
-			"fff8fffffff00ffff0ffffff",
-			"fff8fffffff00ffff08888ff",
-			"fff8fffffff00ffff0ffffff",
-			"fff8ffff0ff00ff0f0fffff7",
-			"fff8ffff00000000f0888877",
+			"7788880 00000000 0888877",
+			"   8       00    0      ",
+			"   8       00    08888  ",
+			"   8       00    0      ",
+			"   8    0  00  0 0     7",
+			"   8    00000000 0888877",
 		},
 	}
 }
 for k,v in pairs(images) do
 	v.x = #v[1][1]
 	v.y = #v[1]
+	--[[
 	for i = 2, #v do
 		for line = 1, #v[i] do
 			images[k][i][line] = v[i][line]:gsub("f", " ")
 		end
 	end
+	--]]
 end
 
 local tocolors = {}
