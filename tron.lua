@@ -779,8 +779,17 @@ local sendInfo = function(gameID)
 end
 
 local waitForKey = function(time)
-	sleep(time or 0.1)
+	sleep(time or 0.5)
 	os.pullEvent("key")
+end
+
+local imageAnim = function(image)
+	while true do
+		drawImage(image, mathceil(scr_x / 2 - image.x / 2), mathfloor(scr_y / 2 - image.y / 2))
+		sleep(0.5)
+		render(true)
+		sleep(0.5)
+	end
 end
 
 local deadAnimation = function(doSend)
@@ -796,20 +805,17 @@ local deadAnimation = function(doSend)
 		if deadGuys[you] and deadGuys[nou] then
 			scrollToPosition(player[nou].x, player[nou].y)
 			scrollToPosition(player[you].x, player[you].y)
-			drawImage(images.tie, mathceil(scr_x / 2 - images.tie.x / 2), mathfloor(scr_y / 2 - images.tie.y / 2))
-			waitForKey(1)
+			parallel.waitForAny(function() imageAnim(images.tie) end, waitForKey)
 			return "end"
 		else
 			if deadGuys[you] then
 				scrollX, scrollY = player[nou].x - scr_x / 2, player[nou].y - scr_y / 2
 				scrollToPosition(player[you].x, player[you].y)
-				drawImage(images.lose, mathceil(scr_x / 2 - images.lose.x / 2), mathfloor(scr_y / 2 - images.lose.y / 2))
-				waitForKey(1)
+				parallel.waitForAny(function() imageAnim(images.lose) end, waitForKey)
 				return "end"
 			elseif deadGuys[nou] then
 				scrollToPosition(player[nou].x, player[nou].y)
-				drawImage(images.win, mathceil(scr_x / 2 - images.win.x / 2), mathfloor(scr_y / 2 - images.win.y / 2))
-				waitForKey(1)
+				parallel.waitForAny(function() imageAnim(images.win) end, waitForKey)
 				return "end"
 			end
 		end
