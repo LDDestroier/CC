@@ -605,9 +605,9 @@ local startCountdown = function()
 	for i = 3, 1, -1 do
 		render()
 		termsetTextColor(colors.white)
-		for x = 1, #cMessage do
+		for x = 1, #cMessage+1 do
 			termsetCursorPos(-1 + x + mathfloor(scr_x / 2 - (#cMessage + #cName) / 2), mathfloor(scr_y / 2) + 2)
-			if cMessage:sub(x,x) ~= " " then
+			if cMessage:sub(x,x) ~= " " and x <= #cMessage then
 				termwrite(cMessage:sub(x,x))
 			end
 		end
