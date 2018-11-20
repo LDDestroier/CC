@@ -8,7 +8,9 @@
 local port = 701
 local scr_x, scr_y = term.getSize()
 
-local gameDelayInit = 0.1 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
+-- lower value = faster game. I'd reccommend 0.1 for SMP play.
+local gameDelayInit = 0.1
+
 local initGrid = {
 	x1 = -100,
 	y1 = -100,
@@ -74,6 +76,7 @@ local modem, skynet
 if useSkynet then
 	if fs.exists(skynetPath) then
 		skynet = dofile(skynetPath)
+		skynet.open(port)
 	else
 		local prog = http.get(skynetURL)
 		if prog then
@@ -81,6 +84,7 @@ if useSkynet then
 			file.write(prog.readAll())
 			file.close()
 			skynet = dofile(skynetPath)
+			skynet.open(port)
 		else
 			error("Could not download Skynet.")
 		end
@@ -822,7 +826,9 @@ local game = function()
 	local outcome
 	local p, np
 	while true do
-		if not isHost then
+		if isHost then
+			sleep(gameDelay)
+		else
 			os.pullEvent("move_tick")
 		end
 		p = player[you]
@@ -866,9 +872,6 @@ local game = function()
 			scrollY = p.y - mathfloor(scr_y / 2)
 
 			render()
-			if isHost then
-				sleep(gameDelay)
-			end
 		end
 	end
 end
@@ -879,13 +882,12 @@ local networking = function()
 	local evt, side, channel, repchannel, msg, distance
 	while true do
 		if useSkynet then
-			evt, msg = os.pullEvent("skynet_message")
+			evt, channel, msg = os.pullEvent("skynet_message")
 		else
 			evt, side, channel, repchannel, msg, distance = os.pullEvent("modem_message")
 		end
-		if (evt == "skynet_message" or (channel == port and repchannel == port)) and type(msg) == "table" then
+		if channel == port and type(msg) == "table" then
 			if type(msg.gameID) == "string" then
-				
 				if waitingForGame and (type(msg.new) == "number") then
 					if msg.new < os.time() then
 						isHost = false
@@ -912,8 +914,10 @@ local networking = function()
 					if not isHost then
 						if type(msg.player) == "table" then
 							player = msg.player
-							for i = 1, #msg.trail do
-								putTrailXY(unpack(msg.trail[i]))
+							if msg.trail then
+								for i = 1, #msg.trail do
+									putTrailXY(unpack(msg.trail[i]))
+								end
 							end
 							deadGuys = msg.deadGuys
 							os.queueEvent("move_tick")
