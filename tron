@@ -80,6 +80,7 @@ if useSkynet then
 			local file = fs.open(skynetPath, "w")
 			file.write(prog.readAll())
 			file.close()
+			skynet = dofile(skynetPath)
 		else
 			error("Could not download Skynet.")
 		end
