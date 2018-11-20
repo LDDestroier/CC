@@ -64,21 +64,45 @@ local resetPlayers = function()
 		}
 	}
 end
+local tArg = {...}
 
-local modem = peripheral.find("modem")
-if (not modem) and ccemux then
-	ccemux.attach("top", "wireless_modem")
+local useSkynet = (tArg[1] or ""):lower() == "skynet"
+local skynetPath = "skynet"
+local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
+
+local modem, skynet
+if useSkynet then
+	if fs.exists(skynetPath) then
+		skynet = dofile(skynetPath)
+	else
+		local prog = http.get(skynetURL)
+		if prog then
+			local file = fs.open(skynetPath, "w")
+			file.write(prog.readAll())
+			file.close()
+		else
+			error("Could not download Skynet.")
+		end
+	end
+else
 	modem = peripheral.find("modem")
+	if (not modem) and ccemux then
+		ccemux.attach("top", "wireless_modem")
+		modem = peripheral.find("modem")
+	end
+	if modem then
+		modem.open(port)
+	else
+		error("You should attach a modem.")
+	end
 end
 
 local transmit = function(port, message)
-	modem.transmit(port, port, message)
-end
-
-if modem then
-	modem.open(port)
-else
-	error("You should attach a modem.")
+	if useSkynet then
+		skynet.send(port, message)
+	else
+		modem.transmit(port, port, message)
+	end
 end
 
 local gamename = ""
@@ -853,8 +877,12 @@ local decision
 local networking = function()
 	local evt, side, channel, repchannel, msg, distance
 	while true do
-		evt, side, channel, repchannel, msg, distance = os.pullEvent("modem_message")
-		if channel == port and repchannel == port and type(msg) == "table" then
+		if useSkynet then
+			evt, msg = os.pullEvent("skynet_message")
+		else
+			evt, side, channel, repchannel, msg, distance = os.pullEvent("modem_message")
+		end
+		if (evt == "skynet_message" or (channel == port and repchannel == port)) and type(msg) == "table" then
 			if type(msg.gameID) == "string" then
 				
 				if waitingForGame and (type(msg.new) == "number") then
@@ -958,4 +986,8 @@ local main = function()
 	end
 end
 
-main()
+if useSkynet then
+	parallel.waitForAny(main, skynet.listen)
+else
+	main()
+end
