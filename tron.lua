@@ -2,7 +2,7 @@
 	TRON Light Cycle Game
 	programmed by LDDestroier
 
-	wget https://raw.githubusercontent.com/LDDestroier/CC/master/tron
+	wget https://raw.githubusercontent.com/LDDestroier/CC/master/tron.lua
 --]]
 
 local port = 701
