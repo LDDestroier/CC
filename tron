@@ -1,12 +1,13 @@
 --[[
 	TRON Light Cycle Game
 	programmed by LDDestroier
-	
-	wget https://raw.githubusercontent.com/LDDestroier/CC/skynet/tron
+
+	wget https://raw.githubusercontent.com/LDDestroier/CC/master/tron
 --]]
 
 local port = 701
 local scr_x, scr_y = term.getSize()
+local isColor = term.isColor()
 
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local gameDelayInit = 0.1
@@ -67,7 +68,6 @@ local resetPlayers = function()
 	}
 end
 local tArg = {...}
-
 local useSkynet = (tArg[1] or ""):lower() == "skynet"
 local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
@@ -115,12 +115,77 @@ local isHost
 local squareGrid = true
 
 local waitingForGame = true
+local toblit = {
+	[0] = " ",
+	[colors.white] = "0",
+	[colors.orange] = "1",
+	[colors.magenta] = "2",
+	[colors.lightBlue] = "3",
+	[colors.yellow] = "4",
+	[colors.lime] = "5",
+	[colors.pink] = "6",
+	[colors.gray] = "7",
+	[colors.lightGray] = "8",
+	[colors.cyan] = "9",
+	[colors.purple] = "a",
+	[colors.blue] = "b",
+	[colors.brown] = "c",
+	[colors.green] = "d",
+	[colors.red] = "e",
+	[colors.black] = "f"
+}
+local tograyCol, tograyBlit = {
+	[0] = 0,
+	[colors.white] = colors.white,
+	[colors.orange] = colors.lightGray,
+	[colors.magenta] = colors.lightGray,
+	[colors.lightBlue] = colors.white,
+	[colors.yellow] = colors.white,
+	[colors.lime] = colors.lightGray,
+	[colors.pink] = colors.lightGray,
+	[colors.gray] = colors.gray,
+	[colors.lightGray] = colors.lightGray,
+	[colors.cyan] = colors.lightGray,
+	[colors.purple] = colors.gray,
+	[colors.blue] = colors.gray,
+	[colors.brown] = colors.gray,
+	[colors.green] = colors.gray,
+	[colors.red] = colors.white,
+	[colors.black] = colors.black
+}, {}
 
-local termblit, termwrite, termclear = term.blit, term.write, term.clear
+local tocolors = {}
+for k,v in pairs(toblit) do
+	tocolors[v] = k
+end
+for k,v in pairs(tograyCol) do
+	tograyBlit[toblit[k]] = toblit[v]
+end
+
+local termwrite, termclear = term.write, term.clear
 local termsetCursorPos, termgetCursorPos = term.setCursorPos, term.getCursorPos
 local tableunpack, tableremove = unpack, table.remove
 local mathfloor, mathceil, mathcos, mathsin = math.floor, math.ceil, math.cos, math.sin
-local termsetTextColor, termsetBackgroundColor = term.setTextColor, term.setBackgroundColor
+
+local termsetTextColor = function(col)
+	return term.setTextColor(isColor and col or tograyCol[col])
+end
+
+local termsetBackgroundColor = function(col)
+	return term.setBackgroundColor(isColor and col or tograyCol[col])
+end
+
+local termblit = function(char, text, back)
+	if isColor then
+		return term.blit(char, text, back)
+	else
+		return term.blit(
+			char,
+			text:gsub(".", tograyBlit),
+			back:gsub(".", tograyBlit)
+		)
+	end
+end
 
 local tsv = function(visible)
 	if term.current().setVisible then
@@ -279,48 +344,21 @@ local images = {
 for k,v in pairs(images) do
 	v.x = #v[1][1]
 	v.y = #v[1]
-	--[[
-	for i = 2, #v do
-		for line = 1, #v[i] do
-			images[k][i][line] = v[i][line]:gsub("f", " ")
-		end
-	end
-	--]]
-end
-
-local tocolors = {}
-local toblit = {
-	[0] = " ",
-	[colors.white] = "0",
-	[colors.orange] = "1",
-	[colors.magenta] = "2",
-	[colors.lightBlue] = "3",
-	[colors.yellow] = "4",
-	[colors.lime] = "5",
-	[colors.pink] = "6",
-	[colors.gray] = "7",
-	[colors.lightGray] = "8",
-	[colors.cyan] = "9",
-	[colors.purple] = "a",
-	[colors.blue] = "b",
-	[colors.brown] = "c",
-	[colors.green] = "d",
-	[colors.red] = "e",
-	[colors.black] = "f"
-}
-for k,v in pairs(toblit) do
-	tocolors[v] = k
 end
 
 local drawImage = function(im, x, y)
 	local cx, cy = termgetCursorPos()
-	termsetBackgroundColor(tocolors[initGrid.voidcol])
-	termsetTextColor(tocolors[initGrid.voidcol])
+	termsetBackgroundColor(	tocolors[initGrid.voidcol] )
+	termsetTextColor(		tocolors[initGrid.voidcol] )
 	for iy = 1, #im[1] do
 		for ix = 1, #im[1][iy] do
 			termsetCursorPos(x+(ix-1),y+(iy-1))
 			if not (im[2][iy]:sub(ix,ix) == " " and im[3][iy]:sub(ix,ix) == " ") then
-				termblit(im[1][iy]:sub(ix,ix), im[2][iy]:sub(ix,ix), im[3][iy]:sub(ix,ix))
+				termblit(
+					im[1][iy]:sub(ix,ix),
+					im[2][iy]:sub(ix,ix),
+					im[3][iy]:sub(ix,ix)
+				)
 			end
 		end
 	end
@@ -505,7 +543,11 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	end
 	for sy = 1, scr_y do
 		termsetCursorPos(1,sy)
-		termblit(bg[1][sy], bg[2][sy], bg[3][sy])
+		termblit(
+			bg[1][sy],
+			bg[2][sy],
+			bg[3][sy]
+		)
 	end
 	if useSetVisible then
 		tsv(true)
@@ -528,11 +570,11 @@ local pleaseWait = function()
 	termsetBackgroundColor(colors.black)
 	termsetTextColor(colors.gray)
 	termclear()
-	
-	local tID = os.startTimer(0.2)	
+
+	local tID = os.startTimer(0.2)
 	local evt
 	local txt = "Waiting for game"
-	
+
 	while true do
 		termsetCursorPos(mathfloor(scr_x / 2 - (#txt + maxPeriods) / 2), scr_y - 2)
 		termwrite(txt .. ("."):rep(periods))
@@ -833,7 +875,7 @@ local game = function()
 		end
 		p = player[you]
 		np = player[nou]
-		
+
 		if isHost then
 			setDirection(p, nil, control[lastDirectionPressed])
 			setDirection(np, nil, control[netLastDirectionPressed])
@@ -842,7 +884,7 @@ local game = function()
 			setDirection(p, nil, control[lastDirectionPressed])
 			isPuttingDown = not keysDown[control.release]
 		end
-		
+
 		if keysDown[control.lookLeft] then
 			scrollAdjX = scrollAdjX - 2
 		end
@@ -855,7 +897,7 @@ local game = function()
 		if keysDown[control.lookDown] then
 			scrollAdjY = scrollAdjY + 1.5
 		end
-		
+
 		scrollAdjX = scrollAdjX * 0.8
 		scrollAdjY = scrollAdjY * 0.8
 
@@ -909,7 +951,7 @@ local networking = function()
 					waitingForGame = false
 					netKeysDown = {}
 					os.queueEvent("new_game", gameID)
-					
+
 				elseif msg.gameID == gamename then
 					if not isHost then
 						if type(msg.player) == "table" then
@@ -928,7 +970,7 @@ local networking = function()
 						player[nou].putTrail = msg.putTrail
 					end
 				end
-				
+
 			end
 		end
 	end
@@ -943,7 +985,7 @@ local helpScreen = function()
 		Move with arrow keys.
 		Pan the camera with WASD.
 		Hold SPACE to create gaps.
-		
+
 		That's basically it.
 		Press any key to go back.
 	]])
@@ -968,7 +1010,7 @@ local main = function()
 			for i = 1, 32 do
 				gamename = gamename .. string.char(math.random(1,126))
 			end
-			
+
 			waitingForGame = true
 			transmit(port, {
 				player = player,
