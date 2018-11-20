@@ -373,7 +373,7 @@ isPuttingDown = false
 local putTrailXY = function(x, y, p)
 	trail[y] = trail[y] or {}
 	trail[y][x] = {
-		player = player[p],
+		player = p,
 		age = 0
 	}
 end
@@ -385,10 +385,7 @@ end
 local getTrail = function(x, y)
 	if trail[y] then
 		if trail[y][x] then
-			if doAge then
-				trail[y][x].age = trail[y][x].age + 1
-			end
-			return trail[y][x].player.char, trail[y][x].player.color, trail[y][x].age
+			return player[trail[y][x].player].char, player[trail[y][x].player].color, trail[y][x].age
 		end
 	end
 	return false
@@ -554,14 +551,12 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	end
 end
 
-local render = function()
-	tsv(false)
+local render = function(useSetVisible)
 	local p = player[you]
-	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY)
+	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY, false, useSetVisible)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
 	term.write("P" .. you)
-	tsv(true)
 end
 
 local pleaseWait = function()
@@ -583,9 +578,9 @@ local pleaseWait = function()
 			tID = os.startTimer(0.5)
 			periods = (periods % maxPeriods) + 1
 			term.clearLine()
-		elseif evt[1] == "new_game" then
-			return evt[2]
-		end
+		elseif evt[1] == "key" and evt[2] == keys.q then
+            return
+        end
 	end
 end
 
@@ -603,7 +598,7 @@ local startCountdown = function()
 	scrollX = player[you].x - mathfloor(scr_x / 2)
 	scrollY = player[you].y - mathfloor(scr_y / 2)
 	for i = 3, 1, -1 do
-		render()
+		render(true)
 		termsetTextColor(colors.white)
 		for x = 1, #cMessage+1 do
 			termsetCursorPos(-1 + x + mathfloor(scr_x / 2 - (#cMessage + #cName) / 2), mathfloor(scr_y / 2) + 2)
@@ -742,7 +737,7 @@ local scrollToPosition = function(x, y)
 	for i = 1, 16 do
 		scrollX = (scrollX + x - (scr_x/2)) / 2
 		scrollY = (scrollY + y - (scr_y/2)) / 2
-		render()
+		render(true)
 		sleep(0.05)
 	end
 end
@@ -765,7 +760,7 @@ local gridDemo = function()
 		if keysDown[keys.q] then
 			return "end"
 		end
-		drawGrid(scrollX, scrollY)
+		drawGrid(scrollX, scrollY, false, true)
 		ageTrails()
 		sleep(gameDelay)
 	end
@@ -917,7 +912,7 @@ local game = function()
 			scrollX = p.x - mathfloor(scr_x / 2)
 			scrollY = p.y - mathfloor(scr_y / 2)
 
-			render()
+			render(true)
 		end
 	end
 end
@@ -955,6 +950,7 @@ local networking = function()
 					waitingForGame = false
 					netKeysDown = {}
 					os.queueEvent("new_game", gameID)
+                    return gameID
 
 				elseif msg.gameID == gamename then
 					if not isHost then
@@ -997,6 +993,7 @@ local helpScreen = function()
 end
 
 local main = function()
+    local rVal
 	while true do
 		decision = titleScreen()
 		lockInput = false
@@ -1023,10 +1020,12 @@ local main = function()
 				gameDelay = gameDelayInit,
 				grid = initGrid
 			})
-			parallel.waitForAny(pleaseWait, networking)
+			rVal = parallel.waitForAny(pleaseWait, networking)
 			sleep(0.1)
-			startCountdown()
-			parallel.waitForAny(getInput, game, networking)
+            if rVal == 2 then
+                startCountdown()
+                parallel.waitForAny(getInput, game, networking)
+            end
 		elseif decision == "help" then
 			helpScreen()
 		elseif decision == "demo" then
