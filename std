@@ -19,7 +19,7 @@ that could not work with the standard syntax.
 if type(std) ~= "table" then std = {} end
 
 std.channelURLs = { --special URLs for getting a list of files.
-	["STD"] = "https://pastebin.com/raw/zVws7eLq", --stock
+	["STD"] = "https://raw.githubusercontent.com/LDDestroier/STD-GUI/master/list.lua", --stock from github
 	["Discover"] = "https://pastebin.com/raw/9bXfCz6M", --owned by dannysmc95
 	--["OnlineAPPS"] = "https://pastebin.com/raw/g2EnDYLp", --owned by Twijn, but discontinued
 	["STD-Media"] = "https://pastebin.com/raw/3JZHXTGL" --non-program media files
