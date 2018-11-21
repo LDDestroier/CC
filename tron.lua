@@ -923,8 +923,6 @@ local game = function()
 	end
 end
 
-local decision
-
 local networking = function()
 	local evt, side, channel, repchannel, msg, distance
 	while true do
@@ -998,8 +996,10 @@ local helpScreen = function()
 	waitForKey(0.25)
 end
 
+local decision
+
 local main = function()
-    local rVal
+  local rVal
 	while true do
 		decision = titleScreen()
 		lockInput = false
@@ -1026,16 +1026,17 @@ local main = function()
 				gameDelay = gameDelayInit,
 				grid = initGrid
 			})
-			rVal = parallel.waitForAny(pleaseWait, networking)
+			rVal = parallel.waitForAny( pleaseWait, networking )
+			 -- give time for skynet
 			sleep(0.1)
-            if rVal == 2 then
-                startCountdown()
-                parallel.waitForAny(getInput, game, networking)
-            end
+			if rVal == 2 then
+				startCountdown()
+				parallel.waitForAny( getInput, game, networking )
+			end
 		elseif decision == "help" then
 			helpScreen()
 		elseif decision == "demo" then
-			parallel.waitForAny(getInput, gridDemo)
+			parallel.waitForAny( getInput, gridDemo )
 		elseif decision == "exit" then
 			return cleanExit()
 		end
@@ -1044,6 +1045,7 @@ end
 
 if useSkynet then
 	parallel.waitForAny(main, skynet.listen)
+	skynet.socket.close()
 else
 	main()
 end
