@@ -11,6 +11,7 @@ local isColor = term.isColor()
 
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local gameDelayInit = 0.1
+local doDrawPlayerNames = false
 
 local initGrid = {
 	x1 = -100,
@@ -43,7 +44,8 @@ local resetPlayers = function()
 				colors.cyan
 			},
 			dead = false,
-			putTrail = true
+			putTrail = true,
+            name = "BLU"
 		},
 		[2] = {
 			num = 2,
@@ -63,7 +65,8 @@ local resetPlayers = function()
 				colors.orange
 			},
 			dead = false,
-			putTrail = true
+			putTrail = true,
+            name = "RED"
 		}
 	}
 end
@@ -165,7 +168,7 @@ end
 local termwrite, termclear = term.write, term.clear
 local termsetCursorPos, termgetCursorPos = term.setCursorPos, term.getCursorPos
 local tableunpack, tableremove = unpack, table.remove
-local mathfloor, mathceil, mathcos, mathsin = math.floor, math.ceil, math.cos, math.sin
+local mathfloor, mathceil, mathcos, mathsin, mathrandom, mathrad = math.floor, math.ceil, math.cos, math.sin, math.random, math.rad
 
 local termsetTextColor = function(col)
 	return term.setTextColor(isColor and col or tograyCol[col])
@@ -500,7 +503,7 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 					end
 				end
 			end
-			if isPlayer and not (doesIntersectBorder(adjX, adjY)) then
+			if isPlayer and (not onlyDrawGrid) and (not doesIntersectBorder(adjX, adjY)) then
 				bg[1][sy] = bg[1][sy] .. dirArrow[player[isPlayer].direction]
 				bg[2][sy] = bg[2][sy] .. toblit[player[isPlayer].color[1]]
 				bg[3][sy] = bg[3][sy] .. grid.voidcol
@@ -546,6 +549,22 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 			bg[3][sy]
 		)
 	end
+    if doDrawPlayerNames and (not onlyDrawGrid) then
+        for i = 1, #player do
+            termsetTextColor(player[i].color[1])
+            adjX = player[i].x - (scrollX + scrollAdjX) - mathfloor(#player[i].name / 2)
+            adjY = player[i].y - (scrollY + scrollAdjY) - 2
+            for cx = adjX, adjX + #player[i].name do
+                if doesIntersectBorder(adjX + (scrollX + scrollAdjX), adjY + (scrollY + scrollAdjY)) then
+                    termsetBackgroundColor(tocolors[grid.edgecol])
+                else
+                    termsetBackgroundColor(tocolors[grid.voidcol])
+                end
+                termsetCursorPos(cx, adjY)
+                termwrite(player[i].name:sub(cx-adjX+1, cx-adjX+1))
+            end
+        end
+    end
 	if useSetVisible then
 		tsv(true)
 	end
@@ -556,6 +575,7 @@ local render = function(useSetVisible)
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY, false, useSetVisible)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
+    termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
 end
 
@@ -646,7 +666,7 @@ local makeMenu = function(x, y, options, doAnimate)
 			end
 		end
 	end
-	local gstID, evt = math.random(1,65535)
+	local gstID, evt = mathrandom(1,65535)
 	if doAnimate then
 		os.queueEvent("timer", gstID)
 	end
@@ -828,8 +848,8 @@ local moveTick = function(doSend)
 		p = player[i]
 		if not p.dead then
 			if isHost then
-				p.x = p.x + mathfloor(mathcos(math.rad(p.direction * 90)))
-				p.y = p.y + mathfloor(mathsin(math.rad(p.direction * 90)))
+				p.x = p.x + mathfloor(mathcos(mathrad(p.direction * 90)))
+				p.y = p.y + mathfloor(mathsin(mathrad(p.direction * 90)))
 				if doesIntersectBorder(p.x, p.y) or getTrail(p.x, p.y) then
 					p.dead = true
 					deadGuys[i] = true
@@ -917,7 +937,6 @@ local game = function()
 		else
 			scrollX = p.x - mathfloor(scr_x / 2)
 			scrollY = p.y - mathfloor(scr_y / 2)
-
 			render(true)
 		end
 	end
@@ -1015,7 +1034,7 @@ local main = function()
 			you, nou = 1, 2
 			gamename = ""
 			for i = 1, 32 do
-				gamename = gamename .. string.char(math.random(1,126))
+				gamename = gamename .. string.char(mathrandom(1,126))
 			end
 
 			waitingForGame = true
