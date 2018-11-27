@@ -72,6 +72,7 @@ local resetPlayers = function()
 end
 local tArg = {...}
 local useSkynet = (tArg[1] or ""):lower() == "skynet"
+local useOnce = (tArg[2] or tArg[1] or ""):lower() == "quick"
 local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
@@ -1015,6 +1016,38 @@ local helpScreen = function()
 	waitForKey(0.25)
 end
 
+local startGame = function()
+   -- reset all info between games
+    trail = {}
+    deadGuys = {}
+    lastDirectionPressed = nil
+    netLastDirectionPressed = nil
+    gameDelay = gameDelayInit
+    grid = deepCopy(initGrid)
+    player = resetPlayers()
+    you, nou = 1, 2
+    gamename = ""
+    for i = 1, 32 do
+        gamename = gamename .. string.char(mathrandom(1,126))
+    end
+
+    waitingForGame = true
+    transmit(port, {
+        player = player,
+        gameID = gamename,
+        new = os.time(),
+        gameDelay = gameDelayInit,
+        grid = initGrid
+    })
+    rVal = parallel.waitForAny( pleaseWait, networking )
+     -- give time for skynet
+    sleep(0.1)
+    if rVal == 2 then
+        startCountdown()
+        parallel.waitForAny( getInput, game, networking )
+    end
+end
+
 local decision
 
 local main = function()
@@ -1023,35 +1056,7 @@ local main = function()
 		decision = titleScreen()
 		lockInput = false
 		if decision == "start" then
-			-- reset all info between games
-			trail = {}
-			deadGuys = {}
-			lastDirectionPressed = nil
-			netLastDirectionPressed = nil
-			gameDelay = gameDelayInit
-			grid = deepCopy(initGrid)
-			player = resetPlayers()
-			you, nou = 1, 2
-			gamename = ""
-			for i = 1, 32 do
-				gamename = gamename .. string.char(mathrandom(1,126))
-			end
-
-			waitingForGame = true
-			transmit(port, {
-				player = player,
-				gameID = gamename,
-				new = os.time(),
-				gameDelay = gameDelayInit,
-				grid = initGrid
-			})
-			rVal = parallel.waitForAny( pleaseWait, networking )
-			 -- give time for skynet
-			sleep(0.1)
-			if rVal == 2 then
-				startCountdown()
-				parallel.waitForAny( getInput, game, networking )
-			end
+			startGame()
 		elseif decision == "help" then
 			helpScreen()
 		elseif decision == "demo" then
@@ -1062,9 +1067,18 @@ local main = function()
 	end
 end
 
-if useSkynet then
-	parallel.waitForAny(main, skynet.listen)
-	skynet.socket.close()
+if useOnce then
+	if useSkynet then
+		parallel.waitForAny(startGame, skynet.listen)
+		skynet.socket.close()
+	else
+		startGame()
+	end
 else
-	main()
+	if useSkynet then
+		parallel.waitForAny(main, skynet.listen)
+		skynet.socket.close()
+	else
+		main()
+	end
 end
