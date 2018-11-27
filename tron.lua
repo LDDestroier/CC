@@ -979,8 +979,7 @@ local networking = function()
 					waitingForGame = false
 					netKeysDown = {}
 					os.queueEvent("new_game", gameID)
-                    return gameID
-
+					return gameID
 				elseif msg.gameID == gamename then
 					if not isHost then
 						if type(msg.player) == "table" then
@@ -1001,7 +1000,6 @@ local networking = function()
 						player[nou].name = msg.name or player[nou].name
 					end
 				end
-
 			end
 		end
 	end
