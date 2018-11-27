@@ -966,7 +966,9 @@ local networking = function()
 						isHost = true
 						you, nou = nou, you
 					end
-					you, nou = nou, you
+					if not useSkynet then
+						you, nou = nou, you
+					end
 					player[nou].name = msg.name or player[nou].name
 					transmit(port, {
 						player = player,
