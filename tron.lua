@@ -895,9 +895,6 @@ end
 local game = function()
 	local outcome
 	local p, np
-	if argumentName then
-		player[you].name = argumentName
-	end
 	while true do
 		if isHost then
 			sleep(gameDelay)
@@ -970,6 +967,7 @@ local networking = function()
 						you, nou = nou, you
 					end
 					you, nou = nou, you
+					player[nou].name = msg.name or player[nou].name
 					transmit(port, {
 						player = player,
 						gameID = gamename,
@@ -1042,6 +1040,7 @@ local startGame = function()
         gameID = gamename,
         new = os.time(),
         gameDelay = gameDelayInit,
+	name = argumentName or player[you].name,
         grid = initGrid
     })
     rVal = parallel.waitForAny( pleaseWait, networking )
