@@ -45,7 +45,7 @@ local resetPlayers = function()
 			},
 			dead = false,
 			putTrail = true,
-            name = "BLU"
+			name = "BLU"
 		},
 		[2] = {
 			num = 2,
@@ -66,13 +66,14 @@ local resetPlayers = function()
 			},
 			dead = false,
 			putTrail = true,
-            name = "RED"
+			name = "RED"
 		}
 	}
 end
 local tArg = {...}
 local useSkynet = (tArg[1] or ""):lower() == "skynet"
 local useOnce = (tArg[2] or tArg[1] or ""):lower() == "quick"
+local argumentName = tArg[3] or tArg[2] or tArg[1] or nil
 local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
@@ -790,6 +791,7 @@ end
 local sendInfo = function(gameID)
 	transmit(port, {
 		player = isHost and player or nil,
+		name = player[you].name,
 		putTrail = isPuttingDown,
 		gameID = gameID,
 		keysDown = isHost and nil or keysDown,
@@ -893,6 +895,9 @@ end
 local game = function()
 	local outcome
 	local p, np
+	if argumentName then
+		player[you].name = argumentName
+	end
 	while true do
 		if isHost then
 			sleep(gameDelay)
@@ -977,8 +982,9 @@ local networking = function()
                     return gameID
 
 				elseif msg.gameID == gamename then
-					if not isHost then
-						if type(msg.player) == "table" then
+					if type(msg.player) == "table" then
+						if not isHost then
+							player[nou].name = msg.name or player[nou].name
 							player = msg.player
 							if msg.trail then
 								for i = 1, #msg.trail do
@@ -987,11 +993,12 @@ local networking = function()
 							end
 							deadGuys = msg.deadGuys
 							os.queueEvent("move_tick")
+						elseif type(msg.keysDown) == "table" then
+							netKeysDown = msg.keysDown
+							netLastDirectionPressed = msg.lastDir
+							player[nou].putTrail = msg.putTrail
+							player[nou].name = msg.name or player[nou].name
 						end
-					elseif type(msg.keysDown) == "table" then
-						netKeysDown = msg.keysDown
-						netLastDirectionPressed = msg.lastDir
-						player[nou].putTrail = msg.putTrail
 					end
 				end
 
