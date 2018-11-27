@@ -982,8 +982,8 @@ local networking = function()
                     return gameID
 
 				elseif msg.gameID == gamename then
-					if type(msg.player) == "table" then
-						if not isHost then
+					if not isHost then
+						if type(msg.player) == "table" then
 							player[nou].name = msg.name or player[nou].name
 							player = msg.player
 							if msg.trail then
@@ -993,12 +993,12 @@ local networking = function()
 							end
 							deadGuys = msg.deadGuys
 							os.queueEvent("move_tick")
-						elseif type(msg.keysDown) == "table" then
-							netKeysDown = msg.keysDown
-							netLastDirectionPressed = msg.lastDir
-							player[nou].putTrail = msg.putTrail
-							player[nou].name = msg.name or player[nou].name
 						end
+					elseif type(msg.keysDown) == "table" then
+						netKeysDown = msg.keysDown
+						netLastDirectionPressed = msg.lastDir
+						player[nou].putTrail = msg.putTrail
+						player[nou].name = msg.name or player[nou].name
 					end
 				end
 
