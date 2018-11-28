@@ -198,12 +198,12 @@ local tsv = function(visible)
 	end
 end
 
-local deepCopy
-deepCopy = function(tbl, ...)
+local copyTable
+copyTable = function(tbl, ...)
 	local output = {}
 	for k,v in pairs(tbl) do
 		if type(v) == "table" then
-			output[k] = deepCopy(v)
+			output[k] = copyTable(v)
 		else
 			output[k] = v
 		end
@@ -214,15 +214,12 @@ deepCopy = function(tbl, ...)
 	return output
 end
 
-grid = deepCopy(initGrid)
+grid = copyTable(initGrid)
 
-local you = 1
-local nou = 2
+local you, nou = 1, 2
 
-local keysDown = {}
-local netKeysDown = {}
-local lastDirectionPressed
-local netLastDirectionPressed
+local keysDown, netKeysDown = {}, {}
+local lastDirectionPressed, netLastDirectionPressed
 
 -- the scrolling of the screen
 local scrollX = 0
@@ -344,6 +341,44 @@ local images = {
 			"   8    0  00  0 0     7",
 			"   8    00000000 0888877",
 		},
+	},
+	timeout = {
+		{
+			"",
+			"",
+			" ",
+			" ",
+			" ",
+			"   ",
+			"   ",
+			"    ",
+			"    ",
+			"   ",
+		},
+		{
+			"00000000000000ff0000000f",
+			"0fff000fff000ff0ff00f000",
+			"0ffffffffff00f000f00ffff",
+			" fffff0ffff00f0f0f00ffff",
+			" 000ff000000000f00000000",
+			"   000000f0ff0ff0000f",
+			"   0f00f0ffffff000f00",
+			"   0ff0f0ffffff7f0f0",
+			"   0ffff0ffffff7f0f0",
+			"   000000000000ff000",
+		},
+		{
+			"ffffffffffffff00fffffff0",
+			" 0f0fff0f0ffffffffffffff",
+			" 0f0ff00f00ffffffffff000",
+			" 0f0fffffffffffffffffff0",
+			" fffffffffffffffffffffff",
+			"   ffffff0f00f00ffff0",
+			"   ffffff0f00f0ffffff",
+			"   ff0fff0f00f0fffff",
+			"   ffffff0ffff0fffff",
+			"   fffffffffffffffff",
+		},
 	}
 }
 for k,v in pairs(images) do
@@ -418,10 +453,6 @@ local control, revControl = {
 for k,v in pairs(control) do
 	revControl[v] = k
 end
-
--- keeps track of where you are
-local gamemode = ""
-
 
 local gridFore, gridBack
 if squareGrid then
@@ -551,22 +582,22 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 			bg[3][sy]
 		)
 	end
-    if doDrawPlayerNames and (not onlyDrawGrid) then
-        for i = 1, #player do
-            termsetTextColor(player[i].color[1])
-            adjX = player[i].x - (scrollX + scrollAdjX) - mathfloor(#player[i].name / 2)
-            adjY = player[i].y - (scrollY + scrollAdjY) - 2
-            for cx = adjX, adjX + #player[i].name do
-                if doesIntersectBorder(adjX + (scrollX + scrollAdjX), adjY + (scrollY + scrollAdjY)) then
-                    termsetBackgroundColor(tocolors[grid.edgecol])
-                else
-                    termsetBackgroundColor(tocolors[grid.voidcol])
-                end
-                termsetCursorPos(cx, adjY)
-                termwrite(player[i].name:sub(cx-adjX+1, cx-adjX+1))
-            end
-        end
-    end
+	if doDrawPlayerNames and (not onlyDrawGrid) then
+		for i = 1, #player do
+			termsetTextColor(player[i].color[1])
+			adjX = player[i].x - (scrollX + scrollAdjX) - mathfloor(#player[i].name / 2)
+			adjY = player[i].y - (scrollY + scrollAdjY) - 2
+			for cx = adjX, adjX + #player[i].name do
+				if doesIntersectBorder(adjX + (scrollX + scrollAdjX), adjY + (scrollY + scrollAdjY)) then
+					termsetBackgroundColor(tocolors[grid.edgecol])
+				else
+					termsetBackgroundColor(tocolors[grid.voidcol])
+				end
+				termsetCursorPos(cx, adjY)
+				termwrite(player[i].name:sub(cx-adjX+1, cx-adjX+1))
+			end
+		end
+	end
 	if useSetVisible then
 		tsv(true)
 	end
@@ -577,7 +608,7 @@ local render = function(useSetVisible)
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY, false, useSetVisible)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
-    termsetBackgroundColor(tocolors[grid.voidcol])
+	termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
 end
 
@@ -894,12 +925,19 @@ end
 
 local game = function()
 	local outcome
-	local p, np
+	local p, np, timeoutID, tID, evt
 	while true do
 		if isHost then
 			sleep(gameDelay)
 		else
-			os.pullEvent("move_tick")
+			timeoutID = os.startTimer(3)
+			repeat
+				evt, tID = os.pullEvent()
+			until evt == "move_tick" or (evt == "timer" and tID == timeoutID)
+			if evt == "timer" then
+				parallel.waitForAny(function() imageAnim(images.timeout) end, waitForKey)
+				return
+			end
 		end
 		p = player[you]
 		np = player[nou]
@@ -960,7 +998,7 @@ local networking = function()
 						isHost = false
 						gamename = msg.gameID
 						gameDelay = tonumber(msg.gameDelay) or gameDelayInit
-						grid = msg.grid or deepCopy(initGrid)
+						grid = msg.grid or copyTable(initGrid)
 						player = msg.player or player
 					else
 						isHost = true
@@ -1022,42 +1060,41 @@ local helpScreen = function()
 end
 
 local startGame = function()
-   -- reset all info between games
-    trail = {}
-    deadGuys = {}
-    lastDirectionPressed = nil
-    netLastDirectionPressed = nil
-    gameDelay = gameDelayInit
-    grid = deepCopy(initGrid)
-    player = resetPlayers()
-    you, nou = 1, 2
-    gamename = ""
-    for i = 1, 32 do
-        gamename = gamename .. string.char(mathrandom(1,126))
-    end
+	-- reset all info between games
+	trail = {}
+	deadGuys = {}
+	lastDirectionPressed = nil
+	netLastDirectionPressed = nil
+	gameDelay = gameDelayInit
+	grid = copyTable(initGrid)
+	player = resetPlayers()
+	you, nou = 1, 2
+	gamename = ""
+	for i = 1, 32 do
+		gamename = gamename .. string.char(mathrandom(1,126))
+	end
 
-    waitingForGame = true
-    transmit(port, {
-        player = player,
-        gameID = gamename,
-        new = os.time(),
-        gameDelay = gameDelayInit,
-	name = argumentName or player[you].name,
-        grid = initGrid
-    })
-    rVal = parallel.waitForAny( pleaseWait, networking )
-     -- give time for skynet
-    sleep(0.1)
-    if rVal == 2 then
-        startCountdown()
-        parallel.waitForAny( getInput, game, networking )
-    end
+	waitingForGame = true
+	transmit(port, {
+		player = player,
+		gameID = gamename,
+		new = os.time(),
+		gameDelay = gameDelayInit,
+		name = argumentName or player[you].name,
+		grid = initGrid
+	})
+	rVal = parallel.waitForAny( pleaseWait, networking )
+	sleep(0.1)
+	if rVal == 2 then
+		startCountdown()
+		parallel.waitForAny( getInput, game, networking )
+	end
 end
 
 local decision
 
 local main = function()
-  local rVal
+	local rVal
 	while true do
 		decision = titleScreen()
 		lockInput = false
