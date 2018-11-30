@@ -857,7 +857,7 @@ local deadAnimation = function(doSend)
 	if deadGuys[you] or deadGuys[nou] then
 		termsetTextColor(colors.white)
 		if deadGuys[you] and deadGuys[nou] then
-			os.queueEvent("tron_complete", "tie")
+			os.queueEvent("tron_complete", "tie", isHost)
 			scrollToPosition(player[nou].x, player[nou].y)
 			scrollToPosition(player[you].x, player[you].y)
 			parallel.waitForAny(function() imageAnim(images.tie) end, waitForKey)
@@ -865,12 +865,12 @@ local deadAnimation = function(doSend)
 		else
 			if deadGuys[you] then
 				scrollX, scrollY = player[nou].x - scr_x / 2, player[nou].y - scr_y / 2
-				os.queueEvent("tron_complete", "lose")
+				os.queueEvent("tron_complete", "lose", isHost)
 				scrollToPosition(player[you].x, player[you].y)
 				parallel.waitForAny(function() imageAnim(images.lose) end, waitForKey)
 				return "end"
 			elseif deadGuys[nou] then
-				os.queueEvent("tron_complete", "win")
+				os.queueEvent("tron_complete", "win", isHost)
 				scrollToPosition(player[nou].x, player[nou].y)
 				parallel.waitForAny(function() imageAnim(images.win) end, waitForKey)
 				return "end"
@@ -938,7 +938,7 @@ local game = function()
 				evt, tID = os.pullEvent()
 			until evt == "move_tick" or (evt == "timer" and tID == timeoutID)
 			if evt == "timer" then
-				os.queueEvent("tron_complete", "timeout")
+				os.queueEvent("tron_complete", "timeout", isHost)
 				parallel.waitForAny(function() imageAnim(images.timeout) end, waitForKey)
 				return
 			end
