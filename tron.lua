@@ -12,6 +12,7 @@ local isColor = term.isColor()
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local gameDelayInit = 0.1
 local doDrawPlayerNames = false
+local useSetVisible = true
 
 local initGrid = {
 	x1 = -100,
@@ -193,7 +194,7 @@ local termblit = function(char, text, back)
 end
 
 local tsv = function(visible)
-	if term.current().setVisible then
+	if term.current().setVisible and useSetVisible then
 		term.current().setVisible(visible)
 	end
 end
@@ -705,7 +706,9 @@ local makeMenu = function(x, y, options, doAnimate)
 	end
 	while true do
 		rend()
+		tsv(true)
 		evt = {os.pullEvent()}
+		tsv(false)
 		if evt[1] == "key" then
 			if evt[2] == keys.up then
 				lastPos = cpos
@@ -720,11 +723,12 @@ local makeMenu = function(x, y, options, doAnimate)
 				lastPos = cpos
 				cpos = #options
 			elseif evt[2] == keys.enter then
+				tsv(true)
 				return cpos
 			end
 		elseif evt[1] == "timer" and evt[2] == gstID then
 			gstID = os.startTimer(gameDelayInit)
-			drawGrid(gsX, gsY, true, true)
+			drawGrid(gsX, gsY, true)
 			step = step + 1
 			if mathceil(step / 100) % 2 == 1 then
 				gsX = gsX + 1
