@@ -2,7 +2,9 @@ local scr_x, scr_y = term.getSize()
 local midX, midY = .5 * scr_x, .5 * scr_y
 local origTX, origBG = term.getTextColor(), term.getBackgroundColor()
 
+local winLength = 4
 local sleepDelay = 0.05
+local moveCount = 0
 
 local board = {} 	-- connect 4 board; formatted like board[y][x]
 local block = {}	-- bottom blockage; formatted like block[x]
@@ -26,15 +28,17 @@ local tiles = {
 local you = "P1"
 local nou = "P2"
 
-local cwrite = function(text, y)
+local cwrite = function(text, y, doClear)
 	local cx, cy = term.getCursorPos()
 	term.setCursorPos(midX - math.floor(#text / 2), y or cy)
+	if doClear then term.clearLine() end
 	term.write(text)
 end
 
-local cblit = function(char, text, back, y)
+local cblit = function(char, text, back, y, doClear)
 	local cx, cy = term.getCursorPos()
 	term.setCursorPos(midX - math.floor(#text / 2), y or cy)
+	if doClear then term.clearLine() end
 	term.blit(char, text, back)
 end
 
@@ -53,7 +57,7 @@ end
 
 local addPiece = function(owner, x)
 	if board[1][x][1] == "bl" then
-		board[1][x] = {owner, 0, x, -1}
+		board[1][x] = {owner, 0, x, 1}
 		return true
 	else
 		return false
@@ -135,47 +139,36 @@ term.clear()
 
 local checkIfWinner = function()
 	local conditions = {}
-	local winLength = 4
 
 	-- check horizontal
 	for y = 1, boardY do
 		for x = 1, boardX - winLength + 1 do
-			conditions[#conditions+1] = {
-				board[y][x+0],
-				board[y][x+1],
-				board[y][x+2],
-				board[y][x+3]
-			}
+			conditions[#conditions+1] = {}
+			for w = 0, winLength - 1 do
+				conditions[#conditions][w+1] = board[y][x+w]
+			end
 		end
 	end
 
 	-- check vertical
-	for y = 1, boardY - winLength + 1 do
+	for y = boardY - winLength + 1, 1, -1 do
 		for x = 1, boardX do
-			conditions[#conditions+1] = {
-				board[y+0][x],
-				board[y+1][x],
-				board[y+2][x],
-				board[y+3][x]
-			}
+			conditions[#conditions+1] = {}
+			for w = 0, winLength - 1 do
+				conditions[#conditions][w+1] = board[y+w][x]
+			end
 		end
 	end
 
 	-- check diagonals
 	for y = 1, boardY - winLength + 1 do
 		for x = 1, boardX - winLength + 1 do
-			conditions[#conditions+1] = {
-				board[y+3][x+0],
-				board[y+2][x+1],
-				board[y+1][x+2],
-				board[y+0][x+3]
-			}
-			conditions[#conditions+1] = {
-				board[y+0][x+0],
-				board[y+1][x+1],
-				board[y+2][x+2],
-				board[y+3][x+3]
-			}
+			conditions[#conditions+1] = {}
+			conditions[#conditions+1] = {}
+			for w = 0, winLength - 1 do
+				conditions[#conditions-1][w+1] = board[y+(winLength-w-1)][x+w]
+				conditions[#conditions][w+1]   = board[y+w][x+w]
+			end
 		end
 	end
 
@@ -208,7 +201,7 @@ local renderBoard = function()
 				term.setCursorPos(midX - (boardX) + (x - 1) * #tileChar[1][1], 4)
 				term.write(x)
 			end
-			cwrite("SPACE to clear", scr_y)
+			cwrite("SPACE to clear", scr_y, false)
 		else
 			for ymod = 1, #tileChar[1] do
 				for x = 0, boardX do
@@ -246,9 +239,12 @@ local getInput = function()
 			if tonumber(evt[2]) then
 				if tonumber(evt[2]) >= 1 and tonumber(evt[2]) <= boardX then
 					if not waiting then
-						addPiece(you, tonumber(evt[2]))
-						you, nou = nou, you
-						waiting = true
+						if board[1][tonumber(evt[2])][1] == "bl" then
+							addPiece(you, tonumber(evt[2]))
+							moveCount = moveCount + 1
+							you, nou = nou, you
+							waiting = true
+						end
 					end
 				end
 			end
@@ -263,6 +259,7 @@ local getInput = function()
 					block[x] = false
 					sleep(0.05)
 				end
+				moveCount = 0
 				you, nou = "P1", "P2"
 				sleep(1)
 				for x = 1, boardX do
@@ -286,13 +283,12 @@ local main = function()
 		winner, winPieces = checkIfWinner()
 		term.setTextColor(palette.txt)
 		if winner then
-			term.setCursorPos(1,1)
-			term.clearLine()
 			cblit(
 				"Winner: " .. winner,
 				to_blit[palette.txt]:rep(8) .. to_blit[tiles[winner]]:rep(#winner),
 				to_blit[palette.bg]:rep(8 + #winner),
-				1
+				1,
+				true
 			)
 			parallel.waitForAny(function()
 				while true do
@@ -313,15 +309,17 @@ local main = function()
 					evt = {os.pullEvent()}
 				until evt[1] == "clear_board"
 			end)
+		elseif moveCount >= boardX * boardY then
+			cwrite("It's a tie.", 1, true)
+			waiting = true
 		else
-			term.setCursorPos(1,1)
-			term.clearLine()
 			waiting = false
 			cblit(
 				"It's " .. you .. "'s turn.",
 				to_blit[palette.txt]:rep(5) .. to_blit[tiles[you]]:rep(#you) .. to_blit[palette.txt]:rep(8),
 				to_blit[palette.bg]:rep(13 + #you),
-				1
+				1,
+				true
 			)
 		end
 		sleep(sleepDelay)
@@ -329,6 +327,6 @@ local main = function()
 end
 
 parallel.waitForAny(main, getInput)
-cwrite("Thanks for playing!", 1)
+cwrite("Thanks for playing!", 1, true)
 term.setCursorPos(1, scr_y)
 term.clearLine()
