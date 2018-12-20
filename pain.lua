@@ -1882,7 +1882,6 @@ local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame 
 		end
 	end
 	paintEncoded = clearAllRedundant(paintEncoded)
-	saveToUndoBuffer()
 end
 
 local boxCharSelector = function()
@@ -3026,7 +3025,7 @@ local getInput = function() --gotta catch them all
 				if res == "exit" then break end
 				doRender = true
 			end
-		elseif (evt[1] == "mouse_up") and (not viewing) then
+		elseif (evt[1] == "mouse_up") and (not viewing) and (not isCurrentlyFilling) then
 			origx,origy = 0,0
 			local button = evt[2]
 			miceDown[button] = false
@@ -3254,9 +3253,9 @@ local getInput = function() --gotta catch them all
 							x = 2*x
 							y = 3*y
 						end
-						os.queueEvent("filltool_async", frame, x, y, paint, mevt[2] == 2)
 						miceDown = {}
 						keysDown = {}
+						os.queueEvent("filltool_async", frame, x, y, paint, mevt[2] == 2)
 					end
 					doRender = true
 					changedImage = true
@@ -3290,8 +3289,7 @@ local getInput = function() --gotta catch them all
 								break
 							end
 						end
-						miceDown = {}
-						keysDown = {}
+						resetInputState()
 					end
 					doRender = true
 					isDragging = false
@@ -3445,6 +3443,7 @@ runPainEditor = function(...) --needs to be cleaned up
             isCurrentlyFilling = true
             renderBottomBar("Filling area...")
             fillTool(frameNo, x, y, dot, isDeleting)
+			saveToUndoBuffer()
             isCurrentlyFilling = false
             reRenderPAIN(doRenderBar == 0)
         end
