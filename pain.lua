@@ -2795,6 +2795,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			elseif key == keys.enter then
 				redrawmenu = true
 				local res = menuFunctions[cursor]()
+				resetInputState()
 				if res == "exit" then
 					return "exit"
 				elseif res == "nobreak" then
@@ -2817,6 +2818,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 		elseif event == "mouse_click" or event == "mouse_up" then
 			if y < cleary then
 				doRender = true
+				resetInputState()
 				return
 			elseif key == 1 and initial+clickdelay < os.time() then --key? more like button
 				for a = 1, #menuPoses do
@@ -2827,6 +2829,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 							local res = menuFunctions[a]()
 							os.queueEvent("queue")
 							os.pullEvent("queue")
+							resetInputState()
 							if res == "exit" then
 								return "exit"
 							else
