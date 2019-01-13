@@ -8,6 +8,7 @@
 local port = 701
 local kioskMode = false
 local debugShowKeys = false
+local useLegacyMouseControl = false
 
 local scr_x, scr_y = term.getSize()
 local scr_mx, scr_my = scr_x / 2, scr_y / 2
@@ -616,7 +617,9 @@ local render = function(useSetVisible)
 	termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
 	if debugShowKeys then
-		local y = 2
+		term.setCursorPos(1,2)
+		term.write("dir = " .. player[you].direction .. " ")
+		local y = 3
 		for k,v in pairs(keysDown) do
 			if v then
 				term.setCursorPos(1,y)
@@ -798,22 +801,48 @@ local cleanExit = function()
 	print("Thanks for playing!")
 end
 
-local parseMouseInput = function(button, x, y)
-	local output = nil
-	local cx, cy = (x - scr_mx) * (scr_y / scr_x), y - scr_my
-	if cx > cy then
-		if -cx > cy then
-			output = "up"
+local parseMouseInput = function(button, x, y, direction)
+	local output = false
+	local cx = x - scr_mx
+	local cy = y - scr_my
+	
+	if useLegacyMouseControl then -- outdated mouse input
+		cx = cx * (scr_y / scr_x)
+		if cx > cy then
+			if -cx > cy then
+				output = "up"
+			else
+				output = "right"
+			end
 		else
-			output = "right"
+			if -cx < cy then
+				output = "down"
+			else
+				output = "left"
+			end
 		end
 	else
-		if -cx < cy then
-			output = "down"
-		else
-			output = "left"
+		cx = cx + scrollAdjX
+		cy = cy + scrollAdjY
+		if button == 1 then -- move player
+			if direction % 2 == 0 then -- moving horizontally
+				if cy > 0 then
+					output = "down"
+				elseif cy < 0 then
+					output = "up"
+				end
+			else -- moving vertically
+				if cx > 0 then
+					output = "right"
+				elseif cx < 0 then
+					output = "left"
+				end
+			end
+		elseif button == 2 then -- release trail
+			output = "release"
 		end
 	end
+	
 	return control[output]
 end
 
@@ -837,16 +866,16 @@ local getInput = function()
 				keysDown[evt[2]] = true
 			elseif evt[1] == "key_up" then
 				keysDown[evt[2]] = false
-			elseif evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
+			elseif evt[1] == "mouse_click" or (useLegacyMouseControl and evt[1] == "mouse_drag") then
 				if evt[1] == "mouse_drag" then
 					keysDown[mkey] = false
 				end
-				mkey = parseMouseInput(evt[2], evt[3], evt[4])
+				mkey = parseMouseInput(evt[2], evt[3], evt[4], player[you].direction) or -1
 				lastDirectionPressed = revControl[mkey]
 				keysDown[mkey] = true
 			elseif evt[1] == "mouse_up" then
 				keysDown[mkey] = false
-				mkey = parseMouseInput(evt[2], evt[3], evt[4])
+				mkey = parseMouseInput(evt[2], evt[3], evt[4], player[you].direction) or -1
 				keysDown[mkey] = false
 			end		
 		end
@@ -1032,10 +1061,10 @@ local game = function()
 			scrollAdjX = scrollAdjX + 2
 		end
 		if keysDown[control.lookUp] then
-			scrollAdjY = scrollAdjY - 1.5
+			scrollAdjY = scrollAdjY - 1.25
 		end
 		if keysDown[control.lookDown] then
-			scrollAdjY = scrollAdjY + 1.5
+			scrollAdjY = scrollAdjY + 1.25
 		end
 
 		scrollAdjX = scrollAdjX * 0.8
