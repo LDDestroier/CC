@@ -6,7 +6,11 @@
 --]]
 
 local port = 701
+local kioskMode = true
+local debugShowKeys = false
+
 local scr_x, scr_y = term.getSize()
+local scr_mx, scr_my = scr_x / 2, scr_y / 2
 local isColor = term.isColor()
 
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
@@ -611,6 +615,16 @@ local render = function(useSetVisible)
 	termsetTextColor(player[you].color[1])
 	termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
+	if debugShowKeys then
+		local y = 2
+		for k,v in pairs(keysDown) do
+			if v then
+				term.setCursorPos(1,y)
+				term.write(k.." = "..tostring(v).." ")
+				y = y + 1
+			end
+		end
+	end
 end
 
 local pleaseWait = function()
@@ -726,6 +740,15 @@ local makeMenu = function(x, y, options, doAnimate)
 				tsv(true)
 				return cpos
 			end
+		elseif evt[1] == "mouse_click" then
+			if evt[4] >= y and evt[4] < y+#options then
+				if cpos == evt[4] - (y - 1) then
+					tsv(true)
+					return cpos
+				else
+					cpos = evt[4] - (y - 1)
+				end
+			end
 		elseif evt[1] == "timer" and evt[2] == gstID then
 			gstID = os.startTimer(gameDelayInit)
 			drawGrid(gsX, gsY, true)
@@ -741,12 +764,21 @@ end
 
 local titleScreen = function()
 	termclear()
-	local choice = makeMenu(2, scr_y - 4, {
-		"Start Game",
-		"How to Play",
-		"Grid Demo",
-		"Exit"
-	}, true)
+	local menuOptions
+	if kioskMode then
+		menuOptions = {
+			"Start Game",
+			"How to Play",
+		}
+	else
+		menuOptions = {
+			"Start Game",
+			"How to Play",
+			"Grid Demo",
+			"Exit"
+		}
+	end
+	local choice = makeMenu(2, scr_y - 4, menuOptions, true)
 	if choice == 1 then
 		return "start"
 	elseif choice == 2 then
@@ -766,8 +798,28 @@ local cleanExit = function()
 	print("Thanks for playing!")
 end
 
+local parseMouseInput = function(button, x, y)
+	local output = nil
+	local cx, cy = (x - scr_mx) * (scr_y / scr_x), y - scr_my
+	if cx > cy then
+		if -cx > cy then
+			output = "up"
+		else
+			output = "right"
+		end
+	else
+		if -cx < cy then
+			output = "down"
+		else
+			output = "left"
+		end
+	end
+	return control[output]
+end
+
 local getInput = function()
 	local evt
+	local mkey = -1
 	while true do
 		evt = {os.pullEvent()}
 		if lockInput then
@@ -785,7 +837,17 @@ local getInput = function()
 				keysDown[evt[2]] = true
 			elseif evt[1] == "key_up" then
 				keysDown[evt[2]] = false
-			end
+			elseif evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
+				keysDown[mkey] = false
+				mkey = parseMouseInput(evt[2], evt[3], evt[4])
+				lastDirectionPressed = revControl[mkey]
+				keysDown[mkey] = true
+			elseif evt[1] == "mouse_up" then
+				keysDown[mkey] = false
+				mkey = parseMouseInput(evt[2], evt[3], evt[4])
+				lastDirectionPressed = nil
+				keysDown[mkey] = false
+			end		
 		end
 	end
 end
@@ -836,9 +898,12 @@ local sendInfo = function(gameID)
 	})
 end
 
-local waitForKey = function(time)
+local waitForKey = function(time, blockMouse)
 	sleep(time or 0.5)
-	os.pullEvent("key")
+	local evt
+	repeat
+		evt = os.pullEvent()
+	until evt == "key" or ((not blockMouse) and evt == "mouse_click")
 end
 
 local imageAnim = function(image)
