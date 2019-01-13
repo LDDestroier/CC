@@ -838,14 +838,15 @@ local getInput = function()
 			elseif evt[1] == "key_up" then
 				keysDown[evt[2]] = false
 			elseif evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
-				keysDown[mkey] = false
+				if evt[1] == "mouse_drag" then
+					keysDown[mkey] = false
+				end
 				mkey = parseMouseInput(evt[2], evt[3], evt[4])
 				lastDirectionPressed = revControl[mkey]
 				keysDown[mkey] = true
 			elseif evt[1] == "mouse_up" then
 				keysDown[mkey] = false
 				mkey = parseMouseInput(evt[2], evt[3], evt[4])
-				lastDirectionPressed = nil
 				keysDown[mkey] = false
 			end		
 		end
