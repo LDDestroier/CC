@@ -6,7 +6,7 @@
 --]]
 
 local port = 701
-local kioskMode = true
+local kioskMode = false
 local debugShowKeys = false
 
 local scr_x, scr_y = term.getSize()
