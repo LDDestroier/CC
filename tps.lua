@@ -2,8 +2,8 @@
 	Turtle Positioning System
 	Use two turtles as an expensive and crappy GPS server! Use ALL the fuel!
 
-	pastebin get PsTiQ5eu startup
-	std PB PsTiQ5eu startup
+	wget https://raw.githubusercontent.com/LDDestroier/CC/master/tps.lua
+	std ld tps tps.lua
 --]]
 
 local chestX = 0 -- fill this in!
