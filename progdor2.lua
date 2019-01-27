@@ -1,7 +1,18 @@
+--[[
+	Progdor 2.0 - File Packaging
+	by LDDestroier
+	Get with:
+	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/progdor2.lua
+	
+	Uses CCA compression API, made by minizbot2012.
+--]]
+
 local progdor = {
-	version = "0.1b",
-	numVersion = 1,
+	version = "2.0",
+	PBlogPath = ".progdor_PB_uploads"
 }
+
+local scr_x, scr_y = term.getSize()
 
 local function interpretArgs(tInput, tArgs)
     local output = {}
@@ -159,8 +170,30 @@ local function compress(input)
 	trim(rec)
 	return rec
 end
-
+local function strCompress(input)
+	local output = {}
+	local tbl = compress(input)
+	for i = 1, #tbl do
+		output[i] = string.char(tbl[i])
+	end
+	return table.concat(output)
+end
+local function strDecompress(input)
+	local output = {}
+	for i = 1, #input do
+		output[i] = string.byte(input:sub(i,i))
+	end
+	return decompress(output)
+end
 -- CCA API END --
+
+-- colors that are always safe to set to
+local safeColorList = {
+	[colors.white] = true,
+	[colors.lightGray] = true,
+	[colors.gray] = true,
+	[colors.black] = true
+}
 
 -- pastebin uploads have a 512K limit
 local pastebinFileSizeLimit = 1024 * 512
@@ -170,22 +203,49 @@ local argData = {
 	["-dd"] = "string",	-- direct URL download
 	["-m"] = "string",	-- specify main file
 	["-PB"] = false,	-- pastebin upload
-	["-e"] = false,		-- automatic extract
+	["-e"] = false,		-- automatic self-extractor
 	["-s"] = false,		-- silent
 	["-a"] = false,		-- use as API with require, also makes silent
 	["-c"] = false,		-- use CCA compression
-	["-h"] = false		-- show help
+	["-h"] = false,		-- show help
+	["-i"] = false,		-- inspect mode
 }
 
 local argList, argErrors = interpretArgs({...}, argData)
 
 if #argErrors > 0 then
+	local errList = ""
 	for k,v in pairs(argErrors) do
 		if k ~= 1 then
-			printError("\"" .. k .. "\": " .. v)
+			errList = errList .. "\"" .. k .. "\": " .. v .. "; "
 		end
+		error(errList:sub(1, -2))
 	end
-	return false
+end
+
+local pastebinGet    = argList["-pb"]	-- string, pastebin code
+local directDownload = argList["-dd"]	-- string, download URL
+local mainFile		 = argList["-m"]	-- string, main executable file
+local pastebinUpload = argList["-PB"]	-- boolean
+local selfExtractor	 = argList["-e"]	-- boolean
+local silent		 = argList["-s"]	-- boolean
+local useCompression = argList["-c"]	-- boolean
+local justOverwrite	 = argList["-o"]	-- boolean
+
+if useCompression and selfExtract then
+	error("Cannot use compression with self-extractor.")
+end
+
+local sWrite = function(text)
+	if not silent then
+		return write(text)
+	end
+end
+
+local sPrint = function(text)
+	if not silent then
+		return print(text)
+	end
 end
 
 local function showHelp()
@@ -194,48 +254,79 @@ local function showHelp()
 		"Usage: progdor [options] inputFolder (outputFile)",
 		"       progdor [options] inputFile (outputFolder)",
 		"",
-		"Progdor is a file/folder packaging program.",
+		"Progdor is a file/folder packaging program with support for CCA compression and self-extraction.",
 		"",
 		"Options:",
-		" -pb [pastebin ID] : Download from Pastebin.",
-		" -PB : Upload to pastebin.",
-		" -dd [download URL] : Download from URL.",
-		" -e : Adds on auto-extract code to archives.",
-		" -s : Silences all terminal writing",
-		" -a : Allows programs to use require() on Progdor.",
-		" -c : Enables CCA compression.",
-		" -m : Specify main executable file in archive.",
-		" -h : Show this help."
+		" -pb [pastebin ID] : Download from Pastebin.",			-- added
+		" -PB : Upload to pastebin.",							-- added
+		" -dd [download URL] : Download from URL.",				-- added
+		" -e : Adds on self-extractor code to archive.",		-- added
+		" -s : Silences all terminal writing",					-- added
+		" -a : Allows programs to use require() on Progdor.",	-- added
+		" -c : Enables CCA compression.",						-- added
+		" -m : Specify main executable file in archive.",		-- added
+		" -i : Inspect archive without extracting.",			-- added
+		" -o : Overwrite files without asking.",				-- added
+		" -h : Show this help.",								-- added
+		"",
+		"   This Progdor has Super Cow Powers."					-- not actually added
 	}
 	for y = 1, #helpInfo do
-		print(helpInfo[y])
+		sPrint(helpInfo[y])
 	end
 end
 
-local pastebinGet    = argList["-pb"]	-- string, pastebin code
-local directDownload = argList["-dd"]	-- string, download URL
-local mainFile		 = argList["-m"]	-- string, main executable file
-local pastebinUpload = argList["-PB"]	-- boolean
-local autoExtract    = argList["-e"]	-- boolean
-local silent		 = argList["-s"]	-- boolean
-local APImode		 = argList["-a"]	-- boolean
-local useCompression = argList["-c"]	-- boolean
+local setTextColor = function(color)
+	if (not silent) and (term.isColor() or safeColorList[color]) then
+		term.setTextColor(color)
+	end
+end
+
+local setBackgroundColor = function(color)
+	if (not silent) and (term.isColor() or safeColorList[color]) then
+		term.setBackgroundColor(color)
+	end
+end
 
 local inputPath = argList[1]
 local outputPath = argList[2] or inputPath
+local exists, mode
 
-if argList["-h"] or (not inputPath) then
+if argList["-h"] then
+	return showHelp()
+elseif argList["-a"] then
+	mode = "api"
+elseif inputPath then
+	exists = fs.exists(inputPath)
+	if argList["-i"] then
+		mode = "inspect"
+	elseif fs.isDir(inputPath) then
+		mode = "pack"
+	else
+		mode = "unpack"
+	end
+else
 	return showHelp()
 end
 
-local mode = fs.isDir(inputPath) and "pack" or "unpack"
-local exists = fs.exists(inputPath) -- does not matter if downloading
-
-if (pastebinGet or directDownload) and pastebinUpload then
-	printError("Cannot upload and download at the same time!")
-	return false
+if mode == "api" then
+	silent = true
+elseif (pastebinGet or directDownload) and pastebinUpload then
+	error("Cannot upload and download at the same time!")
 end
 
+local specialWrite = function(left, colored, right, color)
+	local origTextColor = term.getTextColor()
+	sWrite(left)
+	setTextColor(color)
+	sWrite(colored)
+	setTextColor(origTextColor)
+	sWrite(right)
+end
+
+local specialPrint = function(left, colored, right, color)
+	return specialWrite(left, colored, right .. "\n", color)
+end
 
 local function listAll(path, includePath)
 	local output = {}
@@ -244,7 +335,7 @@ local function listAll(path, includePath)
 	for i = 1, #list do
 		if fs.isDir(fc(path, list[i])) then
 			if #fs.list(fc(path, list[i])) == 0 then
-				output[#output+1] = includePath and fc(path, fc(path, list[i])) or fc(path, list[i])
+				output[#output+1] = (includePath and fc(path, list[i]) or list[i]) .. "/"
 			else
 				local la = listAll(fc(path, list[i]))
 				for ii = 1, #la do
@@ -262,37 +353,57 @@ local makeFileList = function(path, doCompress)
 	local output = {}
 	local list = listAll(path, false)
 	local file
-	if not silent then
-		print("Packing files...")
-	end
+	sPrint("Packing files...")
 	for i = 1, #list do
-		if not silent then
-			term.setTextColor(colors.lightGray)
-			write("'" .. list[i] .. "'...")
-		end
-		file = fs.open(fs.combine(path, list[i]), "r")
-		output[list[i]] = --textutils.serialize(
-			doCompress and compress(file.readAll()) or file.readAll()
-		--)
-		file.close()
-		if not silent then
-			term.setTextColor(colors.green)
-			print("good")
+		setTextColor(colors.lightGray)
+		sWrite("'" .. list[i] .. "'...")
+		if list[i]:sub(-1,-1) == "/" then
+			output[list[i]] = true -- indicates empty directory
+		else
+			file = fs.open(fs.combine(path, list[i]), "r")
+			output[list[i]] = doCompress and strCompress(file.readAll()) or file.readAll()
+			file.close()
+			setTextColor(colors.green)
+			sPrint("good")
 		end
 	end
-	if not silent then
-		term.setTextColor(colors.white)
-	end
+	setTextColor(colors.white)
 	return output
 end
 
 local buildArchive = function(path, mainFile, doCompress)
 	local output = {
 		compressed = doCompress, -- uses CCA compression
-		main = mainFile, -- specifies the main program within the archive to run, should I implement something to use that
+		mainFile = mainFile, -- specifies the main program within the archive to run, should I implement something to use that
 		data = makeFileList(path, doCompress) -- files and folders and whatnot
 	}
 	return textutils.serialize(output)
+end
+
+local parseArchiveData = function(input, doNotDecompress)
+	local archive = textutils.unserialize(input)
+	if archive then
+		if archive.compressed and (not doNotDecompress) then
+			for name, contents in pairs(archive.data) do
+				archive.data[name] = strDecompress(contents)
+			end
+			archive.compressed = false
+		end
+		return archive
+	else
+		return false
+	end
+end
+
+local parseArchive = function(path, doNotDecompress)
+	local file = fs.open(path, "r")
+	local output = parseArchiveData(file.readAll(), doNotDecompress)
+	file.close()
+	return output
+end
+
+local round = function(number, places)
+	return math.floor(number * (10^places)) / (10^places)
 end
 
 local choice = function(input,verbose)
@@ -300,77 +411,379 @@ local choice = function(input,verbose)
 		input = "yn"
 	end
 	if verbose then
-		write("[")
+		sWrite("[")
 		for a = 1, #input do
-			write(input:sub(a,a):upper())
+			sWrite(input:sub(a,a):upper())
 			if a < #input then
-				write(",")
+				sWrite(",")
 			end
 		end
-		write("]?")
+		sWrite("]?")
 	end
 	local evt,char
 	repeat
 		evt,char = os.pullEvent("char")
 	until string.find(input:lower(),char:lower())
 	if verbose then
-		print(char:upper())
+		sPrint(char:upper())
 	end
-	local pos = string.find(input:lower(),char:lower())
+	local pos = string.find(input:lower(), char:lower())
 	return pos, char:lower()
 end
 
+local overwriteOutputPath = function(inputPath, outputPath, allowMerge, override)
+	setTextColor(colors.white)
+	local c
+	if override then
+		return true, true
+	else
+		if allowMerge then
+			write("Overwrite [Y/N]? Or [M]erge? ")
+			c = choice("ynm", false)
+		else
+			write("Overwrite [Y/N]?")
+			c = choice("yn", false)
+		end
+		write("\n")
+		if c == 1 then
+			return true, true
+		elseif c == 2 then
+			sPrint("Abort.")
+			return false, false
+		elseif c == 3 then
+			return true, false
+		end
+	end
+end
+
+local uploadToPastebin = function(archive, name)
+	if #archive > pastebinFileSizeLimit then
+		error("That archive is too large to be uploaded to Pastebin. (limit is 512 KB)")
+		return false
+	else
+		local key = "0ec2eb25b6166c0c27a394ae118ad829"
+		local response = http.post(
+			"https://pastebin.com/api/api_post.php",
+			"api_option=paste&" ..
+			"api_dev_key=" .. key .. "&" ..
+			"api_paste_format=lua&" ..
+			"api_paste_name=" .. textutils.urlEncode(name) .. "&" ..
+			"api_paste_code=" .. textutils.urlEncode(archive)
+		)
+		if response then
+			local sResponse = response.readAll()
+			response.close()
+
+			local sCode = string.match( sResponse, "[^/]+$" )
+			return sCode, sResponse
+		else
+			return false
+		end
+	end
+end
+
+local writeArchiveData = function(archive, outputPath)
+	local file
+	for name, contents in pairs(archive.data) do
+		setTextColor(colors.lightGray)
+		sWrite("'" .. name .. "'...")
+		if contents == true then -- indicates empty directory
+			fs.makeDir(fs.combine(outputPath, name))
+		else
+			file = fs.open(fs.combine(outputPath, name), "w")
+			if file then
+				file.write(contents)
+				file.close()
+			end
+		end
+		if file then
+			setTextColor(colors.green)
+			sPrint("good")
+		else
+			setTextColor(colors.red)
+			sPrint("fail")
+		end
+	end
+	setTextColor(colors.white)
+	specialPrint("Unpacked to '", outputPath .. "/", "'.", colors.yellow)
+end
+
 local archive
+local doOverwrite, doContinue = false, true
 
 if mode == "pack" then
+	
+	if not pastebinUpload then
+		if fs.isReadOnly(outputPath) then
+			error("Output path is read-only.")
+		elseif fs.exists(outputPath) and (outputPath ~= inputPath) then
+			doContinue, doOverwrite = overwriteOutputPath(inputPath, outputPath, false, justOverwrite)
+		end
+		if not doContinue then
+			return false
+		elseif outputPath == inputPath then
+			doOverwrite = true
+		end
+	end
+	archive = buildArchive(inputPath, mainFile, useCompression)
 	if exists then
-		if pastebinUpload then
-			archive = buildArchive(inputPath, mainFile, useCompression)
-			if not silent then
-				write("Uploading to Pastebin...")
-			end
-			local key = "0ec2eb25b6166c0c27a394ae118ad829"
-			local response = http.post(
-				"https://pastebin.com/api/api_post.php",
-				"api_option=paste&" ..
-				"api_dev_key=" .. key .. "&" ..
-				"api_paste_format=lua&" ..
-				"api_paste_name=" .. textutils.urlEncode(sName) .. "&" ..
-				"api_paste_code=" .. textutils.urlEncode(sText)
-			)
-			if response then
-				print("success!")
-				local sResponse = response.readAll()
-				response.close()
+		if useCompression then
+			sPrint("Using CCA compression.")
+		elseif selfExtractor then
+			sPrint("Tacking on self-extractor.")
+			archive = ([[
+local tArg = {...}
+local outputPath, file = tArg[1] and fs.combine(shell.dir(), tArg[1]) or shell.getRunningProgram()
+local safeColorList = {[colors.white] = true,[colors.lightGray] = true,[colors.gray] = true,[colors.black] = true}
+local stc = function(color) if (term.isColor() or safeColorList[color]) then term.setTextColor(color) end end
+local archive = textutils.unserialize(]] ..
 
-				local sCode = string.match( sResponse, "[^/]+$" )
-				print("Uploaded to '" .. sResponse .. "'.")
-				print("Retrieve with \"progdor -pb " .. sCode .. " " .. fs.getName(path) .. "\".")
+textutils.serialize(archive) .. 
+
+[[)
+if fs.isReadOnly(outputPath) then
+	error("Output path is read-only.")
+elseif fs.getFreeSpace(outputPath) <= #archive then
+	error("Insufficient space.")
+end
+fs.delete(shell.getRunningProgram()) -- saves space
+for name, contents in pairs(archive.data) do
+	stc(colors.lightGray)
+	write("'" .. name .. "'...")
+	if contents == true then -- indicates empty directory
+		fs.makeDir(fs.combine(outputPath, name))
+	else
+		file = fs.open(fs.combine(outputPath, name), "w")
+		if file then
+			file.write(contents)
+			file.close()
+		end
+	end
+	if file then
+		stc(colors.green)
+		print("good")
+	else
+		stc(colors.red)
+		print("fail")
+	end
+end
+stc(colors.white)
+write("Unpacked to '")
+stc(colors.yellow)
+write(outputPath .. "/")
+stc(colors.white)
+print("'.")
+]])
+			
+		end
+		if pastebinUpload then
+			sWrite("Uploading to Pastebin...")
+			local id, url = uploadToPastebin(archive, fs.getName(inputPath))
+			if id then
+				setTextColor(colors.green)
+				sPrint("success!")
+				setTextColor(colors.white)
+				sPrint("Uploaded to '" .. url .. "'.")
+				specialPrint("Retrieve with \"", "progdor -pb " .. id .. " " .. fs.getName(inputPath), "\".", colors.yellow)
+				sPrint("You may need to do a Captcha on the website.")
+				if not fs.exists(progdor.PBlogPath) then
+					setTextColor(colors.lightGray)
+					specialPrint("(PB uploads are logged at \"", progdor.PBlogPath, "\".)", colors.yellow)
+					setTextColor(colors.white)
+				end
+				-- precautionary log file
+				local file = fs.open(progdor.PBlogPath, "a")
+				file.writeLine("uploaded \"" .. inputPath .. "\" to \"" .. url .. "\"")
+				file.close()
 			else
-				print("failed!")
+				sPrint("failed!")
 			end
 		else
-			if outputPath == inputPath then
+			if doOverwrite then
 				fs.delete(outputPath)
-			elseif fs.exists(outputPath) then
-				write("Overwrite? ")
-				if choice("yn", true) == 1 then
-					fs.delete(outputPath)
-				else
-					print("Abort.")
-					return
-				end
 			end
-			archive = buildArchive(inputPath, mainFile, useCompression)
 			local file = fs.open(outputPath, "w")
 			file.write(archive)
 			file.close()
-			print("Written to '" .. outputPath .. "'.")
+			if selfExtract then
+				specialPrint("Written self-extractor to '", outputPath, "'.", colors.yellow)
+			else
+				specialPrint("Written to '", outputPath, "'.", colors.yellow)
+			end
 		end
 	else
-		printError("No such input path exists.")
+		error("No such input path exists.")
 		return false
 	end
-elseif mode == "unpack" then
-	error("spoon")
+
+elseif mode == "unpack" then -- unpack OR upload
+
+	if pastebinUpload then
+		local file = fs.open(inputPath, "r")
+		archive = file.readAll()
+		file.close()
+		sWrite("Uploading to Pastebin...")
+		local id, url = uploadToPastebin(archive, fs.getName(inputPath))
+		if id then
+			setTextColor(colors.green)
+			sPrint("success!")
+			setTextColor(colors.white)
+			sPrint("Uploaded to '" .. url .. "'.")
+			specialPrint("Retrieve with \"", "progdor -pb " .. id .. " " .. fs.getName(inputPath), "\".", colors.yellow)
+			sPrint("You may need to do a Captcha on the website.")
+			if not fs.exists(progdor.PBlogPath) then
+				setTextColor(colors.lightGray)
+				specialPrint("(PB uploads are logged at \"", progdor.PBlogPath, "\".)", colors.yellow)
+				setTextColor(colors.white)
+			end
+			-- precautionary log file
+			local file = fs.open(progdor.PBlogPath, "a")
+			file.writeLine("uploaded \"" .. inputPath .. "\" to \"" .. url .. "\"")
+			file.close()
+		else
+			setTextColor(colors.red)
+			sPrint("failed!")
+			setTextColor(colors.white)
+			return false
+		end
+	elseif pastebinGet or directDownload then
+		local url, contents
+		if pastebinGet and directDownload then
+			error("Cannot do both pastebin get and direct download.")
+		elseif fs.isReadOnly(outputPath) then
+			error("Output path is read only.")
+		else
+			if pastebinGet then
+				url = "http://www.pastebin.com/raw/" .. pastebinGet
+			elseif directDownload then
+				url = directDownload
+			end
+			if fs.exists(outputPath) and (outputPath ~= inputPath) or outputPath == shell.getRunningProgram() then
+				doContinue, doOverwrite = overwriteOutputPath(inputPath, outputPath, true, justOverwrite)
+			end
+			if not doContinue then
+				return false
+			elseif outputPath == inputPath then
+				doOverwrite = true
+			end
+			sWrite("Connecting to \"")
+			setTextColor(colors.yellow)
+			sWrite(url)
+			setTextColor(colors.white)
+			sWrite("\"...")
+			local handle = http.get(url)
+			if handle then
+				setTextColor(colors.green)
+				sPrint("success!")
+				setTextColor(colors.white)
+				contents = handle.readAll()
+				handle.close()
+				
+				-- detects if you didn't solve the captcha, since archives commonly trigger anti-spam measures
+				if (
+					pastebinGet and
+					(not textutils.unserialize(contents)) and
+					contents:find("Your paste has triggered our automatic SPAM detection filter.")
+				) then
+					specialPrint("You must go to '", url, "' and do the Captcha to be able to download that paste.", colors.yellow)
+					return false
+				end
+				
+				setTextColor(colors.lightGray)
+				sWrite("Parsing archive...")
+				archive = parseArchiveData(contents)
+				if archive then
+					setTextColor(colors.green)
+					sPrint("good")
+				else
+					setTextColor(colors.red)
+					sPrint("Invalid archive file.")
+					return false
+				end
+				if doOverwrite then
+					fs.delete(outputPath)
+				end
+				writeArchiveData(archive, outputPath)
+			else
+				setTextColor(colors.red)
+				sPrint("failed!")
+				setTextColor(colors.white)
+				return false
+			end
+		end
+	else -- regular unpack
+		if exists then
+			if fs.exists(outputPath) and (outputPath ~= inputPath) or outputPath == shell.getRunningProgram() then
+				doContinue, doOverwrite = overwriteOutputPath(inputPath, outputPath, true, justOverwrite)
+			end
+			if not doContinue then
+				return false
+			elseif outputPath == inputPath then
+				doOverwrite = true
+			end
+			setTextColor(colors.lightGray)
+			sWrite("Parsing archive...")
+			archive = parseArchive(inputPath)
+			setTextColor(colors.green)
+			sPrint("good")
+			if doOverwrite then
+				fs.delete(outputPath)
+			end
+			writeArchiveData(archive, outputPath)
+		else
+			error("No such input path exists.")
+		end
+	end
+
+elseif mode == "inspect" then
+
+	if exists and (not fs.isDir(inputPath)) then
+		archive = parseArchive(inputPath, true)
+		local totalSize = 0
+		local amountOfFiles = 0
+		local averageSize = 0
+		
+		local output = {}
+		
+		if archive then
+			for k,v in pairs(archive) do
+				if k == "data" then
+					for name, contents in pairs(v) do
+						if contents then -- don't count directories, where contents == false
+							totalSize = totalSize + #contents
+							amountOfFiles = amountOfFiles + 1
+						end
+					end
+					averageSize = math.ceil(totalSize / amountOfFiles)
+				else
+					output[#output + 1] = k .. " = \"" .. tostring(v) .. "\""
+				end
+			end
+			sPrint("# of files: " .. amountOfFiles)
+			sPrint("Total size: " .. totalSize .. " bytes (" .. round(totalSize / 1024, 1) .. " KB)")
+			sPrint("Aveg. size: " .. averageSize .. " bytes (" .. round(averageSize / 1024, 1) .. " KB)")
+			sPrint(("-"):rep(scr_x))
+			for i = 1, #output do
+				sPrint(output[i])
+			end
+		else
+			error("Invalid archive file.")
+		end
+	else
+		if fs.isDir(inputPath) then
+			error("Cannot inspect directories.")
+		else
+			error("No such input path exists.")
+		end
+	end
+
+elseif mode == "api" then
+	
+	return {
+		parseArchive = parseArchive,
+		parseArchiveData = parseArchiveData,
+		buildArchive = buildArchive,
+		uploadToPastebin = uploadToPastebin,
+	}
+	
 end
