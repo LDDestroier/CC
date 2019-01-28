@@ -292,6 +292,17 @@ local inputPath = argList[1]
 local outputPath = argList[2] or inputPath
 local exists, mode
 
+if inputPath == "moo" and not fs.exists(inputPath) then
+	print([[
+                     \_/
+   m00h  (__)       -(_)-
+      \  ~Oo~___     / \
+         (..)  |\
+___________|_|_|_____________
+..."Have you mooed today?"...")]])
+	return
+end
+
 if argList["-h"] then
 	return showHelp()
 elseif argList["-a"] then
