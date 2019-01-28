@@ -299,7 +299,7 @@ if inputPath == "moo" and not fs.exists(inputPath) then
       \  ~Oo~___     / \
          (..)  |\
 ___________|_|_|_____________
-..."Have you mooed today?"...")]])
+..."Have you mooed today?"..."]])
 	return
 end
 
