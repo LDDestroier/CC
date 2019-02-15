@@ -609,13 +609,17 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	end
 end
 
-local render = function(useSetVisible)
+local render = function(useSetVisible, netTime)
 	local p = player[you]
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY, false, useSetVisible)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
 	termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
+	term.setTextColor(colors.white)
+	if skynet and netTime then
+		term.write(" " .. tostring(os.epoch() - netTime) .. "ms")
+	end
 	if debugShowKeys then
 		term.setCursorPos(1,2)
 		term.write("dir = " .. player[you].direction .. " ")
@@ -921,6 +925,7 @@ local sendInfo = function(gameID)
 		name = player[you].name,
 		putTrail = isPuttingDown,
 		gameID = gameID,
+		time = os.epoch(),
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
 		deadGuys = isHost and deadGuys or nil,
@@ -1027,8 +1032,9 @@ end
 
 local game = function()
 	local outcome
-	local p, np, timeoutID, tID, evt
+	local p, np, timeoutID, tID, evt, netTime
 	while true do
+		netTime = nil
 		if isHost then
 			sleep(gameDelay)
 		else
@@ -1040,6 +1046,8 @@ local game = function()
 				os.queueEvent("tron_complete", "timeout", isHost, player[nou].name)
 				parallel.waitForAny(function() imageAnim(images.timeout) end, waitForKey)
 				return
+			elseif evt == "move_tick" then
+				netTime = tID
 			end
 		end
 		p = player[you]
@@ -1081,7 +1089,7 @@ local game = function()
 		else
 			scrollX = p.x - mathfloor(scr_x / 2)
 			scrollY = p.y - mathfloor(scr_y / 2)
-			render(true)
+			render(true, (not isHost) and netTime)
 		end
 	end
 end
@@ -1130,7 +1138,7 @@ local networking = function()
 								end
 							end
 							deadGuys = msg.deadGuys
-							os.queueEvent("move_tick")
+							os.queueEvent("move_tick", msg.time)
 						end
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
