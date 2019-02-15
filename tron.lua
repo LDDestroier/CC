@@ -17,7 +17,7 @@ local isColor = term.isColor()
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local gameDelayInit = 0.1
 local doDrawPlayerNames = false
-local useSetVisible = true
+local useSetVisible = false
 
 local initGrid = {
 	x1 = -100,
@@ -203,6 +203,13 @@ local tsv = function(visible)
 		term.current().setVisible(visible)
 	end
 end
+
+local round = function(num, places)
+	return math.floor(num * 10^places) / 10^places
+end
+
+-- used in skynet matches if you are player 2
+local ping = 0
 
 local copyTable
 copyTable = function(tbl, ...)
@@ -520,7 +527,7 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	local foreX, foreY
 	local backX, backY
 	local adjX, adjY
-	local trailChar, trailColor, trailAge, isPlayer
+	local trailChar, trailColor, trailAge, isPlayer, isPredict
 	for sy = 1, scr_y do
 		bg[1][sy] = ""
 		bg[2][sy] = ""
@@ -534,10 +541,17 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 			backY = 1 + mathfloor(sy + (y / 2)) % #gridBack
 			trailChar, trailColor, trailAge = getTrail(adjX, adjY)
 			isPlayer = false
+			isPredict = false
 			if not onlyDrawGrid then
 				for i = 1, #player do
 					if player[i].x == adjX and player[i].y == adjY then
 						isPlayer = i
+						break
+					elseif (not isHost) and useSkynet and i == you and (
+						adjX == math.floor(player[i].x + (0.03 * round(ping, 0)) * math.cos(math.rad(player[i].direction * 90))) and
+						adjY == math.floor(player[i].y + (0.03 * round(ping, 0)) * math.sin(math.rad(player[i].direction * 90)))
+					) then
+						isPredict = i
 						break
 					end
 				end
@@ -545,6 +559,10 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 			if isPlayer and (not onlyDrawGrid) and (not doesIntersectBorder(adjX, adjY)) then
 				bg[1][sy] = bg[1][sy] .. dirArrow[player[isPlayer].direction]
 				bg[2][sy] = bg[2][sy] .. toblit[player[isPlayer].color[1]]
+				bg[3][sy] = bg[3][sy] .. grid.voidcol
+			elseif isPredict and (not onlyDrawGrid) and (not doesIntersectBorder(adjX, adjY)) then
+				bg[1][sy] = bg[1][sy] .. "o"
+				bg[2][sy] = bg[2][sy] .. grid.forecol
 				bg[3][sy] = bg[3][sy] .. grid.voidcol
 			else
 				if (not onlyDrawGrid) and trailChar and trailColor then
@@ -609,13 +627,18 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	end
 end
 
-local render = function(useSetVisible)
+local render = function(useSetVisible, netTime)
 	local p = player[you]
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY, false, useSetVisible)
 	termsetCursorPos(1,1)
 	termsetTextColor(player[you].color[1])
 	termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
+	term.setTextColor(colors.white)
+	if netTime and useSkynet then
+		ping = (os.epoch() - netTime) / round(72, 2)
+		term.write(" " .. tostring(ping) .. " ms")
+	end
 	if debugShowKeys then
 		term.setCursorPos(1,2)
 		term.write("dir = " .. player[you].direction .. " ")
@@ -805,7 +828,7 @@ local parseMouseInput = function(button, x, y, direction)
 	local output = false
 	local cx = x - scr_mx
 	local cy = y - scr_my
-	
+
 	if useLegacyMouseControl then -- outdated mouse input
 		cx = cx * (scr_y / scr_x)
 		if cx > cy then
@@ -842,7 +865,7 @@ local parseMouseInput = function(button, x, y, direction)
 			output = "release"
 		end
 	end
-	
+
 	return control[output]
 end
 
@@ -877,7 +900,7 @@ local getInput = function()
 				keysDown[mkey] = false
 				mkey = parseMouseInput(evt[2], evt[3], evt[4], player[you].direction) or -1
 				keysDown[mkey] = false
-			end		
+			end
 		end
 	end
 end
@@ -921,6 +944,7 @@ local sendInfo = function(gameID)
 		name = player[you].name,
 		putTrail = isPuttingDown,
 		gameID = gameID,
+		time = os.epoch(),
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
 		deadGuys = isHost and deadGuys or nil,
@@ -1016,19 +1040,28 @@ end
 local setDirection = function(p, checkDir, lastDir)
 	if (lastDir == control.left) and (checkDir or p.direction) ~= 0 then
 		p.direction = 2
+		return true
 	elseif (lastDir == control.right) and (checkDir or p.direction) ~= 2 then
 		p.direction = 0
+		return true
 	elseif (lastDir == control.up) and (checkDir or p.direction) ~= 1 then
 		p.direction = -1
+		return true
 	elseif (lastDir == control.down) and (checkDir or p.direction) ~= -1 then
 		p.direction = 1
+		return true
+	elseif isPuttingDown == keysDown[control.release] then
+		return true
+	else
+		return false
 	end
 end
 
 local game = function()
 	local outcome
-	local p, np, timeoutID, tID, evt
+	local p, np, timeoutID, tID, evt, netTime
 	while true do
+		netTime = nil
 		if isHost then
 			sleep(gameDelay)
 		else
@@ -1040,6 +1073,8 @@ local game = function()
 				os.queueEvent("tron_complete", "timeout", isHost, player[nou].name)
 				parallel.waitForAny(function() imageAnim(images.timeout) end, waitForKey)
 				return
+			elseif evt == "move_tick" then
+				netTime = tID
 			end
 		end
 		p = player[you]
@@ -1052,7 +1087,9 @@ local game = function()
 		else
 			setDirection(p, nil, control[lastDirectionPressed])
 			isPuttingDown = not keysDown[control.release]
+			sendInfo(gamename)
 		end
+
 
 		if keysDown[control.lookLeft] then
 			scrollAdjX = scrollAdjX - 2
@@ -1073,7 +1110,7 @@ local game = function()
 		if isHost then
 			outcome = moveTick(true)
 		else
-			outcome = deadAnimation(true)
+			outcome = deadAnimation(false)
 		end
 		ageTrails()
 		if outcome == "end" then
@@ -1081,7 +1118,7 @@ local game = function()
 		else
 			scrollX = p.x - mathfloor(scr_x / 2)
 			scrollY = p.y - mathfloor(scr_y / 2)
-			render(true)
+			render(true, (not isHost) and netTime)
 		end
 	end
 end
@@ -1097,6 +1134,8 @@ local networking = function()
 		if channel == port and type(msg) == "table" then
 			if type(msg.gameID) == "string" then
 				if waitingForGame and (type(msg.new) == "number") then
+
+					-- called while waiting for match
 					if msg.new < os.time() then
 						isHost = false
 						gamename = msg.gameID
@@ -1113,13 +1152,17 @@ local networking = function()
 						player = player,
 						gameID = gamename,
 						new = isHost and (-math.huge) or (math.huge),
+						time = os.epoch(),
 						grid = initGrid
 					})
 					waitingForGame = false
 					netKeysDown = {}
 					os.queueEvent("new_game", gameID)
 					return gameID
+
 				elseif msg.gameID == gamename then
+
+					-- called during gameplay
 					if not isHost then
 						if type(msg.player) == "table" then
 							player[nou].name = msg.name or player[nou].name
@@ -1130,7 +1173,7 @@ local networking = function()
 								end
 							end
 							deadGuys = msg.deadGuys
-							os.queueEvent("move_tick")
+							os.queueEvent("move_tick", msg.time)
 						end
 					elseif type(msg.keysDown) == "table" then
 						netKeysDown = msg.keysDown
@@ -1138,6 +1181,7 @@ local networking = function()
 						player[nou].putTrail = msg.putTrail
 						player[nou].name = msg.name or player[nou].name
 					end
+
 				end
 			end
 		end
@@ -1153,6 +1197,11 @@ local helpScreen = function()
 		Move with arrow keys.
 		Pan the camera with WASD.
 		Hold SPACE to create gaps.
+
+		If you're P2 (red), a gray
+		circle will indicate where
+		you'll turn, to help with
+		skynet's netlag.
 
 		That's basically it.
 		Press any key to go back.
@@ -1181,6 +1230,7 @@ local startGame = function()
 		gameID = gamename,
 		new = os.time(),
 		gameDelay = gameDelayInit,
+		time = os.epoch(),
 		name = argumentName or player[you].name,
 		grid = initGrid
 	})
