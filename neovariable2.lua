@@ -1,5 +1,16 @@
+--[[
+	NewVariable 2 (WIP) by LDDestroier
+	Get with:
+	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/neovariable2.lua
+	
+	To Do:
+	 + asymmetrical encryption
+	 + work on stability
+	 + steal underpants
+--]]
+
 local tArg = {...}
-local isServer = tArg[1] == "server"
+local mode = tArg[1] -- "server" or "demo", otherwise works as API
 
 if not peripheral.find("modem") then
 	ccemux.attach("top", "wireless_modem")
@@ -29,13 +40,14 @@ local makeMT = function(indexFunc, newindexFunc)
 	return output
 end
 
+-- information about the API
 local nv = {
-	dir = {									-- all DIRECTORIES will end with "/"
-		main = "neovariable",				-- main directory where all neovariable stuff are
-		privateID = "neovariable/private",	-- private computer ID, protect with your life
-		publicID = "neovariable/public",	-- public computer ID, is shared all the time
-		config = "neovariable/config",		-- config options
-		api = "neovariable/api/"			-- where APIs are stored
+	dir = {						-- all DIRECTORIES will end with "/"
+		main = "neovariable",	-- main directory where all neovariable stuff are
+		privateID = "private",	-- private computer ID, protect with your life
+		publicID = "public",	-- public computer ID, is shared all the time
+		config = "config",		-- config options
+		api = "api/"			-- where APIs are stored
 	},
 	envKey = 1,			-- determines which environment to use
 	environment = {},	-- stores multiple environments
@@ -44,9 +56,15 @@ local nv = {
 	channel = 1002,		-- modem channel
 }
 
+-- functions that are put in the api for use
+local API = {}
+
 for k,v in pairs(nv.dir) do
+	if k ~= "main" then
+		nv.dir[k] = fs.combine(nv.dir.main, v)
+	end
 	if (not fs.exists(v)) and v:sub(-1, -1) == "/" then
-		fs.makeDir(v)
+		fs.makeDir(nv.dir[k])
 	end
 end
 
@@ -65,7 +83,7 @@ local makeNewID = function(path)
 	local file = fs.open(path, "w")
 	local id = ""
 	for i = 1, 256 do
-		id = id .. string.char(math.random(1, 127))
+		id = id .. string.char(math.random(11, 127))
 	end
 	file.write(id)
 	file.close()
@@ -139,28 +157,8 @@ local receive = function(envKey, cID, timeout)
 	return output
 end
 
-local newEnvironment = function(server, envKey)
-	return makeMT(
-		function(t, k)
-			local cID = math.random(1, 2^30)
-			send(envKey, cID, "get", server, t, k)
-			local response = receive(envKey, cID, 3)
-			if response then
-				return response.v
-			else
-				return false, "no response"
-			end
-		end,
-		function(t, k, v)
-			local cID = math.random(1, 2^30)
-			send(envKey, cID, "set", server, t, k, v)
-			-- that should be enough
-		end
-	)
-end
-
 -- runs a neovariable server, and sets envList to the list of environments used
-runServer = function( envList, verbose )
+API.runServer = function( envList, verbose )
 	local evt, msg
 	while true do
 
@@ -178,21 +176,19 @@ runServer = function( envList, verbose )
 			if (	-- check the types of all the input
 				msg.envKey ~= nil and
 				type(msg.publicID) == "string" and
-				type(t) == "table" and
 				msg.k ~= nil and
 				msg.recipient == nv.publicID
 			) then
-
 				nv.environment[msg.publicID] = nv.environment[msg.publicID] or {}
-				nv.environment[msg.publicID][envKey] = nv.environment[msg.publicID][envKey] or {}
+				nv.environment[msg.publicID][msg.envKey] = nv.environment[msg.publicID][msg.envKey] or {}
 
 				if msg.command == "set" then
 					if msg.v ~= nil then
-						if verbose then print("got 'set' request") end
+						if verbose then print("[" .. msg.envKey .. "] " .. tostring(msg.k) .. " = " .. tostring(msg.v)) end
 						nv.environment[msg.publicID][msg.envKey][msg.k] = msg.v
 					end
 				elseif msg.command == "get" then
-					if verbose then print("got 'get' request") end
+					if verbose then print("[" .. msg.envKey .. "] " .. tostring(msg.k)) end
 					send(msg.envKey, msg.cID, "get_response", msg.publicID, nv.environment[msg.publicID][msg.envKey][msg.k])
 				end
 			end
@@ -200,33 +196,67 @@ runServer = function( envList, verbose )
 	end
 end
 
-findServers = function(timeout)
+API.findServer = function(getList, timeout)
 	timeout = timeout or 1
 	local cID = math.random(1, 2^30)
-
-	local servers = {}
 	send(nil, cID, "find")
-	parallel.waitForAny(
-		function()
-			while true do
-				servers[#servers+1] = receive(nil, cID).t
+	if getList then
+		local servers = {}
+		parallel.waitForAny(
+			function()
+				while true do
+					servers[#servers+1] = receive(nil, cID).publicID
+				end
+			end,
+			function()
+				sleep(timeout)
+			end
+		)
+		return servers
+	else
+		return (receive(nil, cID, timeout) or {}).publicID
+	end
+end
+
+API.newEnvironment = function(server, envKey)
+	return makeMT(
+		function(t, k)
+			local cID = math.random(1, 2^30)
+			send(envKey, cID, "get", server, t, k)
+			local response = receive(envKey, cID, 3)
+			if response then
+				return response.t
+			else
+				return nil, "no response"
 			end
 		end,
-		function()
-			sleep(timeout)
+		function(t, k, v)
+			local cID = math.random(1, 2^30)
+			send(envKey, cID, "set", server, t, k, v)
 		end
 	)
-	return servers
 end
 
-newEnv = function(server, envKey)
-	return newEnvironment()
-end
-
-if isServer then
-	runServer(nil, true)
+if mode == "server" then
+	API.runServer(nil, true)
+elseif mode == "demo" then
+	local server = API.findServer(false, 1)
+	if server then
+		print("found server")
+		local noo = API.newEnvironment(server, 1)
+		local yoo = API.newEnvironment(server, 2)
+		print("made envs")
+		noo.hi = "what"
+		yoo.he = "bumbo"
+		print("set")
+		local var = noo.hi
+		local ver = yoo.he
+		print("get")
+		print("noo.hi = " .. tostring(noo.hi))
+		print("yoo.he = " .. tostring(yoo.he))
+	else
+		print("no neovariable server")
+	end
 else
-	local server = findServers(1)[1]
-	local noo = newEnv(server, 1)
-	noo.hi = "what"
+	return API
 end
