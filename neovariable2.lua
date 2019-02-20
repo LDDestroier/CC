@@ -2,9 +2,9 @@
 	NewVariable 2 (WIP) by LDDestroier
 	Get with:
 	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/neovariable2.lua
-	
+
 	To Do:
-	 + asymmetrical encryption
+	 + asymmetrical encryption (actually forget that, functions wouldn't work out)
 	 + work on stability
 	 + steal underpants
 --]]
@@ -79,13 +79,17 @@ local getID = function(path)
 	end
 end
 
-local makeNewID = function(path)
+local makeNewID = function(path, _id)
 	local file = fs.open(path, "w")
-	local id = ""
-	for i = 1, 256 do
-		id = id .. string.char(math.random(11, 127))
+	if _id then
+		file.write(_id)
+	else
+		local id = ""
+		for i = 1, 256 do
+			id = id .. string.char(math.random(11, 127))
+		end
+		file.write(id)
 	end
-	file.write(id)
 	file.close()
 	return id
 end
@@ -173,7 +177,7 @@ API.runServer = function( envList, verbose )
 			if verbose then print("got 'find' request") end
 			send(nil, msg.cID, "find_response", msg.publicID, nv.publicID)
 		elseif msg.command == "set" or msg.command == "get" then
-			if (	-- check the types of all the input
+			if ( -- check the types of all the input
 				msg.envKey ~= nil and
 				type(msg.publicID) == "string" and
 				msg.k ~= nil and
@@ -184,20 +188,22 @@ API.runServer = function( envList, verbose )
 
 				if msg.command == "set" then
 					if msg.v ~= nil then
-						if verbose then print("[" .. msg.envKey .. "] " .. tostring(msg.k) .. " = " .. tostring(msg.v)) end
+						if verbose then print("[" .. tostring(msg.envKey) .. "] " .. tostring(msg.k) .. " = " .. tostring(msg.v)) end
 						nv.environment[msg.publicID][msg.envKey][msg.k] = msg.v
 					end
 				elseif msg.command == "get" then
-					if verbose then print("[" .. msg.envKey .. "] " .. tostring(msg.k)) end
+					if verbose then print("[" .. tostring(msg.envKey) .. "] " .. tostring(msg.k)) end
 					send(msg.envKey, msg.cID, "get_response", msg.publicID, nv.environment[msg.publicID][msg.envKey][msg.k])
 				end
 			end
 		end
+		envList = nv.environment
+		
 	end
 end
 
 API.findServer = function(getList, timeout)
-	timeout = timeout or 1
+	timeout = tonumber(timeout) or 1
 	local cID = math.random(1, 2^30)
 	send(nil, cID, "find")
 	if getList then
@@ -219,6 +225,8 @@ API.findServer = function(getList, timeout)
 end
 
 API.newEnvironment = function(server, envKey)
+	assert(type(server) == "string", "server ID must be a string")
+	assert(envKey ~= nil, "envKey must not be nil")
 	return makeMT(
 		function(t, k)
 			local cID = math.random(1, 2^30)
