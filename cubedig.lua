@@ -51,8 +51,10 @@ local move = function(direction)
         turtle.forward()
         pos.x = pos.x - math.cos(math.rad(pos.f * 90))
 	elseif direction == "left" then
+		turtle.turnLeft()
 		pos.f = (pos.f - 1) % 4
 	elseif direction == "right" then
+		turtle.turnRight()
 		pos.f = (pos.f + 1) % 4
 	end
 end
