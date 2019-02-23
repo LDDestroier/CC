@@ -600,9 +600,7 @@ end
 
 --draws grid and background at scroll 'x' and 'y', along with trails and players
 local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
-	if useSetVisible then
-		tsv(false)
-	end
+	tsv(false)
 	x, y = mathfloor(x + 0.5), mathfloor(y + 0.5)
 	local bg = {{},{},{}}
 	local foreX, foreY
@@ -705,9 +703,7 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 			end
 		end
 	end
-	if useSetVisible then
-		tsv(true)
-	end
+	tsv(true)
 end
 
 local render = function(useSetVisible, netTime)
@@ -836,7 +832,6 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 	rend()
 	while true do
 		evt = {os.pullEvent()}
-		tsv(false)
 		if evt[1] == "key" then
 			if evt[2] == keys.up then
 				lastPos = cpos
@@ -851,13 +846,11 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 				lastPos = cpos
 				cpos = #options
 			elseif evt[2] == keys.enter then
-				tsv(true)
 				return cpos, {step, gsX, gsY}
 			end
 		elseif evt[1] == "mouse_click" then
 			if evt[4] >= y and evt[4] < y+#options then
 				if cpos == evt[4] - (y - 1) then
-					tsv(true)
 					return cpos, {step, gsX, gsY}
 				else
 					cpos = evt[4] - (y - 1)
