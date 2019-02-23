@@ -413,8 +413,21 @@ local images = {
 	}
 }
 for k,v in pairs(images) do
+	-- give them easy-to-access x and y sizes
 	v.x = #v[1][1]
 	v.y = #v[1]
+	-- remove all that white bullshit that artifacts on cc:tweaked
+	for y = 1, v.y do
+		for x = 1, v.x do
+			if v[2][y]:sub(x,x) ~= "" and v[3][y]:sub(x,x) ~= "" then
+				if (v[2][y]:sub(x,x) == " " and v[3][y]:sub(x,x) ~= " ") then
+					images[k][2][y] = v[2][y]:sub(1, x - 1) .. "f" .. v[2][y]:sub(x + 1)
+				elseif (v[2][y]:sub(x,x) ~= " " and v[3][y]:sub(x,x) == " ") then
+					images[k][3][y] = v[3][y]:sub(1, x - 1) .. "f" .. v[3][y]:sub(x + 1)
+				end
+			end
+		end
+	end
 end
 
 local drawImage = function(im, x, y)
