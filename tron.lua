@@ -7,7 +7,6 @@
 
 local port = 701
 local kioskMode = false
-local debugShowKeys = false
 local useLegacyMouseControl = false
 
 local scr_x, scr_y = term.getSize()
@@ -16,8 +15,14 @@ local isColor = term.isColor()
 
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
 local gameDelayInit = 0.1
-local doDrawPlayerNames = false
+-- draws the names of players onscreen
+local doDrawPlayerNames = true
+-- if doDrawPlayerNames, also draws your own name
+local doRenderOwnName = false
+-- whether or not to use term.current().setVisible, which speeds things up at the cost of multishell
 local useSetVisible = false
+-- determines which grid is used
+local gridID = 3
 
 local initGrid = {
 	x1 = -100,
@@ -34,7 +39,7 @@ local resetPlayers = function()
 	return {
 		[1] = {
 			num = 1,
-			x = -2,
+			x = -3,
 			y = -5,
 			direction = -1,
 			char = "@",
@@ -50,12 +55,16 @@ local resetPlayers = function()
 				colors.cyan
 			},
 			dead = false,
+			trailLevel = 10,
+			trailMax = 10,
+			trailRegen = 0.1,
 			putTrail = true,
-			name = "BLU"
+			name = "BLU",
+			initName = "BLU"
 		},
 		[2] = {
 			num = 2,
-			x = 2,
+			x = 3,
 			y = -5,
 			direction = -1,
 			char = "@",
@@ -71,8 +80,12 @@ local resetPlayers = function()
 				colors.orange
 			},
 			dead = false,
+			trailLevel = 10,
+			trailMax = 10,
+			trailRegen = 0.1,
 			putTrail = true,
-			name = "RED"
+			name = "RED",
+			initName = "RED"
 		}
 	}
 end
@@ -82,6 +95,10 @@ local useOnce = (tArg[2] or tArg[1] or ""):lower() == "quick"
 local argumentName = tArg[3] or tArg[2] or tArg[1] or nil
 local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
+
+if argumentName then
+	argumentName = argumentName:sub(1, 13) -- gotta enforce that limit
+end
 
 local modem, skynet
 if useSkynet then
@@ -123,7 +140,6 @@ end
 
 local gamename = ""
 local isHost
-local squareGrid = true
 
 local waitingForGame = true
 local toblit = {
@@ -232,6 +248,8 @@ grid = copyTable(initGrid)
 local you, nou = 1, 2
 
 local keysDown, netKeysDown = {}, {}
+local miceDown = {}
+
 local lastDirectionPressed, netLastDirectionPressed
 
 -- the scrolling of the screen
@@ -468,43 +486,99 @@ for k,v in pairs(control) do
 end
 
 local gridFore, gridBack
-if squareGrid then
-	gridFore = {
-		"+-------",
-		"|       ",
-		"|       ",
-		"|       ",
-		"|       "
+local gridList = {
+	[1] = {
+		{
+			"+-------",
+			"|       ",
+			"|       ",
+			"|       ",
+			"|       "
+		},
+		{
+			"+------------",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            "
+		}
+	},
+	[2] = {
+		{
+			"    /      ",
+			"   /       ",
+			"  /        ",
+			" /         ",
+			"/__________"
+		},
+		{
+			"       /        ",
+			"      /         ",
+			"     /          ",
+			"    /           ",
+			"   /            ",
+			"  /             ",
+			" /              ",
+			"/_______________"
+		}
+	},
+	[3] = {
+		{
+			"+-    -+------",
+			"|      |      ",
+			"       |      ",
+			".      |      ",
+			"+------+-    -",
+			"|      |      ",
+			"|             ",
+			"|      .      ",
+		},
+		{
+			"+-      -+--------",
+			"|        |        ",
+			"         |        ",
+			"         |        ",
+			"         |        ",
+			"|        |        ",
+			"+--------+-      -",
+			"|        |        ",
+			"|                 ",
+			"|                 ",
+			"|                 ",
+			"|        |        ",
+		}
+	},
+	[4] = {
+		{
+			"   /\\   ",
+			"  /  \\  ",
+			" /    \\ ",
+			"/      \\",
+			"\\      /",
+			" \\    / ",
+			"  \\  /  ",
+			"   \\/   ",
+		},
+		{
+			"     /\\     ",
+			"    /  \\    ",
+			"   /    \\   ",
+			"  /      \\  ",
+			" /        \\ ",
+			"/          \\",
+			"\\          /",
+			" \\        / ",
+			"  \\      /  ",
+			"   \\    /   ",
+			"    \\  /    ",
+			"     \\/     ",
+		}
 	}
-	gridBack = {
-		"+------------",
-		"|            ",
-		"|            ",
-		"|            ",
-		"|            ",
-		"|            ",
-		"|            ",
-		"|            "
-	}
-else
-	gridFore = {
-		"    /      ",
-		"   /       ",
-		"  /        ",
-		" /         ",
-		"/__________"
-	}
-	gridBack = {
-		"       /        ",
-		"      /         ",
-		"     /          ",
-		"    /           ",
-		"   /            ",
-		"  /             ",
-		" /              ",
-		"/_______________"
-	}
-end
+}
+gridFore, gridBack = table.unpack(gridList[gridID])
 
 local dirArrow = {
 	[-1] = "^",
@@ -513,8 +587,15 @@ local dirArrow = {
 	[2] = "<"
 }
 
+local cwrite = function(text, y, xdiff, wordPosCheck)
+	wordPosCheck = wordPosCheck or #text
+	termsetCursorPos(mathfloor(scr_x / 2 - (#text + (xdiff or 0)) / 2), y or (scr_y - 2))
+	term.write(text)
+	return (scr_x / 2) - (#text / 2) + wordPosCheck
+end
+
 local doesIntersectBorder = function(x, y)
-	return x == grid.x1 or x == grid.x2 or y == grid.y1 or y == grid.y2
+	return mathfloor(x) == grid.x1 or mathfloor(x) == grid.x2 or mathfloor(y) == grid.y1 or mathfloor(y) == grid.y2
 end
 
 --draws grid and background at scroll 'x' and 'y', along with trails and players
@@ -608,17 +689,19 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	end
 	if doDrawPlayerNames and (not onlyDrawGrid) then
 		for i = 1, #player do
-			termsetTextColor(player[i].color[1])
-			adjX = player[i].x - (scrollX + scrollAdjX) - mathfloor(#player[i].name / 2)
-			adjY = player[i].y - (scrollY + scrollAdjY) - 2
-			for cx = adjX, adjX + #player[i].name do
-				if doesIntersectBorder(adjX + (scrollX + scrollAdjX), adjY + (scrollY + scrollAdjY)) then
-					termsetBackgroundColor(tocolors[grid.edgecol])
-				else
-					termsetBackgroundColor(tocolors[grid.voidcol])
+			if doRenderOwnName or (i ~= you) then
+				termsetTextColor(player[i].color[1])
+				adjX = mathfloor(player[i].x - (scrollX + scrollAdjX) - (#player[i].name / 2) + 1)
+				adjY = mathfloor(player[i].y - (scrollY + scrollAdjY) - 1.5)
+				for cx = adjX, adjX + #player[i].name do
+					if doesIntersectBorder(adjX + (scrollX + scrollAdjX), adjY + (scrollY + scrollAdjY)) then
+						termsetBackgroundColor(tocolors[grid.edgecol])
+					else
+						termsetBackgroundColor(tocolors[grid.voidcol])
+					end
+					termsetCursorPos(cx, adjY)
+					termwrite(player[i].name:sub(cx-adjX+1, cx-adjX+1))
 				end
-				termsetCursorPos(cx, adjY)
-				termwrite(player[i].name:sub(cx-adjX+1, cx-adjX+1))
 			end
 		end
 	end
@@ -635,22 +718,27 @@ local render = function(useSetVisible, netTime)
 	termsetBackgroundColor(tocolors[grid.voidcol])
 	term.write("P" .. you)
 	term.setTextColor(colors.white)
+
+	for x = 0, p.trailMax - 1 do
+		if not (x - p.trailLevel >= -0.4) then
+			if (x - p.trailLevel) > -0.7 then
+				term.setTextColor(colors.gray)
+				term.write("@")
+			elseif (x - p.trailLevel) > -1 then
+				term.setTextColor(colors.lightGray)
+				term.write("@")
+			else
+				term.setTextColor(colors.white)
+				term.write("@")
+			end
+		end
+	end
+	term.setCursorPos(1,2)
 	if netTime and useSkynet then
 		ping = (os.epoch() - netTime) / round(72, 2)
 		term.write(" " .. tostring(ping) .. " ms")
 	end
-	if debugShowKeys then
-		term.setCursorPos(1,2)
-		term.write("dir = " .. player[you].direction .. " ")
-		local y = 3
-		for k,v in pairs(keysDown) do
-			if v then
-				term.setCursorPos(1,y)
-				term.write(k.." = "..tostring(v).." ")
-				y = y + 1
-			end
-		end
-	end
+	term.setTextColor(colors.white)
 end
 
 local pleaseWait = function()
@@ -665,8 +753,9 @@ local pleaseWait = function()
 	local txt = "Waiting for game"
 
 	while true do
-		termsetCursorPos(mathfloor(scr_x / 2 - (#txt + maxPeriods) / 2), scr_y - 2)
-		termwrite(txt .. ("."):rep(periods))
+		cwrite("(Press 'Q' to cancel)", 2)
+		cwrite(txt, scr_y - 2, maxPeriods)
+		termwrite(("."):rep(periods))
 		evt = {os.pullEvent()}
 		if evt[1] == "timer" and evt[2] == tID then
 			tID = os.startTimer(0.5)
@@ -701,7 +790,7 @@ local startCountdown = function()
 			end
 		end
 		termsetTextColor(col)
-		termwrite(cName)
+		termwrite(player[you].name)
 		termsetTextColor(colors.white)
 		termsetCursorPos(mathfloor(scr_x / 2 - 2), mathfloor(scr_y / 2) + 4)
 		termwrite(i .. "...")
@@ -709,11 +798,11 @@ local startCountdown = function()
 	end
 end
 
-local makeMenu = function(x, y, options, doAnimate)
-	local cpos = 1
+local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
+	local cpos = _cpos or 1
 	local cursor = "> "
-	local gsX, gsY = 0, 0
-	local step = 0
+	local gsX, gsY = (scrollInfo or {})[2] or 0, (scrollInfo or {})[3] or 0
+	local step = (scrollInfo or {})[1] or 0
 	local lastPos = cpos
 	if not doAnimate then
 		drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
@@ -744,9 +833,8 @@ local makeMenu = function(x, y, options, doAnimate)
 	if doAnimate then
 		os.queueEvent("timer", gstID)
 	end
+	rend()
 	while true do
-		rend()
-		tsv(true)
 		evt = {os.pullEvent()}
 		tsv(false)
 		if evt[1] == "key" then
@@ -764,15 +852,16 @@ local makeMenu = function(x, y, options, doAnimate)
 				cpos = #options
 			elseif evt[2] == keys.enter then
 				tsv(true)
-				return cpos
+				return cpos, {step, gsX, gsY}
 			end
 		elseif evt[1] == "mouse_click" then
 			if evt[4] >= y and evt[4] < y+#options then
 				if cpos == evt[4] - (y - 1) then
 					tsv(true)
-					return cpos
+					return cpos, {step, gsX, gsY}
 				else
 					cpos = evt[4] - (y - 1)
+					rend()
 				end
 			end
 		elseif evt[1] == "timer" and evt[2] == gstID then
@@ -784,13 +873,101 @@ local makeMenu = function(x, y, options, doAnimate)
 			else
 				gsY = gsY - 1
 			end
+			rend()
+		end
+		if lastPos ~= cpos then
+			rend()
+		end
+	end
+end
+
+local nameChange = function(scrollInfo)
+	local gsX, gsY = (scrollInfo or {})[2] or 0, (scrollInfo or {})[3] or 0
+	local step = (scrollInfo or {})[1] or 0
+	local tID = os.startTimer(gameDelayInit)
+	local buff = {}
+	local cpos = 1
+	local maxSize = 13
+	local evt
+	-- this has no functional significance, I'm just messing around
+	local specialNames = {
+		["blu"] = colors.blue,
+		["red"] = colors.red,
+		["ldd"] = colors.orange,
+		["lddestroier"] = colors.orange,
+		["3d6"] = colors.lime,
+		["lyqyd"] = colors.red,
+		["squiddev"] = colors.cyan,
+		["oeed"] = colors.green,
+		["dog"] = colors.purple,
+		["nothy"] = colors.lightGray,
+		["kepler"] = colors.cyan,
+		["crazed"] = colors.lightBlue,
+		["ape"] = colors.brown
+	}
+	local prevName = argumentName or player[you].initName
+	for x = 1, #prevName do
+		buff[x] = prevName:sub(x, x)
+		cpos = cpos + 1
+	end
+	term.setCursorBlink(true)
+	local rend = function()
+		drawGrid(gsX, gsY, true)
+		term.setTextColor(colors.white)
+		cwrite("Enter your name.", scr_y - 5)
+		term.setTextColor(specialNames[table.concat(buff):lower()] or colors.white)
+		term.setCursorPos( cwrite(table.concat(buff), scr_y - 3, nil, cpos) - 1, scr_y - 3)
+		term.setTextColor(colors.white)
+	end
+	while true do
+		evt = {os.pullEvent()}
+		if evt[1] == "timer" and evt[2] == tID then
+			-- render the bg
+			tID = os.startTimer(gameDelayInit)
+			step = step + 1
+			if mathceil(step / 100) % 2 == 1 then
+				gsX = gsX + 1
+			else
+				gsY = gsY - 1
+			end
+			rend()
+		elseif evt[1] == "char" then
+			if #buff < maxSize then
+				table.insert(buff, cpos, evt[2])
+				cpos = cpos + 1
+				rend()
+			end
+		elseif evt[1] == "key" then
+			if evt[2] == keys.left then
+				cpos = math.max(1, cpos - 1)
+			elseif evt[2] == keys.right then
+				cpos = math.min(#buff + 1, cpos + 1)
+			elseif evt[2] == keys.home then
+				cpos = 1
+			elseif evt[2] == keys["end"] then
+				cpos = #buff
+			elseif evt[2] == keys.backspace then
+				if cpos > 1 then
+					table.remove(buff, cpos - 1)
+					cpos = cpos - 1
+					rend()
+				end
+			elseif evt[2] == keys.delete then
+				if buff[cpos] then
+					table.remove(buff, cpos)
+					rend()
+				end
+			elseif evt[2] == keys.enter then
+				term.setCursorBlink(false)
+				return table.concat(buff), {step, gsX, gsY}
+			end
 		end
 	end
 end
 
 local titleScreen = function()
 	termclear()
-	local menuOptions
+	local menuOptions, options, choice, scrollInfo
 	if kioskMode then
 		menuOptions = {
 			"Start Game",
@@ -800,19 +977,50 @@ local titleScreen = function()
 		menuOptions = {
 			"Start Game",
 			"How to Play",
-			"Grid Demo",
+			"Options...",
 			"Exit"
 		}
 	end
-	local choice = makeMenu(2, scr_y - 4, menuOptions, true)
-	if choice == 1 then
-		return "start"
-	elseif choice == 2 then
-		return "help"
-	elseif choice == 3 then
-		return "demo"
-	elseif choice == 4 then
-		return "exit"
+	options = {
+		"Grid Demo",
+		"Change Name",
+		"Change Grid",
+		"Back..."
+	}
+	while true do
+		choice, scrollInfo = makeMenu(2, scr_y - #menuOptions, menuOptions, true, scrollInfo)
+		if choice == 1 then
+			return "start"
+		elseif choice == 2 then
+			return "help"
+		elseif choice == 3 then
+			local _cpos
+			while true do
+				choice, scrollInfo = makeMenu(14, scr_y - #menuOptions, options, true, scrollInfo, _cpos)
+				_cpos = choice
+				if choice == 1 then
+					return "demo"
+				elseif choice == 2 then
+					local newName = nameChange(scrollInfo)
+					if #newName > 0 then
+						if newName:upper() == "BLU" or newName:upper() == "RED" then
+							argumentName = nil
+						else
+							argumentName = newName
+						end
+					else
+						argumentName = nil
+					end
+				elseif choice == 3 then
+					gridID = (gridID % #gridList) + 1
+					gridFore, gridBack = table.unpack(gridList[gridID])
+				elseif choice == 4 then
+					break
+				end
+			end
+		elseif choice == 4 then
+			return "exit"
+		end
 	end
 end
 
@@ -876,6 +1084,7 @@ local getInput = function()
 		evt = {os.pullEvent()}
 		if lockInput then
 			keysDown = {}
+			miceDown = {}
 		else
 			if evt[1] == "key" then
 				if (not keysDown[evt[2]]) and (
@@ -893,11 +1102,15 @@ local getInput = function()
 				if evt[1] == "mouse_drag" then
 					keysDown[mkey] = false
 				end
+				miceDown[evt[2]] = {evt[3], evt[4]}
 				mkey = parseMouseInput(evt[2], evt[3], evt[4], player[you].direction) or -1
 				lastDirectionPressed = revControl[mkey]
 				keysDown[mkey] = true
+			elseif evt[1] == "mouse_drag" then
+				miceDown[evt[2]] = {evt[3], evt[4]}
 			elseif evt[1] == "mouse_up" then
 				keysDown[mkey] = false
+				miceDown[evt[2]] = nil
 				mkey = parseMouseInput(evt[2], evt[3], evt[4], player[you].direction) or -1
 				keysDown[mkey] = false
 			end
@@ -916,6 +1129,8 @@ end
 
 local gridDemo = function()
 	keysDown = {}
+	miceDown = {}
+	scrollX, scrollY = math.floor(scr_x * -0.5), math.floor(scr_y * -0.75)
 	while true do
 		if keysDown[keys.left] then
 			scrollX = scrollX - 1
@@ -1013,11 +1228,20 @@ local moveTick = function(doSend)
 				if doesIntersectBorder(p.x, p.y) or getTrail(p.x, p.y) then
 					p.dead = true
 					deadGuys[i] = true
-				elseif p.putTrail then
-					putTrail(p)
-					lastTrails[#lastTrails+1] = {p.x, p.y, p.num}
-					if #lastTrails > #player then
-						tableremove(lastTrails, 1)
+				else
+					if p.putTrail or (p.trailLevel < 1) then
+						putTrail(p)
+						lastTrails[#lastTrails+1] = {p.x, p.y, p.num}
+						if #lastTrails > #player then
+							tableremove(lastTrails, 1)
+						end
+						if p.putTrail then
+							p.trailLevel = math.min(p.trailLevel + p.trailRegen, p.trailMax)
+						else
+							p.trailLevel = math.max(p.trailLevel - 1, 0)
+						end
+					else
+						p.trailLevel = math.max(p.trailLevel - 1, 0)
 					end
 				end
 			end
@@ -1090,18 +1314,22 @@ local game = function()
 			sendInfo(gamename)
 		end
 
-
-		if keysDown[control.lookLeft] then
-			scrollAdjX = scrollAdjX - 2
-		end
-		if keysDown[control.lookRight] then
-			scrollAdjX = scrollAdjX + 2
-		end
-		if keysDown[control.lookUp] then
-			scrollAdjY = scrollAdjY - 1.25
-		end
-		if keysDown[control.lookDown] then
-			scrollAdjY = scrollAdjY + 1.25
+		if miceDown[3] then
+			scrollAdjX = scrollAdjX + (miceDown[3][1] - scr_x / 2) / (scr_x / 4)
+			scrollAdjY = scrollAdjY + (miceDown[3][2] - scr_y / 2) / (scr_y / 2.795)
+		else
+			if keysDown[control.lookLeft] then
+				scrollAdjX = scrollAdjX - 2
+			end
+			if keysDown[control.lookRight] then
+				scrollAdjX = scrollAdjX + 2
+			end
+			if keysDown[control.lookUp] then
+				scrollAdjY = scrollAdjY - 1.25
+			end
+			if keysDown[control.lookDown] then
+				scrollAdjY = scrollAdjY + 1.25
+			end
 		end
 
 		scrollAdjX = scrollAdjX * 0.8
@@ -1138,21 +1366,24 @@ local networking = function()
 					-- called while waiting for match
 					if msg.new < os.time() then
 						isHost = false
+						you, nou = nou, you
 						gamename = msg.gameID
 						gameDelay = tonumber(msg.gameDelay) or gameDelayInit
 						grid = msg.grid or copyTable(initGrid)
 						player = msg.player or player
+						player[you].name = argumentName or player[you].initName
 					else
 						isHost = true
-						you, nou = nou, you
 					end
-					you, nou = nou, you
-					player[nou].name = msg.name or player[nou].name
+
+					player[nou].name = msg.name or player[nou].initName
+
 					transmit(port, {
 						player = player,
 						gameID = gamename,
 						new = isHost and (-math.huge) or (math.huge),
 						time = os.epoch(),
+						name = argumentName,
 						grid = initGrid
 					})
 					waitingForGame = false
@@ -1179,7 +1410,7 @@ local networking = function()
 						netKeysDown = msg.keysDown
 						netLastDirectionPressed = msg.lastDir
 						player[nou].putTrail = msg.putTrail
-						player[nou].name = msg.name or player[nou].name
+						player[nou].name = msg.name or "???" --player[nou].name
 					end
 
 				end
@@ -1197,11 +1428,12 @@ local helpScreen = function()
 		Move with arrow keys.
 		Pan the camera with WASD.
 		Hold SPACE to create gaps.
+		This takes fuel, which will
+		recharge over time..
 
-		If you're P2 (red), a gray
-		circle will indicate where
-		you'll turn, to help with
-		skynet's netlag.
+		If you're P2 (red), a gray circle
+		will indicate where you'll turn,
+		to help with Skynet's netlag.
 
 		That's basically it.
 		Press any key to go back.
@@ -1211,6 +1443,11 @@ end
 
 local startGame = function()
 	-- reset all info between games
+	keysDown = {}
+	miceDown = {}
+	scrollAdjX = 0
+	scrollAdjY = 0
+
 	trail = {}
 	deadGuys = {}
 	lastDirectionPressed = nil
@@ -1231,11 +1468,12 @@ local startGame = function()
 		new = os.time(),
 		gameDelay = gameDelayInit,
 		time = os.epoch(),
-		name = argumentName or player[you].name,
+		name = argumentName,
 		grid = initGrid
 	})
 	rVal = parallel.waitForAny( pleaseWait, networking )
 	sleep(0.1)
+	player[you].name = argumentName or player[you].initName
 	if rVal == 2 then
 		startCountdown()
 		parallel.waitForAny( getInput, game, networking )
@@ -1262,6 +1500,7 @@ local main = function()
 end
 
 if useOnce then
+	term.setCursorBlink(false)
 	if useSkynet then
 		parallel.waitForAny(startGame, skynet.listen)
 		skynet.socket.close()
