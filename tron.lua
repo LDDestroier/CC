@@ -97,7 +97,7 @@ local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
 if argumentName then
-	argumentName = argumentName:sub(1, 13) -- gotta enforce that limit
+	argumentName = argumentName:sub(1, 15) -- gotta enforce that limit
 end
 
 local modem, skynet
@@ -745,6 +745,7 @@ local render = function(useSetVisible, netTime)
 	term.setCursorPos(1,2)
 	if netTime and useSkynet then
 		ping = (os.epoch() - netTime) / round(72, 2)
+		term.setTextColor(colors.white)
 		term.write(" " .. tostring(ping) .. " ms")
 	end
 	term.setTextColor(colors.white)
@@ -893,9 +894,9 @@ local nameChange = function(scrollInfo)
 	local tID = os.startTimer(gameDelayInit)
 	local buff = {}
 	local cpos = 1
-	local maxSize = 13
+	local maxSize = 15
 	local evt
-	-- this has no functional significance, I'm just messing around
+	-- this has no functional significance. just some shoutouts
 	local specialNames = {
 		["blu"] = colors.blue,
 		["red"] = colors.red,
@@ -909,7 +910,22 @@ local nameChange = function(scrollInfo)
 		["nothy"] = colors.lightGray,
 		["kepler"] = colors.cyan,
 		["crazed"] = colors.lightBlue,
-		["ape"] = colors.brown
+		["ape"] = colors.brown,
+		["everyos"] = colors.red,
+		["apemanzilla"] = colors.brown,
+		["osmarks"] = colors.green,
+		["gollark"] = colors.green,
+		["dece"] = colors.cyan,
+		["hpwebcamable"] = colors.lightGray,
+		["theoriginalbit"] = colors.blue,
+		["bombbloke"] = colors.red,
+		["kingofgamesyami"] = colors.lightBlue,
+		["pixeltoast"] = colors.lime,
+		["creator"] = colors.yellow,
+		["dannysmc"] = colors.purple,
+		["kingdaro"] = colors.blue,
+		["valithor"] = colors.orange,
+		["logandark"] = colors.lightGray
 	}
 	local prevName = argumentName or player[you].initName
 	for x = 1, #prevName do
@@ -1009,7 +1025,7 @@ local titleScreen = function()
 				elseif choice == 2 then
 					local newName = nameChange(scrollInfo)
 					if #newName > 0 then
-						if newName:upper() == "BLU" or newName:upper() == "RED" then
+						if newName:upper() == "BLU" or newName:upper() == "RED" or newName:gsub(" ","") == "" then
 							argumentName = nil
 						else
 							argumentName = newName
