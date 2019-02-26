@@ -934,6 +934,9 @@ local nameChange = function(scrollInfo)
 	end
 	term.setCursorBlink(true)
 	local rend = function()
+		if table.concat(buff):upper() == "GASTER" then
+			os.reboot() -- lol
+		end
 		drawGrid(gsX, gsY, true)
 		term.setTextColor(colors.white)
 		cwrite("Enter your name.", scr_y - 5)
