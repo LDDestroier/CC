@@ -250,32 +250,34 @@ if argumentName then
 end
 
 local modem, skynet
-if useSkynet then
-	if fs.exists(skynetPath) then
-		skynet = dofile(skynetPath)
-		skynet.open(port)
-	else
-		local prog = http.get(skynetURL)
-		if prog then
-			local file = fs.open(skynetPath, "w")
-			file.write(prog.readAll())
-			file.close()
+if not doGridDemo then
+	if useSkynet then
+		if fs.exists(skynetPath) then
 			skynet = dofile(skynetPath)
 			skynet.open(port)
 		else
-			error("Could not download Skynet.")
+			local prog = http.get(skynetURL)
+			if prog then
+				local file = fs.open(skynetPath, "w")
+				file.write(prog.readAll())
+				file.close()
+				skynet = dofile(skynetPath)
+				skynet.open(port)
+			else
+				error("Could not download Skynet.")
+			end
 		end
-	end
-else
-	modem = peripheral.find("modem")
-	if (not modem) and ccemux then
-		ccemux.attach("top", "wireless_modem")
-		modem = peripheral.find("modem")
-	end
-	if modem then
-		modem.open(port)
 	else
-		error("You should attach a modem.")
+		modem = peripheral.find("modem")
+		if (not modem) and ccemux then
+			ccemux.attach("top", "wireless_modem")
+			modem = peripheral.find("modem")
+		end
+		if modem then
+			modem.open(port)
+		else
+			error("You should attach a modem.")
+		end
 	end
 end
 
