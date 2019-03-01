@@ -14,23 +14,23 @@ local scr_mx, scr_my = scr_x / 2, scr_y / 2
 local isColor = term.isColor()
 
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
-local gameDelayInit = 0.1
+local gameDelayInit = 0.05
 -- draws the names of players onscreen
 local doDrawPlayerNames = true
 -- if doDrawPlayerNames, also draws your own name
 local doRenderOwnName = false
 -- whether or not to use term.current().setVisible, which speeds things up at the cost of multishell
-local useSetVisible = false
+local useSetVisible = true
 -- determines which grid is used
 local gridID = 3
 
 local initGrid = {
-	x1 = -100,
-	y1 = -100,
-	x2 = 100,
-	y2 = 100,
-	border = "#",
-	voidcol = "f",
+	x1 = -40,
+	y1 = -40,
+	x2 = 40,
+	y2 = 40,
+	border = "F",
+	voidcol = "e",
 	forecol = "8",
 	backcol = "7",
 	edgecol = "0"
@@ -42,7 +42,7 @@ local resetPlayers = function()
 			x = -3,
 			y = -5,
 			direction = -1,
-			char = "@",
+			char = "F",
 			color = {
 				colors.blue,
 				colors.blue,
@@ -56,7 +56,7 @@ local resetPlayers = function()
 			},
 			dead = false,
 			trailLevel = 10,
-			trailMax = 10,
+			trailMax = 20,
 			trailRegen = 0.1,
 			putTrail = true,
 			name = "BLU",
@@ -67,7 +67,7 @@ local resetPlayers = function()
 			x = 3,
 			y = -5,
 			direction = -1,
-			char = "@",
+			char = "~",
 			color = {
 				colors.red,
 				colors.red,
@@ -81,7 +81,7 @@ local resetPlayers = function()
 			},
 			dead = false,
 			trailLevel = 10,
-			trailMax = 10,
+			trailMax = 20,
 			trailRegen = 0.1,
 			putTrail = true,
 			name = "RED",
@@ -1456,10 +1456,10 @@ local networking = function()
 		end
 		if channel == port and type(msg) == "table" then
 			if type(msg.gameID) == "string" then
-				if waitingForGame and (type(msg.new) == "number") then
+				if waitingForGame and (type(msg.time) == "number") then
 
 					-- called while waiting for match
-					if msg.new < os.time() then
+					if msg.time < os.epoch("utc") then
 						isHost = false
 						you, nou = nou, you
 						gamename = msg.gameID
@@ -1476,8 +1476,7 @@ local networking = function()
 					transmit(port, {
 						player = player,
 						gameID = gamename,
-						new = isHost and (-math.huge) or (math.huge),
-						time = os.epoch("utc"),
+						time = isHost and (-math.huge) or (math.huge),
 						name = argumentName,
 						grid = initGrid
 					})
@@ -1560,7 +1559,6 @@ local startGame = function()
 	transmit(port, {
 		player = player,
 		gameID = gamename,
-		new = os.time(),
 		gameDelay = gameDelayInit,
 		time = os.epoch("utc"),
 		name = argumentName,
