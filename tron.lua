@@ -1,29 +1,26 @@
 --[[
 	TRON Light Cycle Game
 	programmed by LDDestroier
-
+	 Get with:
 	wget https://raw.githubusercontent.com/LDDestroier/CC/master/tron.lua
 --]]
 
 local port = 701
-local kioskMode = false
-local useLegacyMouseControl = false
+local kioskMode = false			-- disables options menu
+local useLegacyMouseControl = false	-- if true, click move regions will be divided into diagonal quadrants
 
 local scr_x, scr_y = term.getSize()
 local scr_mx, scr_my = scr_x / 2, scr_y / 2
 local isColor = term.isColor()
+local doShowByImage = true	-- show "By LDDestroier" in title
 
--- lower value = faster game. I'd reccommend 0.1 for SMP play.
-local gameDelayInit = 0.1
--- draws the names of players onscreen
-local doDrawPlayerNames = true
--- if doDrawPlayerNames, also draws your own name
-local doRenderOwnName = false
--- whether or not to use term.current().setVisible, which speeds things up at the cost of multishell
-local useSetVisible = false
--- determines which grid is used
-local gridID = 1
+local gameDelayInit = 0.1	-- lower value = faster game. I recommend 0.1 for SMP play.
+local doDrawPlayerNames = true	-- draws the names of players onscreen
+local doRenderOwnName = false	-- if doDrawPlayerNames, also draws your own name
+local useSetVisible = false	-- use term.current().setVisible, which speeds things up at the cost of multishell
+local gridID = 1		-- determines which grid is used
 
+-- initial grid information, (hopefully) transferred to non-host players
 local initGrid = {
 	x1 = -100,
 	y1 = -100,
@@ -139,7 +136,7 @@ local argData = {
 
 local gridFore, gridBack
 local gridList = {
-	[1] = {
+	[1] = {		-- broken up and cool looking
 		{
 			"+-    -+------",
 			"|      |      ",
@@ -165,7 +162,7 @@ local gridList = {
 			"|        |        ",
 		}
 	},
-	[2] = {
+	[2] = {		-- flat diagonal sorta
 		{
 			"    /      ",
 			"   /       ",
@@ -184,7 +181,7 @@ local gridList = {
 			"/_______________"
 		}
 	},
-	[3] = {
+	[3] = {		-- basic simple grid
 		{
 			"+-------",
 			"|       ",
@@ -203,7 +200,7 @@ local gridList = {
 			"|            "
 		}
 	},
-	[4] = {
+	[4] = {		-- diamond grid
 		{
 			"   /\\   ",
 			"  /  \\  ",
@@ -229,7 +226,29 @@ local gridList = {
 			"     \\/     ",
 		}
 	},
-	[5] = {
+	[5] = {		-- brick and mortar
+		{
+			"|          ",
+			"|          ",
+			"|          ",
+			"|          ",
+			"===========",
+			"     |     ",
+			"     |     ",
+			"     |     ",
+			"     |     ",
+			"===========",
+		},
+		{
+			"|      ",
+			"|      ",
+			"=======",
+			"   |   ",
+			"   |   ",
+			"=======",
+		},
+	},
+	[6] = {		-- some
 		{
 			" "
 		},
@@ -615,6 +634,26 @@ local images = {
 			"   ffffff0ffff0fffff",
 			"   fffffffffffffffff",
 		},
+	},
+	ldd = {
+		{
+			"                                               ",
+			"    ",
+			"        ",
+			"                         ",
+		},
+		{
+			"                                               ",
+			" f7ff7f7 f  fbfbbbffff9f99fff9ff9f9f9999fff9f9f",
+			" 77f f7  b  fbfbbfbfff9f9f f9 99ff9f9f9ffff999f",
+			" 777 77  bbbbbb        999 99 9 9 99        9 9",
+		},
+		{
+			"                                               ",
+			" 7f77f7f b  bfbfbfb999f9ff999f99f9f9ff9f999f9f9",
+			" 7f7 7f  b  bfbfbbf999f9f9 9f 9f99f9f999999f9f9",
+			" fff ff  ffffff        fff ff f f ff        f f",
+		},
 	}
 }
 for k,v in pairs(images) do
@@ -930,6 +969,7 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 	local gsX, gsY = (scrollInfo or {})[2] or 0, (scrollInfo or {})[3] or 0
 	local step = (scrollInfo or {})[1] or 0
 	local lastPos = cpos
+	local image
 	if not doAnimate then
 		drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
 		if useSkynet then
@@ -938,11 +978,20 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 		end
 	end
 	local rend = function()
+		if (step % 150 > 100) and doShowByImage then
+			image = images.ldd
+		else
+			image = images.logo
+		end
 		if doAnimate then
-			drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
+			drawImage(
+				image,
+				mathceil(scr_x / 2 - image.x / 2),
+				2
+			)
 			if useSkynet then
 				term.setTextColor(colors.lightGray)
-				cwrite("Skynet Enabled", 2 + images.logo.y)
+				cwrite("Skynet Enabled", 2 + image.y)
 			end
 		end
 		for i = 1, #options do
