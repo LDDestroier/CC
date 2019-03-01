@@ -5,10 +5,12 @@
 	 pastebin get wJQ7jav0 pain
 	 std ld pain pain
 --]]
-local askToSerialize = false
-local defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
+
+local plc = {} -- pain local, to avoid upvalue limit
+plc.askToSerialize = false
+plc.defaultSaveFormat = 4 -- will change if importing image, or making new file with extension in name
 --[[
-	defaultSaveFormat possible parameters:
+	plc.defaultSaveFormat possible parameters:
 	1. NFP (paint)
 	2. NFT (npaintpro)
 	3. BLT (blittle)
@@ -17,83 +19,88 @@ local defaultSaveFormat = 4 -- will change if importing image, or making new fil
 	6. UCG
 --]]
 
-local progname = fs.getName(shell.getRunningProgram())
-local apipath = ".painapi"
+plc.progname = fs.getName(shell.getRunningProgram())
+plc.apipath = ".painapi"
 
 local painconfig = {
-	undoBufferSize = 8,		-- amount of times undo will save your neck
+	undoBufferSize = 8,			-- amount of times undo will save your neck
 	readNonImageAsNFP = true,	-- reads non-image files as NFP images
 	useFlattenGIF = true,		-- will flatten compressed GIFs
 	gridBleedThrough = false,	-- will draw grid instead of character value of dots
 	doFillDiagonal = false,		-- checks for diagonal dots when using fill tool
 	doFillAnimation = false,	-- whether or not to animate the fill tool
+	useSetVisible = false,		-- whether or not to use term.current().setVisible, if possible
 }
 
-local saveConfig = function()
-	local file = fs.open(fs.combine(apipath,"painconfig"), "w")
-	file.write(textutils.serialize(painconfig))
-	file.close()
-end
-
-local loadConfig = function()
-	if fs.exists(fs.combine(apipath,"painconfig")) then
-		local file = fs.open(fs.combine(apipath,"painconfig"), "r")
-		painconfig = textutils.unserialize(file.readAll())
+local useConfig = function(mode)
+	if mode == "save" then
+		local file = fs.open(fs.combine(plc.apipath,"painconfig"), "w")
+		file.write(textutils.serialize(painconfig))
 		file.close()
+	elseif mode == "load" then
+		if fs.exists(fs.combine(plc.apipath,"painconfig")) then
+			local file = fs.open(fs.combine(plc.apipath,"painconfig"), "r")
+			painconfig = textutils.unserialize(file.readAll())
+			file.close()
+		end
 	end
 end
 
-loadConfig()
-saveConfig()
+useConfig("load")
+useConfig("save")
 
-local displayHelp = function()
-	print(progname)
-	print(progname.." <filename>")
-	print(progname.." [-h/--help]")
+plc.displayHelp = function()
+	print(plc.progname)
+	print(plc.progname.." <filename>")
+	print(plc.progname.." [-h/--help]")
 	print("Press F1 in program for more.")
 end
 
-local tsv = term.current().setVisible
-local undoBuffer
-local undoPos = 1
-local pMode = 0
+plc.tsv = function(visible)
+	if term.current().setVisible and painconfig.useSetVisible then
+		term.current().setVisible(visible)
+	end
+end
+
+--local undoBuffer
+plc.undoPos = 1
+plc.pMode = 0
 local scr_x, scr_y = term.getSize()
-screenEdges = {
+local screenEdges = {
 	scr_x,
 	scr_y,
 }
 
-local tArg = {...}
-if (tArg[1] == "--help" or tArg[1] == "-h") and shell then
-	return displayHelp()
+plc.tArg = {...}
+if (plc.tArg[1] == "--help" or plc.tArg[1] == "-h") and shell then
+	return plc.displayHelp()
 end
 
-if tArg[2] == "view" then
-	pMode = 1
-elseif (tArg[2] == "moo") and (not fs.exists("moo")) then
+if plc.tArg[2] == "view" then
+	plc.pMode = 1
+elseif (plc.tArg[2] == "moo") and (not fs.exists("moo")) then
 	return print("This PAIN does not have Super Cow Powers.")
 end
 
-local fileName
-if (not term.isColor()) and (pMode ~= 1) then
-	error("PAIN only works with Advanced Computers at the moment.")
+-- plc.fileName
+if (not term.isColor()) and (plc.pMode ~= 1) then
+	error("PAIN only works with Advanced Computers.")
 end
+
 local barmsg = "Press F1 for help."
-local tse = textutils.serialise
-local tun = textutils.unserialise
 local paintEncoded
 local lastPaintEncoded
 local frame = 1
 local doRender = false
 local metaHistory = {}
-local bepimode = false      -- this is a family-friendly program! now stand still while I murder you
-local evenDrawGrid = true   -- will you evenDraw(the)Grid ?
-local renderBlittle = false -- whether or not to render all in blittle
 local firstTerm, blittleTerm = term.current()
-local firstBG = term.getBackgroundColor()
-local firstTX = term.getTextColor()
-local changedImage = false
-local isCurrentlyFilling = false
+plc.bepimode = false      -- this is a family-friendly program! now stand still while I murder you
+plc.evenDrawGrid = true   -- will you evenDraw(the)Grid ?
+plc.renderBlittle = false -- whether or not to render all in blittle
+plc.firstBG = term.getBackgroundColor()
+plc.firstTX = term.getTextColor()
+plc.changedImage = false
+plc.isCurrentlyFilling = false
 local theClipboard = {}
 
 local _
@@ -326,8 +333,6 @@ Hotkeys:
 
  "A": Set the coordinates to 0,0
 
- "N": Open block character selection
-
  "B": Toggle redirect to blittle, to preview in teletext characters
 
  "c":
@@ -383,17 +388,20 @@ Hotkeys:
  Opens the special character selector, which lets you change the paint character to that of byte 0 to 255.
 
  "Edit > BLittle Shrink"
- Shrinks the current frame using the BLittle API. Very lossy, and unreversable without Undo.
+ Shrinks the current frame using the BLittle API. Very lossy unless you use one color, or are careful with how you use colors. You can set "Always Render Grid" to true to assist in making blocky graphics.
+
+ "Edit > BLittle Grow"
+ Grows the image by (2x, 3y) to reverse the effects of "BLittle Shrink". This isn't lossy, since all it does is inflate an image's size and converts the corresponding block characters.
 
  "Edit > Copy"
  Drag to select a region of the screen, and save it in a clipboard of a specified name.
 
  "Edit > Cut"
- Same as Copy, but deletes the selected region on the screen.
+ Same as Copy, but will delete the selected region on the screen.
 
  "Edit > Paste"
  Takes the contents of the specified clipboard, and plops it on the canvas where the mouse is.
-(The mouse will indicate the top-left corner of the pasted selection)
+ (The mouse will indicate the top-left corner of the pasted selection)
 
  "Set > ..."
  Each option will toggle a config option (or set it's value to something else).
@@ -401,6 +409,7 @@ Hotkeys:
 
  "Window > Set Screen Size"
  Sets the sizes of the screen border references displayed on the canvas.
+ You can also input the name of a monitor object, and it will use its size instead.
 
  "Window > Set Grid Colors"
  Sets the backdrop colors to your currently selected color configuration.
@@ -415,7 +424,7 @@ Hotkeys:
  Opens up this help page.
 
  "Exit"
- Durr I dunno, I think it exits.
+ Closes PAIN. I know, riviting stuff. You can close out of this help page with "Q", speaking of.
 
 
 I hope my PAIN causes you joy.
@@ -448,7 +457,7 @@ I hope my PAIN causes you joy.
 				helpscroll = helpscroll - scr_y
 			elseif (key == keys.q) or (key == keys.space) then
 				doRender = true
-				if renderBlittle then term.redirect(blittleTerm) end
+				if plc.renderBlittle then term.redirect(blittleTerm) end
 				scr_x, scr_y = term.current().getSize()
 				return
 			end
@@ -723,8 +732,8 @@ local saveFile = function(path,info)
 	file.close()
 end
 local renderBar = function(msg,dontSetVisible)
-	if (doRenderBar == 0) or renderBlittle then return end
-	if tsv and (not dontSetVisible) then tsv(false) end
+	if (doRenderBar == 0) or plc.renderBlittle then return end
+	if not dontSetVisible then plc.tsv(false) end
 	term.setCursorPos(1,scr_y)
 	term.setBackgroundColor(colors.lightGray)
 	term.setTextColor(colors.black)
@@ -740,7 +749,7 @@ local renderBar = function(msg,dontSetVisible)
 	term.write(msg)
 	term.setCursorPos(scr_x-(#fmsg),scr_y)
 	term.write(fmsg)
-	if tsv and (not dontSetVisible) then tsv(true) end
+	if not dontSetVisible then plc.tsv(true) end
 end
 
 local tableFormatPE = function(input)
@@ -823,8 +832,8 @@ BTC = function(_color,allowZero) --Blit To Color
 end
 
 local renderPainyThings = function(xscroll,yscroll,doGrid)
-	local yadjust = (renderBlittle and 0 or doRenderBar)
-	if bepimode then
+	local yadjust = (plc.renderBlittle and 0 or doRenderBar)
+	if plc.bepimode then
 		grid = {
 			"Bepis",
 			"episB",
@@ -1055,9 +1064,8 @@ lddfm.clearLine = function(x1,x2,_y,_bg,_char)
 end
 
 lddfm.render = function(_x1,_y1,_x2,_y2,_rlist,_path,_rscroll,_canClose,_scrbarY)
-	local tsv = term.current().setVisible
 	local px,py = term.getCursorPos()
-	if tsv then tsv(false) end
+	plc.tsv(false)
 	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
 	local rlist = _rlist or {"Invalid directory."}
 	local path = _path or "And that's terrible."
@@ -1106,7 +1114,7 @@ lddfm.render = function(_x1,_y1,_x2,_y2,_rlist,_path,_rscroll,_canClose,_scrbarY
 		term.write("close")
 	end
 	term.setCursorPos(px,py)
-	if tsv then tsv(true) end
+	plc.tsv(true)
 	return scrbarY
 end
 
@@ -1162,8 +1170,7 @@ lddfm.makeMenu = function(_x1,_y1,_x2,_y2,_path,_noFiles,_noFolders,_noCD,_noSel
 		end
 		_res, _barrY = pcall( function() return lddfm.render(x1,y1,x2,y2,list,path,lddfm.scroll,_canClose) end)
 		if not _res then
-			local tsv = term.current().setVisible
-			if tsv then tsv(true) end
+			plc.tsv(true)
 			error(_barrY)
 		end
 		local evt = {os.pullEvent()}
@@ -1233,8 +1240,8 @@ end
 
 local getBlittle = function()
 	if not blittle then
-		if fs.exists(fs.combine(apipath,"blittle")) then
-			os.loadAPI(fs.combine(apipath,"blittle"))
+		if fs.exists(fs.combine(plc.apipath,"blittle")) then
+			os.loadAPI(fs.combine(plc.apipath,"blittle"))
 			if not blittleTerm then
 				blittleTerm = blittle.createWindow()
 			end
@@ -1245,11 +1252,11 @@ local getBlittle = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open(fs.combine(apipath,"blittle"),"w")
+				local file = fs.open(fs.combine(plc.apipath,"blittle"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI(fs.combine(apipath,"blittle"))
-				--fs.delete(apipath)
+				os.loadAPI(fs.combine(plc.apipath,"blittle"))
+				--fs.delete(plc.apipath)
 				if not blittleTerm then
 					blittleTerm = blittle.createWindow()
 				end
@@ -1266,8 +1273,8 @@ end
 
 local getUCG = function()
 	if not ucg then
-		if fs.exists(fs.combine(apipath,"ucg")) then
-			os.loadAPI(fs.combine(apipath,"ucg"))
+		if fs.exists(fs.combine(plc.apipath,"ucg")) then
+			os.loadAPI(fs.combine(plc.apipath,"ucg"))
 			return true
 		else
 			local geet = http.get("https://raw.githubusercontent.com/ardera/libucg/master/src/libucg")
@@ -1275,10 +1282,10 @@ local getUCG = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open(fs.combine(apipath,"ucg"),"w")
+				local file = fs.open(fs.combine(plc.apipath,"ucg"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI(fs.combine(apipath,"ucg"))
+				os.loadAPI(fs.combine(plc.apipath,"ucg"))
 			end
 		end
 	end
@@ -1286,8 +1293,8 @@ end
 
 local getBBPack = function()
 	if not bbpack then
-		if fs.exists(fs.combine(apipath,"bbpack")) then
-			os.loadAPI(fs.combine(apipath,"bbpack"))
+		if fs.exists(fs.combine(plc.apipath,"bbpack")) then
+			os.loadAPI(fs.combine(plc.apipath,"bbpack"))
 			return true
 		else
 			local geet = http.get("https://pastebin.com/raw/cUYTGbpb")
@@ -1295,10 +1302,10 @@ local getBBPack = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open(fs.combine(apipath,"bbpack"),"w")
+				local file = fs.open(fs.combine(plc.apipath,"bbpack"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI(fs.combine(apipath,"bbpack"))
+				os.loadAPI(fs.combine(plc.apipath,"bbpack"))
 			end
 		end
 	end
@@ -1307,8 +1314,8 @@ end
 local getGIF = function()
 	getBBPack()
 	if not GIF then
-		if fs.exists(fs.combine(apipath,"GIF")) then
-			os.loadAPI(fs.combine(apipath,"GIF"))
+		if fs.exists(fs.combine(plc.apipath,"GIF")) then
+			os.loadAPI(fs.combine(plc.apipath,"GIF"))
 			return true
 		else
 			local geet = http.get("https://pastebin.com/raw/5uk9uRjC")
@@ -1316,10 +1323,10 @@ local getGIF = function()
 				return false
 			else
 				geet = geet.readAll()
-				local file = fs.open(fs.combine(apipath,"GIF"),"w")
+				local file = fs.open(fs.combine(plc.apipath,"GIF"),"w")
 				file.write(geet)
 				file.close()
-				os.loadAPI(fs.combine(apipath,"GIF"))
+				os.loadAPI(fs.combine(plc.apipath,"GIF"))
 			end
 		end
 	end
@@ -1388,16 +1395,16 @@ local exportToUCG = function(filename, input)
 end
 
 renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
-	if tsv then tsv(false) end
+	plc.tsv(false)
 	local beforeTX,beforeBG = term.getTextColor(), term.getBackgroundColor()
 	local cx,cy = term.getCursorPos()
 	local FUCK, SHIT = pcall(function()
 			if doPain then
-				if (not renderBlittle) then
+				if (not plc.renderBlittle) then
 					if not dontRenderBar then
 						renderBar(barmsg,true)
 					end
-					renderPainyThings(xscroll,yscroll,evenDrawGrid)
+					renderPainyThings(xscroll,yscroll,plc.evenDrawGrid)
 				else
 					term.clear()
 				end
@@ -1405,7 +1412,7 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 			for a = 1, #dots do
 				local d = dots[a]
 				if doPain then
-					if not ((d.y-yscroll >= 1 and d.y-yscroll <= scr_y-(renderBlittle and 0 or doRenderBar)) and (d.x-xscroll >= 1 and d.x-xscroll <= scr_x)) then
+					if not ((d.y-yscroll >= 1 and d.y-yscroll <= scr_y-(plc.renderBlittle and 0 or doRenderBar)) and (d.x-xscroll >= 1 and d.x-xscroll <= scr_x)) then
 						d = nil
 					end
 				end
@@ -1425,17 +1432,16 @@ renderPAIN = function(dots,xscroll,yscroll,doPain,dontRenderBar)
 	term.setBackgroundColor(beforeBG or rendback.b)
 	term.setTextColor(beforeTX or rendback.t)
 	term.setCursorPos(cx,cy)
-	if tsv then tsv(true) end
+	plc.tsv(true)
 	if not FUCK then error(SHIT) end --GOD DAMN IT
 end
 
 renderPAINFS = function(filename,xscroll,yscroll,frameNo,doPain)
-	local tun, tse = textutils.unserialize, textutils.serialize
 	local file = fs.open(filename,"r")
 	local contents = file.readAll()
 	local amntFrames
 	file.close()
-	local tcontents = tun(contents)
+	local tcontents = textutils.unserialize(contents)
 	if type(tcontents) ~= "table" then
 		tcontents = importFromPaint(contents)
 	else
@@ -1458,33 +1464,33 @@ local putDotDown = function(dot) -- only 'x' and 'y' are required arguments
 end
 
 local saveToUndoBuffer = function()
-	if undoPos < #undoBuffer then
-		for a = #undoBuffer, undoPos+1, -1 do
-			table.remove(undoBuffer,a)
+	if plc.undoPos < #plc.undoBuffer then
+		for a = #plc.undoBuffer, plc.undoPos + 1, -1 do
+			table.remove(plc.undoBuffer, a)
 		end
 	end
-	if undoPos >= painconfig.undoBufferSize then
-		for a = 2, #undoBuffer do
-			undoBuffer[a-1] = undoBuffer[a]
+	if plc.undoPos >= painconfig.undoBufferSize then
+		for a = 2, #plc.undoBuffer do
+			plc.undoBuffer[a - 1] = plc.undoBuffer[a]
 		end
-		undoBuffer[#undoBuffer] = deepCopy(paintEncoded)
+		plc.undoBuffer[#plc.undoBuffer] = deepCopy(paintEncoded)
 	else
-		undoPos = undoPos + 1
-		undoBuffer[undoPos] = deepCopy(paintEncoded)
+		plc.undoPos = plc.undoPos + 1
+		plc.undoBuffer[plc.undoPos] = deepCopy(paintEncoded)
 	end
 end
 
 local doUndo = function()
-	undoPos = math.max(1,undoPos-1)
-	paintEncoded = deepCopy(undoBuffer[undoPos])
+	plc.undoPos = math.max(1, plc.undoPos - 1)
+	paintEncoded = deepCopy(plc.undoBuffer[plc.undoPos])
 	if not paintEncoded[frame] then
 		frame = #paintEncoded
 	end
 end
 
 local doRedo = function()
-	undoPos = math.min(#undoBuffer,undoPos+1)
-	paintEncoded = deepCopy(undoBuffer[undoPos])
+	plc.undoPos = math.min(#plc.undoBuffer, plc.undoPos + 1)
+	paintEncoded = deepCopy(plc.undoBuffer[plc.undoPos])
 	if not paintEncoded[frame] then
 		frame = #paintEncoded
 	end
@@ -1788,7 +1794,7 @@ local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame 
 		if (x < minX or x > maxX) or (y < minY or y > maxY) then
 			return false
 		else
-			if (doop[y][x].b ~= initDot.b) or (doop[y][x].t ~= initDot.t) or (doop[y][x].c ~= initDot.c) then
+			if (doop[y][x].b ~= initDot.b) or (doop[y][x].t ~= initDot.t and doop[y][x].c ~= " ") or (doop[y][x].c ~= initDot.c) then
 				return false
 			end
 			if check[y] then
@@ -2058,7 +2064,6 @@ local checkIfNFP = function(str) --does not check table format, only string form
 end
 
 local selectRegion = function()
-	local position = {}
 	local mevt, id, x1, y1 = os.pullEvent("mouse_click")
 	local x2, y2, pos, redrawID
 	local renderRectangle = true
@@ -2127,19 +2132,19 @@ local openNewFile = function(fname, allowNonImageNFP)
 	local file = fs.open(fname,"r")
 	local contents = file.readAll()
 	file.close()
-	if type(tun(contents)) ~= "table" then
+	if type(textutils.unserialize(contents)) ~= "table" then
 		term.setTextColor(colors.white)
 		if contents:sub(1,3) == "BLT" then --thank you bomb bloke for this easy identifier
-			if pMode ~= 1 then print("Importing from BLT...") end
+			if plc.pMode ~= 1 then print("Importing from BLT...") end
 			return importFromBLT(fname), 3
 		elseif contents:sub(1,3) == "GIF" then
-			if pMode ~= 1 then print("Importing from GIF, this'll take a while...") end
+			if plc.pMode ~= 1 then print("Importing from GIF, this'll take a while...") end
 			return importFromGIF(fname,true), 5
 		elseif contents:sub(1,4) == "?!7\2" then
-			if pMode ~= 1 then print("Importing from UCG...") end
+			if plc.pMode ~= 1 then print("Importing from UCG...") end
 			return {importFromUCG(fname)}, 6
 		elseif contents:find(string.char(30)) and contents:find(string.char(31)) then
-			if pMode ~= 1 then print("Importing from NFT...") end
+			if plc.pMode ~= 1 then print("Importing from NFT...") end
 			return {importFromNFT(contents)}, 2
 		elseif (checkIfNFP(contents) or allowNonImageNFP) then
 			print("Importing from NFP...")
@@ -2148,72 +2153,131 @@ local openNewFile = function(fname, allowNonImageNFP)
 			return false, "That is not a valid image file."
 		end
 	else
-		return tun(contents), 4
+		return textutils.unserialize(contents), 4
 	end
 end
 
-local editCopy = function()
-    local board = bottomPrompt("Copy to board: ")
-    renderAllPAIN()
-    renderBottomBar("Select region to copy.")
-    local selectedDots = selectRegion()
-    theClipboard[board] = selectedDots
-    barmsg = "Copied to '"..board.."'"
-    doRender = true
-    keysDown = {}
-    miceDown = {}
-end
-local editCut = function()
-    local board = bottomPrompt("Cut to board: ")
-    renderAllPAIN()
-    renderBottomBar("Select region to cut.")
-    local selectedDots, x1, y1, x2, y2 = selectRegion()
-    theClipboard[board] = selectedDots
-    local dot
-    for i = #paintEncoded[frame], 1, -1 do
-        dot = paintEncoded[frame][i]
-        if dot.x >= x1 and dot.x <= x2 then
-            if dot.y >= y1 and dot.y <= y2 then
-                table.remove(paintEncoded[frame], i)
-            end
-        end
-    end
-    barmsg = "Cut to '"..board.."'"
-    doRender = true
-    saveToUndoBuffer()
-    keysDown = {}
-    miceDown = {}
-end
+local editFuncs = {
+	copy = function()
+		local board = bottomPrompt("Copy to board: ")
+		renderAllPAIN()
+		renderBottomBar("Select region to copy.")
+		local selectedDots = selectRegion()
+		theClipboard[board] = selectedDots
+		barmsg = "Copied to '"..board.."'"
+		doRender = true
+		keysDown = {}
+		miceDown = {}
+	end,
+	cut = function()
+		local board = bottomPrompt("Cut to board: ")
+		renderAllPAIN()
+		renderBottomBar("Select region to cut.")
+		local selectedDots, x1, y1, x2, y2 = selectRegion()
+		theClipboard[board] = selectedDots
+		local dot
+		for i = #paintEncoded[frame], 1, -1 do
+		    dot = paintEncoded[frame][i]
+		    if dot.x >= x1 and dot.x <= x2 then
+		        if dot.y >= y1 and dot.y <= y2 then
+		            table.remove(paintEncoded[frame], i)
+		        end
+		    end
+		end
+		barmsg = "Cut to '"..board.."'"
+		doRender = true
+		saveToUndoBuffer()
+		keysDown = {}
+		miceDown = {}
+	end,
+	paste = function()
+		local board = bottomPrompt("Paste from board: ")
+		renderAllPAIN()
+		renderBottomBar("Click to paste. (top left corner)")
+		if theClipboard[board] then
+		    local mevt
+		    repeat
+		        mevt = {os.pullEvent()}
+		    until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
+		    for k,v in pairs(theClipboard[board]) do
+		        paintEncoded[frame][#paintEncoded[frame]+1] = {
+		            x = v.x + paint.scrollX + (mevt[3]),
+		            y = v.y + paint.scrollY + (mevt[4]),
+		            c = v.c,
+		            t = v.t,
+		            b = v.b,
+		            m = v.m
+		        }
+		    end
+		    paintEncoded[frame] = clearRedundant(paintEncoded[frame])
+		    barmsg = "Pasted from '"..board.."'"
+		    doRender = true
+		    saveToUndoBuffer()
+		    keysDown = {}
+		    miceDown = {}
+		else
+		    barmsg = "No such clipboard."
+		    doRender = true
+		end
+	end
+}
 
-local editPaste = function()
-    local board = bottomPrompt("Paste from board: ")
-    renderAllPAIN()
-    renderBottomBar("Click to paste. (top left corner)")
-    if theClipboard[board] then
-        local mevt
-        repeat
-            mevt = {os.pullEvent()}
-        until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-1)
-        for k,v in pairs(theClipboard[board]) do
-            paintEncoded[frame][#paintEncoded[frame]+1] = {
-                x = v.x + paint.scrollX + (mevt[3]),
-                y = v.y + paint.scrollY + (mevt[4]),
-                c = v.c,
-                t = v.t,
-                b = v.b,
-                m = v.m
-            }
-        end
-        paintEncoded[frame] = clearRedundant(paintEncoded[frame])
-        barmsg = "Pasted from '"..board.."'"
-        doRender = true
-        saveToUndoBuffer()
-        keysDown = {}
-        miceDown = {}
-    else
-        barmsg = "No such clipboard."
-        doRender = true
-    end
+local blockEnlargeFrame = function(frameNo)
+	
+	local frame = deepCopy(paintEncoded[frameNo])
+	local charConvert = {
+		["\129"] = {{true , false},{false, false},{false, false}},
+		["\130"] = {{false, true },{false, false},{false, false}},
+		["\131"] = {{true , true },{false, false},{false, false}},
+		["\132"] = {{false, false},{true , false},{false, false}},
+		["\133"] = {{true , false},{true , false},{false, false}},
+		["\134"] = {{false, true },{true , false},{false, false}},
+		["\135"] = {{true , true },{true , false},{false, false}},
+		["\136"] = {{false, false},{false, true },{false, false}},
+		["\137"] = {{true , false},{false, true },{false, false}},
+		["\138"] = {{false, true },{false, true },{false, false}},
+		["\139"] = {{true , true },{false, true },{false, false}},
+		["\140"] = {{false, false},{true , true },{false, false}},
+		["\141"] = {{true , false},{true , true },{false, false}},
+		["\142"] = {{false, true },{true , true },{false, false}},
+		["\143"] = {{true , true },{true , true },{false, false}},
+		["\144"] = {{false, false},{false, false},{true , false}},
+		["\145"] = {{true , false},{false, false},{true , false}},
+		["\146"] = {{false, true },{false, false},{true , false}},
+		["\147"] = {{true , true },{false, false},{true , false}},
+		["\148"] = {{false, false},{true , false},{true , false}},
+		["\149"] = {{true , false},{true , false},{true , false}},
+		["\150"] = {{false, true },{true , false},{true , false}},
+		["\151"] = {{true , true },{true , false},{true , false}},
+		["\152"] = {{false, false},{false, true },{true , false}},
+		["\153"] = {{true , false},{false, true },{true , false}},
+		["\154"] = {{false, true },{false, true },{true , false}},
+		["\155"] = {{true , true },{false, true },{true , false}},
+		["\156"] = {{false, false},{true , true },{true , false}},
+		["\157"] = {{true , false},{true , true },{true , false}},
+		["\158"] = {{false, true },{true , true },{true , false}},
+		["\159"] = {{true , true },{true , true },{true , false}},
+	}
+	local output, b = {}
+	for k, dot in pairs(frame) do
+		b = charConvert[dot.c] or {{false, false},{false, false},{false, false}}
+		for y = 1, #b do
+			for x = 1, #b[y] do
+				output[#output+1] = {
+					x = (dot.x - 1) * 2 + (x - 0),
+					y = (dot.y - 1) * 3 + (y - 0),
+					c = " ",
+--					t = b[y][x] and dot.t or dot.b,
+--					b = b[y][x] and dot.b or dot.t
+					t = b[y][x] and dot.b or dot.t,
+					b = b[y][x] and dot.t or dot.b
+				}
+			end
+		end
+	end
+	barmsg = "Grew image."
+
+	return output
 end
 
 local displayMenu = function()
@@ -2228,7 +2292,7 @@ local displayMenu = function()
 			output = convertToGrayscale(output)
 		end
 		doRender = true
-		if not fileName then
+		if not plc.fileName then
 			renderBottomBar("Save as: ")
 			local fnguess = read()
 			if fs.isReadOnly(fnguess) then
@@ -2243,12 +2307,12 @@ local displayMenu = function()
 				barmsg = "Filename is too long."
 				return false
 			else
-				fileName = fnguess
+				plc.fileName = fnguess
 			end
 		end
-		saveFile(fileName,output)
+		saveFile(plc.fileName,output)
 		term.setCursorPos(9,scr_y)
-		return fileName
+		return plc.fileName
 	end
 	local filePrint = function()
 		local usedDots, dot = {}, {}
@@ -2327,7 +2391,7 @@ local displayMenu = function()
 		if exportMode == 4 then
 			local exNm = fileSave()
 			if exNm then
-				changedImage = false
+				plc.changedImage = false
 				return exNm
 			else
 				return nil
@@ -2349,7 +2413,7 @@ local displayMenu = function()
 				return
 			end
 			if fs.exists(exportName) and (not _fileName) then
-				local plea = (progname == fs.combine("",exportName)) and "Overwrite ORIGINAL file!?" or "Overwrite?"
+				local plea = (plc.progname == fs.combine("",exportName)) and "Overwrite ORIGINAL file!?" or "Overwrite?"
 				result, _wIn = bottomPrompt(plea.." (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 				writeIndent = writeIndent + _wIn
 				if result ~= "y" then return end
@@ -2363,7 +2427,7 @@ local displayMenu = function()
 		end
 		if exportMode == 1 then
 			output = exportToPaint(pe[frame])
-			if askToSerialize then
+			if plc.askToSerialize then
 				result, _wIn = bottomPrompt("Save as serialized? (Y/N)",_,"yn",{})
 				writeIndent = writeIndent + _wIn
 			else result, _wIn = "n", 0 end
@@ -2375,7 +2439,7 @@ local displayMenu = function()
 		elseif exportMode == 3 then
 			local doAllFrames, _wIn = bottomPrompt("Save all frames, or current? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl},writeIndent)
 			writeIndent = writeIndent + _wIn
-			if askToSerialize then
+			if plc.askToSerialize then
 				doSerializeBLT = bottomPrompt("Save as serialized? (Y/N)",_,"yn",{},writeIndent) == "y"
 			end
 			output = textutils.serialise(exportToBLT(pe,exportName,doAllFrames == "y",doSerializeBLT))
@@ -2564,21 +2628,21 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				})
 				doRender = true
 				if output == 1 then -- Save
-					local _fname = fileExport(_,defaultSaveFormat,fileName)
+					local _fname = fileExport(_,plc.defaultSaveFormat,plc.fileName)
 					if _fname then
 						barmsg = "Saved as '".._fname.."'"
 						lastPaintEncoded = deepCopy(paintEncoded)
-						changedImage = false
+						plc.changedImage = false
 					end
 					break
 				elseif output == 2 then -- Save As
-					local oldfilename = fileName
-					fileName = nil
-					local res = fileExport(_,defaultSaveFormat)
+					local oldfilename = plc.fileName
+					plc.fileName = nil
+					local res = fileExport(_,plc.defaultSaveFormat)
 					if not res then
-						fileName = oldfilename
+						plc.fileName = oldfilename
 					end
-					barmsg = "Saved as '"..fileName.."'"
+					barmsg = "Saved as '"..plc.fileName.."'"
 				elseif output == 3 then --Export
 					local res = fileExport(longestLen+1)
 					if res then
@@ -2587,17 +2651,17 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					end
 				elseif output == 4 then -- Open
 					renderBottomBar("Pick an image file.")
-					local newPath = lddfm.makeMenu(2, 2, scr_x-1, scr_y-2, fs.getDir(fileName or progname), false, false, false, true, false, nil, true)
+					local newPath = lddfm.makeMenu(2, 2, scr_x-1, scr_y-2, fs.getDir(plc.fileName or plc.progname), false, false, false, true, false, nil, true)
 					if newPath then
 						local pen, form = openNewFile(newPath, painconfig.readNonImageAsNFP)
 						if not pen then
 							barmsg = form
 						else
-							fileName = newPath
+							plc.fileName = newPath
 							paintEncoded, lastPaintEncoded = pen, deepCopy(pen)
-							defaultSaveFormat = form
-							undoPos = 1
-							undoBuffer = {deepCopy(paintEncoded)}
+							plc.defaultSaveFormat = form
+							plc.undoPos = 1
+							plc.undoBuffer = {deepCopy(paintEncoded)}
 							barmsg = "Opened '" .. fs.getName(newPath) .. "'"
 							paint.scrollX, paint.scrollY, paint.doGray = 1, 1, false
 							doRender = true
@@ -2621,6 +2685,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				"Choose Box Character",
 				"Choose Special Character",
 				"BLittle Shrink",
+				"BLittle Grow",
 				"Copy Region",
 				"Cut Region",
 				"Paste Region"
@@ -2637,7 +2702,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			elseif output == 5 then
 				editSpecialCharSelector()
 			elseif output == 6 then
-				local res = bottomPrompt("You sure? It's unreversable! (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
+				local res = bottomPrompt("You sure? It's lossy! (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 				if res == "y" then
 					getBlittle()
 					local bltPE = blittle.shrink(NFPserializeImage(exportToPaint(paintEncoded[frame])))
@@ -2659,11 +2724,13 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					barmsg = "Shrunk image."
 				end
 			elseif output == 7 then
-				editCopy()
+				paintEncoded[frame] = blockEnlargeFrame(frame)
 			elseif output == 8 then
-				editCut()
+				editFuncs.copy()
 			elseif output == 9 then
-				editPaste()
+				editFuncs.cut()
+			elseif output == 10 then
+				editFuncs.paste()
 			elseif output == false then
 				return "nobreak"
 			end
@@ -2694,6 +2761,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				(painconfig.gridBleedThrough 	and "(T)" or "(F)") .. " Always Render Grid",
 				(painconfig.doFillDiagonal 		and "(T)" or "(F)") .. " Fill Diagonally",
 				(painconfig.doFillAnimation 	and "(T)" or "(F)") .. " Do Fill Animation",
+				(painconfig.useSetVisible		and "(T)" or "(F)") .. " Use setVisible()",
 				"(" .. painconfig.undoBufferSize .. ") Set Undo Buffer Size",
 			})
 			if output == 1 then
@@ -2707,16 +2775,18 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			elseif output == 5 then
 				painconfig.doFillAnimation = not painconfig.doFillAnimation
 			elseif output == 6 then
+				painconfig.useSetVisible = not painconfig.useSetVisible
+			elseif output == 7 then
 				local newUndoBufferSize = bottomPrompt("New undo buffer size: ")
 				if tonumber(newUndoBufferSize) then
 					painconfig.undoBufferSize = math.abs(tonumber(newUndoBufferSize))
-					undoBuffer = {deepCopy(paintEncoded)}
-					undoPos = 1
+					plc.undoBuffer = {deepCopy(paintEncoded)}
+					plc.undoPos = 1
 				else
 					return
 				end
 			end
-			saveConfig()
+			useConfig("save")
 		end,
 		[5] = function() --About
 			local output = makeSubMenu(17,cleary-1,{
@@ -2735,7 +2805,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			end
 		end,
 		[6] = function() --Exit
-			if changedImage then
+			if plc.changedImage then
 				local outcum = bottomPrompt("Abandon unsaved work? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
 				sleep(0)
 				if outcum == "y" then
@@ -2973,7 +3043,7 @@ local getInput = function() --gotta catch them all
 			oldmx,oldmy = x or evt[3], y or evt[4]
 			lastMX,lastMY = evt[3],evt[4]
 			button,x,y = evt[2],evt[3],evt[4]
-			if renderBlittle then
+			if plc.renderBlittle then
 				x = 2*x
 				y = 3*y
 				lastMX = 2*lastMX
@@ -2981,7 +3051,7 @@ local getInput = function() --gotta catch them all
 			end
 			linePoses = {{x=oldmx,y=oldmy},{x=x,y=y}}
 			miceDown[button] = true
-			if y <= scr_y-(renderBlittle and 0 or doRenderBar) then
+			if y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
 				if (button == 3) then
 					putDownText(x,y)
 					miceDown = {}
@@ -3011,16 +3081,16 @@ local getInput = function() --gotta catch them all
 						else
 							putDotDown({x=x, y=y})
 						end
-						changedImage = true
+						plc.changedImage = true
 						doRender = true
 					end
 					dontDragThisTime = false
-				elseif button == 2 and y <= scr_y-(renderBlittle and 0 or doRenderBar) then
+				elseif button == 2 and y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
 					deleteDot(x+paint.scrollX,y+paint.scrollY)
-					changedImage = true
+					plc.changedImage = true
 					doRender = true
 				end
-			elseif origy >= scr_y-(renderBlittle and 0 or doRenderBar) then
+			elseif origy >= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
 				miceDown = {}
 				keysDown = {}
 				isDragging = false
@@ -3028,7 +3098,7 @@ local getInput = function() --gotta catch them all
 				if res == "exit" then break end
 				doRender = true
 			end
-		elseif (evt[1] == "mouse_up") and (not viewing) and (not isCurrentlyFilling) then
+		elseif (evt[1] == "mouse_up") and (not viewing) and (not plc.isCurrentlyFilling) then
 			origx,origy = 0,0
 			local button = evt[2]
 			miceDown[button] = false
@@ -3039,7 +3109,7 @@ local getInput = function() --gotta catch them all
 				for a = 1, #points do
 					putDotDown({x=points[a].x, y=points[a].y})
 				end
-				changedImage = true
+				plc.changedImage = true
 				doRender = true
 			end
 			saveToUndoBuffer()
@@ -3065,7 +3135,7 @@ local getInput = function() --gotta catch them all
 			keysDown[key] = true
 			if key == keys.space then
 				if keysDown[keys.leftShift] then
-					evenDrawGrid = not evenDrawGrid
+					plc.evenDrawGrid = not plc.evenDrawGrid
 				else
 					doRenderBar = math.abs(doRenderBar-1)
 				end
@@ -3073,11 +3143,11 @@ local getInput = function() --gotta catch them all
 			end
 			if key == keys.b then
 				local blTerm, oldTerm = getBlittle()
-				renderBlittle = not renderBlittle
+				plc.renderBlittle = not plc.renderBlittle
 				isDragging = false
 				term.setBackgroundColor(rendback.b)
 				term.clear()
-				if renderBlittle then
+				if plc.renderBlittle then
 					term.redirect(blTerm)
 					blTerm.setVisible(true)
 				else
@@ -3088,17 +3158,17 @@ local getInput = function() --gotta catch them all
 				scr_x, scr_y = term.current().getSize()
 			end
 			if keysDown[keys.leftAlt] then
-				if (not renderBlittle) then
+				if (not plc.renderBlittle) then
 					if (key == keys.c) then
-						editCopy()
+						editFuncs.copy()
 					elseif (key == keys.x) then
-						editCut()
+						editFuncs.cut()
 					elseif (key == keys.v) then
-						editPaste()
+						editFuncs.paste()
 					end
 				end
 			else
-				if (key == keys.c) and (not renderBlittle) then
+				if (key == keys.c) and (not plc.renderBlittle) then
 					gotoCoords()
 					resetInputState()
 					doRender = true
@@ -3109,22 +3179,22 @@ local getInput = function() --gotta catch them all
 					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],-1,0)
 					saveToUndoBuffer()
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 				elseif key == keys.right then
 					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],1,0)
 					saveToUndoBuffer()
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 				elseif key == keys.up then
 					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],0,-1)
 					saveToUndoBuffer()
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 				elseif key == keys.down then
 					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],0,1)
 					saveToUndoBuffer()
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 				end
 			end
 			if keysDown[keys.leftAlt] then
@@ -3137,7 +3207,7 @@ local getInput = function() --gotta catch them all
 						frame = frame + 1
 						barmsg = "Swapped prev frame."
 						doRender = true
-						changedImage = true
+						plc.changedImage = true
 						saveToUndoBuffer()
 					end
 					if key == keys.minus and paintEncoded[frame-1] then
@@ -3148,7 +3218,7 @@ local getInput = function() --gotta catch them all
 						frame = frame - 1
 						barmsg = "Swapped next frame."
 						doRender = true
-						changedImage = true
+						plc.changedImage = true
 						saveToUndoBuffer()
 					end
 				end
@@ -3162,7 +3232,7 @@ local getInput = function() --gotta catch them all
 						paintEncoded = clearAllRedundant(paintEncoded)
 						barmsg = "Merged next frame."
 						doRender = true
-						changedImage = true
+						plc.changedImage = true
 						saveToUndoBuffer()
 					end
 					if key == keys.minus and paintEncoded[frame-1] then
@@ -3174,13 +3244,13 @@ local getInput = function() --gotta catch them all
 						paintEncoded = clearAllRedundant(paintEncoded)
 						barmsg = "Merged previous frame."
 						doRender = true
-						changedImage = true
+						plc.changedImage = true
 						saveToUndoBuffer()
 					end
 				end
 			else
 				if key == keys.equals then --basically 'plus'
-					if renderBlittle then
+					if plc.renderBlittle then
 						frame = frame + 1
 						if frame > #paintEncoded then frame = 1 end
 					else
@@ -3195,9 +3265,9 @@ local getInput = function() --gotta catch them all
 					end
 					saveToUndoBuffer()
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 				elseif key == keys.minus then
-					if renderBlittle then
+					if plc.renderBlittle then
 						frame = frame - 1
 						if frame < 1 then frame = #paintEncoded end
 					else
@@ -3207,10 +3277,10 @@ local getInput = function() --gotta catch them all
 					end
 					saveToUndoBuffer()
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 				end
 			end
-			if not renderBlittle then
+			if not plc.renderBlittle then
 				if key == keys.m then
 					local incum = bottomPrompt("Set meta: ",metaHistory)
 					paint.m = incum:gsub(" ","") ~= "" and incum or paint.m
@@ -3221,7 +3291,7 @@ local getInput = function() --gotta catch them all
 					isDragging = false
 				end
 				if key == keys.f7 then
-					bepimode = not bepimode
+					plc.bepimode = not plc.bepimode
 					doRender = true
 				end
 				if key == keys.t then
@@ -3229,10 +3299,10 @@ local getInput = function() --gotta catch them all
 					local mevt
 					repeat
 						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-(renderBlittle and 0 or doRenderBar))
+					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-(plc.renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
-						if renderBlittle then
+						if plc.renderBlittle then
 							x = 2*x
 							y = 3*y
 						end
@@ -3241,10 +3311,10 @@ local getInput = function() --gotta catch them all
 						keysDown = {}
 					end
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 					isDragging = false
 				end
-				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) and (not isCurrentlyFilling) then
+				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) and (not plc.isCurrentlyFilling) then
 					renderBottomBar("Click to fill area.")
 					local mevt
 					repeat
@@ -3252,7 +3322,7 @@ local getInput = function() --gotta catch them all
 					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] <= 2 and (mevt[4] or scr_y) <= scr_y-(renderBlittle and 0 or doRenderBar))
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x,y = mevt[3],mevt[4]
-						if renderBlittle then
+						if plc.renderBlittle then
 							x = 2*x
 							y = 3*y
 						end
@@ -3261,7 +3331,7 @@ local getInput = function() --gotta catch them all
 						os.queueEvent("filltool_async", frame, x, y, paint, mevt[2] == 2)
 					end
 					doRender = true
-					changedImage = true
+					plc.changedImage = true
 					isDragging = false
 				end
 				if key == keys.p then
@@ -3273,7 +3343,7 @@ local getInput = function() --gotta catch them all
 					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and mevt[4] <= scr_y)
 					if not (mevt[1] == "key" and mevt[2] == keys.x) then
 						local x, y = mevt[3]+paint.scrollX, mevt[4]+paint.scrollY
-						if renderBlittle then
+						if plc.renderBlittle then
 							x = 2*x
 							y = 3*y
 						end
@@ -3308,7 +3378,7 @@ local getInput = function() --gotta catch them all
 			end
 			if (key == keys.f and keysDown[keys.leftShift]) then
 				local deredots = {}
-				changedImage = true
+				plc.changedImage = true
 				for a = 1, #paintEncoded[frame] do
 					local dot = paintEncoded[frame][a]
 					if dot.x-paint.scrollX > 0 and dot.x-paint.scrollX <= scr_x then
@@ -3336,7 +3406,7 @@ local getInput = function() --gotta catch them all
 			end
 			if key == keys.g then
 				paint.doGray = not paint.doGray
-				changedImage = true
+				plc.changedImage = true
 				saveToUndoBuffer()
 				doRender = true
 			end
@@ -3370,11 +3440,11 @@ local getInput = function() --gotta catch them all
 				os.queueEvent("mouse_scroll",1,1,1)
 			end
 			if key == keys.z then
-				if keysDown[keys.leftAlt] and undoPos < #undoBuffer then
+				if keysDown[keys.leftAlt] and plc.undoPos < #plc.undoBuffer then
 					doRedo()
 					barmsg = "Redood."
 					doRender = true
-				elseif undoPos > 1 then
+				elseif plc.undoPos > 1 then
 					doUndo()
 					barmsg = "Undood."
 					doRender = true
@@ -3397,28 +3467,28 @@ end
 runPainEditor = function(...) --needs to be cleaned up
 	local tArg = table.pack(...)
 	if not (tArg[1] == "-n" or (not tArg[1])) then
-		fileName = shell.resolve(tostring(tArg[1]))
+		plc.fileName = shell.resolve(tostring(tArg[1]))
 	end
 
-	if not fileName then
+	if not plc.fileName then
 		paintEncoded = {{}}
-	elseif not fs.exists(fileName) then
-		local ex = fileName:sub(-4):lower()
+	elseif not fs.exists(plc.fileName) then
+		local ex = plc.fileName:sub(-4):lower()
 		if ex == ".nfp" then
-			defaultSaveFormat = 1
+			plc.defaultSaveFormat = 1
 		elseif ex == ".nft" then
-			defaultSaveFormat = 2
+			plc.defaultSaveFormat = 2
 		elseif ex == ".blt" then
-			defaultSaveFormat = 3
+			plc.defaultSaveFormat = 3
 		elseif ex == ".gif" then
-			defaultSaveFormat = 5
+			plc.defaultSaveFormat = 5
 		elseif ex == ".ucg" then
-			defaultSaveFormat = 6
+			plc.defaultSaveFormat = 6
 		else
-			defaultSaveFormat = 4
+			plc.defaultSaveFormat = 4
 		end
 		paintEncoded = {{}}
-	elseif fs.isDir(fileName) then
+	elseif fs.isDir(plc.fileName) then
 		if math.random(1,32) == 1 then
 			write("Oh") sleep(0.2)
 			write(" My") sleep(0.2)
@@ -3432,28 +3502,28 @@ runPainEditor = function(...) --needs to be cleaned up
 		end
 		return
 	else
-		paintEncoded, defaultSaveFormat = openNewFile(fileName, readNonImageAsNFP)
+		paintEncoded, plc.defaultSaveFormat = openNewFile(plc.fileName, readNonImageAsNFP)
 		if not paintEncoded then
-			return print(defaultSaveFormat)
+			return print(plc.defaultSaveFormat)
 		end
 	end
 
-    local asyncFillTool = function()
-        local event, frameNo, x, y, dot
-        isCurrentlyFilling = false
-        while true do
-            event, frameNo, x, y, dot, isDeleting = os.pullEvent("filltool_async")
-            isCurrentlyFilling = true
-            renderBottomBar("Filling area...")
-            fillTool(frameNo, x, y, dot, isDeleting)
+	local asyncFillTool = function()
+		local event, frameNo, x, y, dot
+		plc.isCurrentlyFilling = false
+		while true do
+			event, frameNo, x, y, dot, isDeleting = os.pullEvent("filltool_async")
+			plc.isCurrentlyFilling = true
+			renderBottomBar("Filling area...")
+			fillTool(frameNo, x, y, dot, isDeleting)
 			saveToUndoBuffer()
-            isCurrentlyFilling = false
-            reRenderPAIN(doRenderBar == 0)
-        end
-    end
+			plc.isCurrentlyFilling = false
+			reRenderPAIN(doRenderBar == 0)
+		end
+	end
 
 	if not paintEncoded[frame] then paintEncoded = {paintEncoded} end
-	if pMode == 1 then
+	if plc.pMode == 1 then
 		doRenderBar = 0
 		renderPAIN(paintEncoded[tonumber(tArg[5]) or 1],-(tonumber(tArg[3]) or 0),-(tonumber(tArg[4]) or 0)) -- 'pain filename view X Y frame'
 		sleep(0)
@@ -3462,7 +3532,7 @@ runPainEditor = function(...) --needs to be cleaned up
 		renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true)
 	end
 	lastPaintEncoded = deepCopy(paintEncoded)
-	undoBuffer = {deepCopy(paintEncoded)}
+	plc.undoBuffer = {deepCopy(paintEncoded)}
 	parallel.waitForAny(getInput, doNonEventDrivenMovement, asyncFillTool)
 
 	term.setCursorPos(1,scr_y)
@@ -3472,4 +3542,4 @@ end
 
 if not shell then error("shell API is required, sorry") end
 
-runPainEditor(...)
+runPainEditor(table.unpack(plc.tArg))
