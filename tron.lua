@@ -14,23 +14,23 @@ local scr_mx, scr_my = scr_x / 2, scr_y / 2
 local isColor = term.isColor()
 
 -- lower value = faster game. I'd reccommend 0.1 for SMP play.
-local gameDelayInit = 0.05
+local gameDelayInit = 0.1
 -- draws the names of players onscreen
 local doDrawPlayerNames = true
 -- if doDrawPlayerNames, also draws your own name
 local doRenderOwnName = false
 -- whether or not to use term.current().setVisible, which speeds things up at the cost of multishell
-local useSetVisible = true
+local useSetVisible = false
 -- determines which grid is used
-local gridID = 3
+local gridID = 1
 
 local initGrid = {
-	x1 = -40,
-	y1 = -40,
+	x1 = -100,
+	y1 = -100,
 	x2 = 40,
 	y2 = 40,
-	border = "F",
-	voidcol = "e",
+	border = "#",
+	voidcol = "f",
 	forecol = "8",
 	backcol = "7",
 	edgecol = "0"
@@ -42,7 +42,7 @@ local resetPlayers = function()
 			x = -3,
 			y = -5,
 			direction = -1,
-			char = "F",
+			char = "@",
 			color = {
 				colors.blue,
 				colors.blue,
@@ -56,7 +56,7 @@ local resetPlayers = function()
 			},
 			dead = false,
 			trailLevel = 10,
-			trailMax = 20,
+			trailMax = 10,
 			trailRegen = 0.1,
 			putTrail = true,
 			name = "BLU",
@@ -67,7 +67,7 @@ local resetPlayers = function()
 			x = 3,
 			y = -5,
 			direction = -1,
-			char = "~",
+			char = "@",
 			color = {
 				colors.red,
 				colors.red,
@@ -81,7 +81,7 @@ local resetPlayers = function()
 			},
 			dead = false,
 			trailLevel = 10,
-			trailMax = 20,
+			trailMax = 10,
 			trailRegen = 0.1,
 			putTrail = true,
 			name = "RED",
@@ -141,21 +141,28 @@ local gridFore, gridBack
 local gridList = {
 	[1] = {
 		{
-			"+-------",
-			"|       ",
-			"|       ",
-			"|       ",
-			"|       "
+			"+-    -+------",
+			"|      |      ",
+			"       |      ",
+			".      |      ",
+			"+------+-   --",
+			"|      |      ",
+			"|             ",
+			"|      .      ",
 		},
 		{
-			"+------------",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            "
+			"+-      -+--------",
+			"|        |        ",
+			"         |        ",
+			"         |        ",
+			"         |        ",
+			"|        |        ",
+			"+--------+-      -",
+			"|        |        ",
+			"|                 ",
+			"|                 ",
+			"|                 ",
+			"|        |        ",
 		}
 	},
 	[2] = {
@@ -179,28 +186,21 @@ local gridList = {
 	},
 	[3] = {
 		{
-			"+-    -+------",
-			"|      |      ",
-			"       |      ",
-			".      |      ",
-			"+------+-   --",
-			"|      |      ",
-			"|             ",
-			"|      .      ",
+			"+-------",
+			"|       ",
+			"|       ",
+			"|       ",
+			"|       "
 		},
 		{
-			"+-      -+--------",
-			"|        |        ",
-			"         |        ",
-			"         |        ",
-			"         |        ",
-			"|        |        ",
-			"+--------+-      -",
-			"|        |        ",
-			"|                 ",
-			"|                 ",
-			"|                 ",
-			"|        |        ",
+			"+------------",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            "
 		}
 	},
 	[4] = {
@@ -227,6 +227,60 @@ local gridList = {
 			"   \\    /   ",
 			"    \\  /    ",
 			"     \\/     ",
+		}
+	},
+	[5] = {
+		{
+			" "
+		},
+		{
+			"+-----------------------------------------------------",
+			"| Somebody once told me the world is gonna roll me    ",
+			"| I ain't the sharpest tool in the shed / She was     ",
+			"| looking kind of dumb with her finger and her thumb  ",
+			"| In the shape of an 'L' on her forehead / Well the   ",
+			"| years start coming and they don't stop coming       ",
+			"| Fed to the rules and I hit the ground running       ",
+			"| Didn't make sense not to live for fun / Your brain  ",
+			"| gets smart but your head gets dumb / So much to     ",
+			"| do, so much to see / So what's wrong with taking    ",
+			"| the back streets? / You'll never know if you don't  ",
+			"| go / You'll never shine if you don't glow / Hey     ",
+			"| now, you're an all-star, get your game on, go play  ",
+			"| Hey now, you're a rock star, get the show on, get   ",
+			"| paid / And all that glitters is gold / Only         ",
+			"| shooting stars break the mold / It's a cool         ",
+			"| place and they say it gets colder / You're bundled  ",
+			"| up now, wait till you get older / But the meteor    ",
+			"| men beg to differ / Judging by the hole in the      ",
+			"| satellite picture / The ice we skate is getting     ",
+			"| pretty thin / The water's getting warm so you might ",
+			"| as well swim / My world's on fire, how about yours? ",
+			"| That's the way I like it and I never get bored      ",
+			"| Hey now, you're an all-star, get your game on, go   ",
+			"| play / Hey now, you're a rock star, get the show    ",
+			"| on, get paid / All that glitters is gold / Only     ",
+			"| shooting stars break the mold / Hey now, you're     ",
+			"| an all-star, get your game on, go play / Hey now,   ",
+			"| you're a rock star, get the show, on get paid       ",
+			"| And all that glitters is gold / Only shooting       ",
+			"| stars... / Somebody once asked could I spare some   ",
+			"| change for gas? / I need to get myself away from    ",
+			"| this place / I said yep, what a concept / I could   ",
+			"| use a little fuel myself / And we could all use a   ",
+			"| little change / Well, the years start coming and    ",
+			"| they don't stop coming / Fed to the rules and I     ",
+			"| hit the ground running / Didn't make sense not to   ",
+			"| live for fun / Your brain gets smart but your head  ",
+			"| gets dumb / So much to do, so much to see / So      ",
+			"| what's wrong with taking the back streets?          ",
+			"| You'll never know if you don't go (go!) / You'll    ",
+			"| never shine if you don't glow / Hey now, you're     ",
+			"| an all-star, get your game on, go play / Hey now,   ",
+			"| you're a rock star, get the show on, get paid       ",
+			"| And all that glitters is gold / Only shooting       ",
+			"| stars break the mold / And all that glitters is     ",
+			"| gold / Only shooting stars break the mold           ",
 		}
 	}
 }
@@ -572,9 +626,9 @@ for k,v in pairs(images) do
 		for x = 1, v.x do
 			if v[2][y]:sub(x,x) ~= "" and v[3][y]:sub(x,x) ~= "" then
 				if (v[2][y]:sub(x,x) == " " and v[3][y]:sub(x,x) ~= " ") then
-					images[k][2][y] = v[2][y]:sub(1, x - 1) .. "f" .. v[2][y]:sub(x + 1)
+					images[k][2][y] = v[2][y]:sub(1, x - 1) .. initGrid.voidcol .. v[2][y]:sub(x + 1)
 				elseif (v[2][y]:sub(x,x) ~= " " and v[3][y]:sub(x,x) == " ") then
-					images[k][3][y] = v[3][y]:sub(1, x - 1) .. "f" .. v[3][y]:sub(x + 1)
+					images[k][3][y] = v[3][y]:sub(1, x - 1) .. initGrid.voidcol .. v[3][y]:sub(x + 1)
 				end
 			end
 		end
@@ -591,8 +645,8 @@ local drawImage = function(im, x, y)
 			if not (im[2][iy]:sub(ix,ix) == " " and im[3][iy]:sub(ix,ix) == " ") then
 				termblit(
 					im[1][iy]:sub(ix,ix),
-					im[2][iy]:sub(ix,ix),
-					im[3][iy]:sub(ix,ix)
+					im[2][iy]:sub(ix,ix):gsub("[ f]",initGrid.voidcol),
+					im[3][iy]:sub(ix,ix):gsub("[ f]",initGrid.voidcol)
 				)
 			end
 		end
