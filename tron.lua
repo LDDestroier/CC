@@ -322,6 +322,24 @@ if argumentName then
 	argumentName = argumentName:sub(1, 15) -- gotta enforce that limit
 end
 
+if doUpdateGame then
+	print("Downloading...")
+	local net = http.get("https://github.com/LDDestroier/CC/raw/master/tron.lua")
+	if net then
+		local file = fs.open(shell.getRunningProgram(), "w")
+		file.write(net.readAll())
+		file.close()
+		print("Updated!")
+	else
+		printError("Couldn't update!")
+	end
+	if useOnce then
+		return
+	else
+		sleep(0.2)
+	end
+end
+
 local modem, skynet
 if not doGridDemo then
 	if useSkynet then
@@ -1695,23 +1713,6 @@ local main = function()
 	end
 end
 
-if doUpdateGame then
-	print("Downloading...")
-	local net = http.get("https://github.com/LDDestroier/CC/raw/master/tron.lua")
-	if net then
-		local file = fs.open(shell.getRunningProgram(), "w")
-		file.write(net.readAll())
-		file.close()
-		print("Updated!")
-	else
-		printError("Couldn't update!")
-	end
-	if useOnce then
-		return
-	else
-		sleep(0.2)
-	end
-end
 if doGridDemo then
 	parallel.waitForAny(function()
 		local step, gsX, gsY = 0, 0, 0
