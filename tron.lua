@@ -89,10 +89,157 @@ local resetPlayers = function()
 		}
 	}
 end
-local tArg = {...}
-local useSkynet = (tArg[1] or ""):lower() == "skynet"
-local useOnce = (tArg[2] or tArg[1] or ""):lower() == "quick"
-local argumentName = tArg[3] or tArg[2] or tArg[1] or nil
+
+local function interpretArgs(tInput, tArgs)
+	local output = {}
+	local errors = {}
+	local usedEntries = {}
+	for aName, aType in pairs(tArgs) do
+		output[aName] = false
+		for i = 1, #tInput do
+			if not usedEntries[i] then
+				if tInput[i] == aName and not output[aName] then
+					if aType then
+						usedEntries[i] = true
+						if type(tInput[i+1]) == aType or type(tonumber(tInput[i+1])) == aType then
+							usedEntries[i+1] = true
+							if aType == "number" then
+								output[aName] = tonumber(tInput[i+1])
+							else
+								output[aName] = tInput[i+1]
+							end
+						else
+							output[aName] = nil
+							errors[1] = errors[1] and (errors[1] + 1) or 1
+							errors[aName] = "expected " .. aType .. ", got " .. type(tInput[i+1])
+						end
+					else
+						usedEntries[i] = true
+						output[aName] = true
+					end
+				end
+			end
+		end
+	end
+	for i = 1, #tInput do
+		if not usedEntries[i] then
+			output[#output+1] = tInput[i]
+		end
+	end
+	return output, errors
+end
+
+local argData = {
+	["skynet"] = false,		-- use Skynet HTTP multiplayer
+	["quick"] = false,		-- start one game immediately
+	["griddemo"] = false,	-- only move the grid
+	["--gridID"] = "number"	-- grid ID to use
+}
+
+local gridFore, gridBack
+local gridList = {
+	[1] = {
+		{
+			"+-------",
+			"|       ",
+			"|       ",
+			"|       ",
+			"|       "
+		},
+		{
+			"+------------",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            ",
+			"|            "
+		}
+	},
+	[2] = {
+		{
+			"    /      ",
+			"   /       ",
+			"  /        ",
+			" /         ",
+			"/__________"
+		},
+		{
+			"       /        ",
+			"      /         ",
+			"     /          ",
+			"    /           ",
+			"   /            ",
+			"  /             ",
+			" /              ",
+			"/_______________"
+		}
+	},
+	[3] = {
+		{
+			"+-    -+------",
+			"|      |      ",
+			"       |      ",
+			".      |      ",
+			"+------+-   --",
+			"|      |      ",
+			"|             ",
+			"|      .      ",
+		},
+		{
+			"+-      -+--------",
+			"|        |        ",
+			"         |        ",
+			"         |        ",
+			"         |        ",
+			"|        |        ",
+			"+--------+-      -",
+			"|        |        ",
+			"|                 ",
+			"|                 ",
+			"|                 ",
+			"|        |        ",
+		}
+	},
+	[4] = {
+		{
+			"   /\\   ",
+			"  /  \\  ",
+			" /    \\ ",
+			"/      \\",
+			"\\      /",
+			" \\    / ",
+			"  \\  /  ",
+			"   \\/   ",
+		},
+		{
+			"     /\\     ",
+			"    /  \\    ",
+			"   /    \\   ",
+			"  /      \\  ",
+			" /        \\ ",
+			"/          \\",
+			"\\          /",
+			" \\        / ",
+			"  \\      /  ",
+			"   \\    /   ",
+			"    \\  /    ",
+			"     \\/     ",
+		}
+	}
+}
+
+local argList = interpretArgs({...}, argData)
+
+local useSkynet = argList["skynet"]
+local useOnce = argList["quick"]
+local doGridDemo = argList["griddemo"]
+if gridList[argList["--gridID"]] then
+	gridID = argList["--gridID"]
+end
+local argumentName = argList[1]
+
 local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
@@ -498,99 +645,6 @@ for k,v in pairs(control) do
 	revControl[v] = k
 end
 
-local gridFore, gridBack
-local gridList = {
-	[1] = {
-		{
-			"+-------",
-			"|       ",
-			"|       ",
-			"|       ",
-			"|       "
-		},
-		{
-			"+------------",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            ",
-			"|            "
-		}
-	},
-	[2] = {
-		{
-			"    /      ",
-			"   /       ",
-			"  /        ",
-			" /         ",
-			"/__________"
-		},
-		{
-			"       /        ",
-			"      /         ",
-			"     /          ",
-			"    /           ",
-			"   /            ",
-			"  /             ",
-			" /              ",
-			"/_______________"
-		}
-	},
-	[3] = {
-		{
-			"+-    -+------",
-			"|      |      ",
-			"       |      ",
-			".      |      ",
-			"+------+-   --",
-			"|      |      ",
-			"|             ",
-			"|      .      ",
-		},
-		{
-			"+-      -+--------",
-			"|        |        ",
-			"         |        ",
-			"         |        ",
-			"         |        ",
-			"|        |        ",
-			"+--------+-      -",
-			"|        |        ",
-			"|                 ",
-			"|                 ",
-			"|                 ",
-			"|        |        ",
-		}
-	},
-	[4] = {
-		{
-			"   /\\   ",
-			"  /  \\  ",
-			" /    \\ ",
-			"/      \\",
-			"\\      /",
-			" \\    / ",
-			"  \\  /  ",
-			"   \\/   ",
-		},
-		{
-			"     /\\     ",
-			"    /  \\    ",
-			"   /    \\   ",
-			"  /      \\  ",
-			" /        \\ ",
-			"/          \\",
-			"\\          /",
-			" \\        / ",
-			"  \\      /  ",
-			"   \\    /   ",
-			"    \\  /    ",
-			"     \\/     ",
-		}
-	}
-}
 gridFore, gridBack = table.unpack(gridList[gridID])
 
 local dirArrow = {
@@ -640,8 +694,8 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 						isPlayer = i
 						break
 					elseif (not isHost) and useSkynet and i == you and (
-						adjX == math.floor(player[i].x + (0.03 * round(ping, 0)) * math.cos(math.rad(player[i].direction * 90))) and
-						adjY == math.floor(player[i].y + (0.03 * round(ping, 0)) * math.sin(math.rad(player[i].direction * 90)))
+						adjX == math.floor(player[i].x + (0.02 * round(ping, 0)) * math.cos(math.rad(player[i].direction * 90))) and
+						adjY == math.floor(player[i].y + (0.02 * round(ping, 0)) * math.sin(math.rad(player[i].direction * 90)))
 					) then
 						isPredict = i
 						break
@@ -744,7 +798,7 @@ local render = function(useSetVisible, netTime)
 	end
 	term.setCursorPos(1,2)
 	if netTime and useSkynet then
-		ping = (os.epoch() - netTime) / round(72, 2)
+		ping = (os.epoch("utc") - netTime)
 		term.setTextColor(colors.white)
 		term.write(" " .. tostring(ping) .. " ms")
 	end
@@ -759,8 +813,12 @@ local pleaseWait = function()
 	termclear()
 
 	local tID = os.startTimer(0.2)
-	local evt
-	local txt = "Waiting for game"
+	local evt, txt
+	if useSkynet then
+		txt = "Waiting for Skynet game"
+	else
+		txt = "Waiting for modem game"
+	end
 
 	while true do
 		cwrite("(Press 'Q' to cancel)", 2)
@@ -816,10 +874,18 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 	local lastPos = cpos
 	if not doAnimate then
 		drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
+		if useSkynet then
+			term.setTextColor(colors.lightGray)
+			cwrite("Skynet Enabled", 2 + images.logo.y)
+		end
 	end
 	local rend = function()
 		if doAnimate then
 			drawImage(images.logo, mathceil(scr_x / 2 - images.logo.x / 2), 2)
+			if useSkynet then
+				term.setTextColor(colors.lightGray)
+				cwrite("Skynet Enabled", 2 + images.logo.y)
+			end
 		end
 		for i = 1, #options do
 			if i == cpos then
@@ -1184,7 +1250,7 @@ local sendInfo = function(gameID)
 		name = player[you].name,
 		putTrail = isPuttingDown,
 		gameID = gameID,
-		time = os.epoch(),
+		time = os.epoch("utc"),
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
 		deadGuys = isHost and deadGuys or nil,
@@ -1407,7 +1473,7 @@ local networking = function()
 						player = player,
 						gameID = gamename,
 						new = isHost and (-math.huge) or (math.huge),
-						time = os.epoch(),
+						time = os.epoch("utc"),
 						name = argumentName,
 						grid = initGrid
 					})
@@ -1492,7 +1558,7 @@ local startGame = function()
 		gameID = gamename,
 		new = os.time(),
 		gameDelay = gameDelayInit,
-		time = os.epoch(),
+		time = os.epoch("utc"),
 		name = argumentName,
 		grid = initGrid
 	})
@@ -1524,19 +1590,43 @@ local main = function()
 	end
 end
 
-if useOnce then
-	term.setCursorBlink(false)
-	if useSkynet then
-		parallel.waitForAny(startGame, skynet.listen)
-		skynet.socket.close()
-	else
-		startGame()
-	end
+if doGridDemo then
+	parallel.waitForAny(function()
+		local step, gsX, gsY = 0, 0, 0
+		while true do
+			drawGrid(gsX, gsY, true)
+			step = step + 1
+			if mathceil(step / 100) % 2 == 1 then
+				gsX = gsX + 1
+			else
+				gsY = gsY - 1
+			end
+			sleep(0.05)
+		end
+	end, function()
+		sleep(0.1)
+		local evt, key
+		repeat
+			evt, key = os.pullEvent("key")
+		until key == keys.q
+		sleep(0.1)
+	end)
 else
-	if useSkynet then
-		parallel.waitForAny(main, skynet.listen)
-		skynet.socket.close()
+	if useOnce then
+		term.setCursorBlink(false)
+		if useSkynet then
+			parallel.waitForAny(startGame, skynet.listen)
+			skynet.socket.close()
+		else
+			startGame()
+		end
+		term.setCursorPos(1, scr_y)
 	else
-		main()
+		if useSkynet then
+			parallel.waitForAny(main, skynet.listen)
+			skynet.socket.close()
+		else
+			main()
+		end
 	end
 end
