@@ -6,10 +6,12 @@ local config = {
 	channel = 1024,
 	keyPath = fs.combine(mainPath, "keys"),
 	mailPath = fs.combine(mainPath, "mail"),
-	apiPath = fs.combine(mainPath, "api")
+	apiPath = fs.combine(mainPath, "api"),
+	nameFile = fs.combine(mainPath, "names")
 }
 
 local keys = {}
+local names = {}
 
 local readFile = function(path)
 	local file = fs.open(path, "r")
@@ -38,15 +40,31 @@ local getKey = function(ID)
 end
 
 -- get personal key file
-local key = ""
+keys[yourID] = ""
 if fs.exists(fs.combine(config.keyPath, tostring(yourID))) then
-	key = readFile(fs.combine(config.keyPath, tostring(yourID)))
+	keys[yourID] = readFile(fs.combine(config.keyPath, tostring(yourID)))
 else
 	for i = 1, 64 do
-		key = key .. string.char(math.random(11, 255))
+		keys[yourID] = keys[yourID] .. string.char(math.random(11, 255))
 	end
-	writeFile(fs.combine(config.keyPath, tostring(yourID)), key)
+	writeFile(fs.combine(config.keyPath, tostring(yourID)), keys[yourID])
 end
+
+local getAllKeys = function()
+	local list = fs.list(config.keyPath)
+	local output = {}
+	for i = 1, #list do
+		if tonumber(list[i]) then
+			output[tonumber(list[i])] = getKey(list[i])
+		end
+	end
+	return output
+end
+
+keys = getAllKeys()
+
+--print(textutils.serialize(keys))
+--error()
 
 local apiData = {
 	["aes"] = {
@@ -117,6 +135,11 @@ local argList = {
 
 local argData, argErrors = interpretArgs({...}, argList)
 local isServer = argData["--server"]
+local serverID = argData[1]
+
+if ccemux and (not peripheral.find("modem")) then
+	ccemux.attach("top", "wireless_modem")
+end
 
 local modem
 local getModem = function(doNotPickWireless)
@@ -143,83 +166,184 @@ local userIDs = {}
 -- all data recorded
 local DATA = {}
 
-local transmit = function(msg)
+local transmit = function(msg, msgID)
 	modem = getModem(onlyUseWiredModems)
 	modem.transmit(config.channel, config.channel, {
 		msg = msg,
-		encrypted = false
+		encrypted = false,
+		msgID = msgID
 	})
 end
 
-local encTransmit = function(msg, recipient)
+local encTransmit = function(msg, msgID, recipient)
 	modem = getModem(onlyUseWiredModems)
-	modem.transmit(config.channel, config.channel, {
-		msg = aes.encrypt(key, msg),
-		encrypted = true
-	})
+	if not keys[recipient] then
+		error("the fuck, no keys[recipient]")
+	elseif not msg then
+		error("the fuck, no msg")
+	else
+		modem.transmit(config.channel, config.channel, {
+			msg = aes.encrypt(keys[recipient], msg),
+			encrypted = true,
+			msgID = msgID,
+			recipient = recipient
+		})
+	end
 end
 
-local handle = {
-	client = {},
-	server = {}
-}
-
-handle.client.findServer = function(recipient)
-	local msgID = math.random(1, 2^30)
-	transmit({
-		id = yourID,
-		command = "find_server",
-		msgID = msgID,
-	})
-	local evt, msg
-	local timerID = os.startTimer(2)
+local receive = function(msgID, specifyCommand, timer)
+	local evt, msg, tID
+	if timer then
+		tID = os.startTimer(timer)
+	end
+	modem = getModem()
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "modem_message" then
-			if evt[5].encrypted then
-				msg = evt[5].msg
-			else
-				msg = evt[5].msg
+			if type(evt[5]) == "table" then
+				if evt[5].encrypted then
+					msg = aes.decrypt(keys[yourID], evt[5].msg)
+				else
+					msg = evt[5].msg
+				end
+				if (not msgID) or (evt[5].msgID == msgID) then
+					if (not specifyCommand) or (msg.command == specifyCommand) then
+						return msg, evt[5].encrypted, evt[5].msgID
+					end
+				end
 			end
-		elseif evt[1] == "timer" and evt[2] == timerID then
-			return false
+		elseif evt[1] == "timer" and evt[2] == tID then
+			return nil, nil, nil
 		end
 	end
 end
 
-handle.server.registerID = function(id)
+local client = {}	-- all client-specific commands
+local server = {}	-- all server-specific commands
+
+----                       ----
+----    CLIENT COMMANDS    ----
+----                       ----
+
+-- if you want a super duper secure network, manually enter the server ID into this
+client.findServer = function(recipient)
+	local msgID = math.random(1, 2^30)
+	transmit({
+		id = yourID,
+		command = "find_server"
+	}, msgID)
+	local reply, isEncrypted = receive(msgID, "find_server_respond", 2)
+	if type(reply) == "table" then
+		if reply.server then
+			return reply.server
+		end
+	end
+end
+
+client.register = function(srv, username)
+	local msgID = math.random(1, 2^30)
+	encTransmit({
+		id = yourID,
+		name = username
+	}, msgID, srv)
+end
+
+client.sendMail = function(srv, recipient, subject, message, attachments)
+	local msgID = math.random(1, 2^30)
+	encTransmit({
+		command = "send_mail",
+		id = yourID,
+		recipient = recipient,
+		subject = subject,
+		message = message,
+		attachments = attachments
+	}, msgID, srv)
+	local reply, isEncrypted = receive(msgID, "send_mail_respond", 2)
+	return (reply ~= nil and isEncrypted ~= nil)
+end
+
+client.getMail = function(srv)
+	local msgID = math.random(1, 2^30)
+	encTransmit({
+		command = "get_mail",
+		id = yourID,
+	}, msgID, srv)
+	local reply, isEncrypted = receive(msgID, "get_mail_respond", 2)
+	return (isEncrypted and type(reply) == "table") and reply
+end
+
+----                       ----
+----    SERVER COMMANDS    ----
+----                       ----
+
+server.checkValidName = function(name)
+	if type(name) ~= "string" then
+		return false
+	else
+		return #name >= 3 or #name <= 64
+	end
+end
+
+server.checkRegister = function(id)
+	-- I make the code this stupid looking in case I add other stipulations
+	if names[tostring(id)] then
+		return true
+	else
+		return false
+	end
+end
+
+server.registerID = function(id, name)
 	local path = fs.combine(config.mailPath, id)
-	if not fs.exists(path) then
+	if not server.checkRegister(id) then
 		fs.makeDir(path)
+		names[id] = tostring(name)
+		return true, names[id]
+	else
+		return false, "name already exists"
 	end
 end
 
 -- records a full email to file
-handle.server.recordMail = function(sender, recipient, message, subject, attachment)
-	-- sender: The person who sends the message
-	-- recipient: The message will be put in their folder
-	-- subject: The header of a message
-	-- message: the fuck you think it is
-	-- attachment: Contents of a SINGLE file that will be attached to an email
-	local path = fs.combine(config.mailPath, recipient)
-	handle.server.registerID(recipient)
+server.recordMail = function(sender, _recipient, subject, message, attachments)
 	local time = os.epoch("utc")
-	local file = fs.open(fs.combine(path, time), "w")
-	file.write(textutils.serialize({
+	local recipient
+
+	if _recipient == "*" then
+		recipient = fs.list(config.mailPath)
+	elseif type(_recipient) ~= "table" then
+		recipient = {tostring(_recipient)}
+	end
+
+	local msg = textutils.serialize({
 		sender = id,
 		time = time,
-		recipient = recipient,
 		read = false,
 		subject = subject,
 		message = message,
-		attachment = attachment
-	}))
+		attachments = attachments
+	})
+
+	local requiredSpace = #msg + 2
+	if fs.getFreeSpace(config.mailPath) < requiredSpace then
+		return false, "Cannot write mail, not enough space!"
+	end
+
+	local path, file
+	for i = 1, #recipient do
+		server.registerID(recipient[i])
+		path = fs.combine(config.mailPath, recipient[i])
+		file = fs.open(fs.combine(path, tostring(time)), "w")
+		file.write(msg)
+		file.close()
+	end
+	return true
 end
 
--- returns every email in an inbox
-handle.server.getMail = function(id)
+-- returns every email in an ID's inbox
+server.getMail = function(id)
 	local output, list = {}, {}
-	local mails = fs.list(fs.combine(config.mailPath, id))
+	local mails = fs.list(fs.combine(config.mailPath, tostring(id)))
 	local file
 	for k,v in pairs(mails) do
 		list[v] = k
@@ -235,35 +359,111 @@ handle.server.getMail = function(id)
 end
 
 -- receives messages and sends the appropriate response
-handle.server.networking = function()
-	local evt, _msg, msg
+server.networking = function(verbose)
+	local msg, isEncrypted, msgID
+
+	local say = function(text, id)
+		if verbose then
+			return print(text .. (id and ("(" .. id .. ")") or ""))
+		end
+	end
+
 	while true do
-		evt = {os.pullEvent()}
-		if evt[1] == "modem_message" then
-			_msg = evt[5]
-			if type(_msg) == "table" then
-				if _msg.msg and type(_msg.encrypted) == "boolean" then
-					if _msg.encrypted then
-						msg = _msg.msg
-					else
-						msg = aes.decrypt(key, _msg.msg)
-					end
-					if msg then
-						
-						-- add more commands
-						if msg.command == "find_server" then
-							-- send the server ID
+
+		msg, isEncrypted, msgID = receive()
+
+		if not isEncrypted then
+			if msg.command == "find_server" then
+				transmit({
+					command = msg.command .. "_respond",
+					server = yourID,
+				}, msgID, msg.id)
+				say("find_server found")
+			end
+		elseif msg.id then
+			if not server.checkRegister(msg.id) then
+				encTransmit({
+					command = msg.command .. "_respond",
+					result = false,
+					errorMsg = "not registered"
+				}, msgID, msg.id)
+				say("unregistered users can burn in hell")
+			else
+
+				if msg.command == "register" then
+					if (
+						type(msg.id) == "number" and
+						type(msg.name) == "string"
+					) then
+						local reply
+						local result, name = server.registerID(msg.id, msg.name)
+						if result then
+							reply = {
+								command = msg.command .. "_respond",
+								result = result,
+								name = name,
+							}
+						else
+							reply = {
+								command = msg.command .. "_respond",
+								result = result,
+							}
 						end
-						
+						encTransmit(reply, msgID, msg.id)
+						say("user " .. tostring(msg.id) .. " registered as " .. name)
+					end
+				elseif msg.command == "find_server" then
+					encTransmit({
+						command = msg.command .. "_respond",
+						server = yourID,
+						result = true
+					}, msgID, msg.id)
+					say("find_server found (aes)")
+				elseif msg.command == "send_mail" then
+					if (
+						msg.recipient and
+						type(msg.subject) == "string" and
+						type(msg.message) == "string"
+					) then
+						local reply = {
+							command = msg.command .. "_respond",
+							result = server.recordMail(msg.id, msg.recipient, msg.subject, msg.message, msg.attachments)
+						}
+						encTransmit(reply, msgID, msg.id)
+						say("mail sent", msg.id)
+					end
+				elseif msg.command == "get_mail" then
+					if (
+						msg.id
+					) then
+						local mail = server.getMail(msg.id)
+						local reply = {
+							command = msg.command .. "_respond",
+							result = true,
+							mail = mail,
+						}
+						encTransmit(reply, msgID, msg.id)
 					end
 				end
+
 			end
 		end
+
 	end
 end
 
 if isServer then
-	handle.server.networking()
+	server.networking(true)
 else
 	-- make a whole client interface and shit
+	local srv = client.findServer()
+	print(srv)
+	client.register(srv, "buttman")
 end
+--[[
+server.recordMail(1, 1, "Testing the sysmail.", "Forgive me, but I'm just testing SysMail as it's being made.")
+local messages = server.getMail(1)
+print(textutils.serialize(messages))
+--]]
+
+return {client = client, server = server}
