@@ -10,14 +10,20 @@ local config = {
 	nameFile = fs.combine(mainPath, "names")
 }
 
-local keys = {}
-local names = {}
+local alphasort = function(tbl)
+	table.sort(tbl, function(a,b) return string.lower(a) < string.lower(b) end)
+	return tbl
+end
 
 local readFile = function(path)
-	local file = fs.open(path, "r")
-	local contents = file.readAll()
-	file.close()
-	return contents
+	if fs.exists(path) then
+		local file = fs.open(path, "r")
+		local contents = file.readAll()
+		file.close()
+		return contents
+	else
+		return nil
+	end
 end
 
 local writeFile = function(path, contents)
@@ -38,6 +44,12 @@ end
 local getKey = function(ID)
 	return readFile(fs.combine(config.keyPath, ID))
 end
+
+local keys = {}
+local names = textutils.unserialize(readFile(config.nameFile) or "{}")
+
+-- keys[id] = key
+-- names[name] = id
 
 -- get personal key file
 keys[yourID] = ""
@@ -67,9 +79,10 @@ keys = getAllKeys()
 --error()
 
 local apiData = {
-	["aes"] = {
-		path = "aes.lua",
-		url = "http://pastebin.com/raw/9E5UHiqv",
+	["aeslua"] = {
+		path = "aeslua.lua",
+		url = "https://gist.githubusercontent.com/SquidDev/86925e07cbabd70773e53d781bd8b2fe/raw/aeslua.lua",
+		useLoadAPI = true,
 	}
 }
 
@@ -86,9 +99,13 @@ for name, data in pairs(apiData) do
 			error("Could not download " .. name)
 		end
 	end
-	_ENV[name] = dofile(data.path)
+	if data.useLoadAPI then
+		local res = os.loadAPI(data.path)
+		--error(res)
+	else
+		_ENV[name] = dofile(data.path)
+	end
 end
-
 
 local function interpretArgs(tInput, tArgs)
 	local output = {}
@@ -178,12 +195,10 @@ end
 local encTransmit = function(msg, msgID, recipient)
 	modem = getModem(onlyUseWiredModems)
 	if not keys[recipient] then
-		error("the fuck, no keys[recipient]")
-	elseif not msg then
-		error("the fuck, no msg")
+		error("You do not possess the key of the recipient.")
 	else
 		modem.transmit(config.channel, config.channel, {
-			msg = aes.encrypt(keys[recipient], msg),
+			msg = aeslua.encrypt(keys[recipient], textutils.serialize(msg)),
 			encrypted = true,
 			msgID = msgID,
 			recipient = recipient
@@ -202,7 +217,13 @@ local receive = function(msgID, specifyCommand, timer)
 		if evt[1] == "modem_message" then
 			if type(evt[5]) == "table" then
 				if evt[5].encrypted then
-					msg = aes.decrypt(keys[yourID], evt[5].msg)
+					if not keys[yourID] then
+						error("keys[yourID] was nil when decrypting!")
+					elseif not evt[5].msg then
+						error("evt[5].msg was nil when decrypting!")
+					else
+						msg = textutils.unserialize(aeslua.decrypt(keys[yourID], evt[5].msg))
+					end
 				else
 					msg = evt[5].msg
 				end
@@ -240,16 +261,40 @@ client.findServer = function(recipient)
 	end
 end
 
+-- Registers your ID to a name.
 client.register = function(srv, username)
 	local msgID = math.random(1, 2^30)
 	encTransmit({
 		id = yourID,
+		command = "register",
 		name = username
 	}, msgID, srv)
+	local reply, isEncrypted = receive(msgID, "register_respond", 2)
+	return reply ~= nil
 end
 
-client.sendMail = function(srv, recipient, subject, message, attachments)
+-- Gets a list of all registered ID names
+client.getNames = function(srv)
 	local msgID = math.random(1, 2^30)
+	encTransmit({
+		id = yourID,
+		command = "get_names"
+	}, msgID, srv)
+	local reply, isEncrypted = receive(msgID, "get_names_respond", 2)
+	if type(reply) == "table" then
+		return reply.names
+	else
+		return nil
+	end
+end
+
+-- Sends an email to a recipient ID.
+client.sendMail = function(srv, recipient, subject, message, attachments)
+	assert(srv, "server ID expected")
+	local msgID = math.random(1, 2^30)
+	if type(recipient) == "string" then
+		recipient = names[recipient]
+	end
 	encTransmit({
 		command = "send_mail",
 		id = yourID,
@@ -259,7 +304,11 @@ client.sendMail = function(srv, recipient, subject, message, attachments)
 		attachments = attachments
 	}, msgID, srv)
 	local reply, isEncrypted = receive(msgID, "send_mail_respond", 2)
-	return (reply ~= nil and isEncrypted ~= nil)
+	if (isEncrypted and type(reply) == "table") then
+		return reply.result
+	else
+		return false
+	end
 end
 
 client.getMail = function(srv)
@@ -269,7 +318,26 @@ client.getMail = function(srv)
 		id = yourID,
 	}, msgID, srv)
 	local reply, isEncrypted = receive(msgID, "get_mail_respond", 2)
-	return (isEncrypted and type(reply) == "table") and reply
+	if (isEncrypted and type(reply) == "table") then
+		return reply.mail
+	else
+		return nil
+	end
+end
+
+client.deleteMail = function(srv, mail)
+	local msgID = math.random(1, 2^30)
+	encTransmit({
+		command = "delete_mail",
+		id = yourID,
+		mail = mail,
+	}, msgID, srv)
+	local reply, isEncrypted = receive(msgID, "delete_mail_respond", 2)
+	if (isEncrypted and type(reply) == "table") then
+		return reply.result
+	else
+		return false
+	end
 end
 
 ----                       ----
@@ -286,19 +354,21 @@ end
 
 server.checkRegister = function(id)
 	-- I make the code this stupid looking in case I add other stipulations
-	if names[tostring(id)] then
-		return true
-	else
-		return false
+	for name, id in pairs(names) do
+		if names[name] == id then
+			return name
+		end
 	end
+	return false
 end
 
 server.registerID = function(id, name)
-	local path = fs.combine(config.mailPath, id)
+	local path = fs.combine(config.mailPath, tostring(id))
 	if not server.checkRegister(id) then
 		fs.makeDir(path)
-		names[id] = tostring(name)
-		return true, names[id]
+		names[tostring(name)] = id
+		writeFile(config.nameFile, textutils.serialize(names))
+		return true, names[name]
 	else
 		return false, "name already exists"
 	end
@@ -358,13 +428,23 @@ server.getMail = function(id)
 	return output
 end
 
+server.deleteMail = function(id, del)
+	local mails = alphasort(fs.list(fs.combine(config.mailPath, tostring(id))))
+	if mails[del] then
+		fs.delete(fs.combine(config.mailPath, tostring(id) .. "/" .. mails[del]))
+		return true
+	else
+		return false
+	end
+end
+
 -- receives messages and sends the appropriate response
-server.networking = function(verbose)
+server.makeServer = function(verbose)
 	local msg, isEncrypted, msgID
 
 	local say = function(text, id)
 		if verbose then
-			return print(text .. (id and ("(" .. id .. ")") or ""))
+			return print(text .. (id and (" (" .. id .. ")") or ""))
 		end
 	end
 
@@ -378,10 +458,33 @@ server.networking = function(verbose)
 					command = msg.command .. "_respond",
 					server = yourID,
 				}, msgID, msg.id)
-				say("find_server found")
+				say("find_server")
 			end
-		elseif msg.id then
-			if not server.checkRegister(msg.id) then
+		elseif type(msg.id) == "number" and type(msg.command) == "string" then
+			if msg.command == "register" then
+				if (
+					type(msg.id) == "number" and
+					type(msg.name) == "string"
+				) then
+					local reply
+					local result, name = server.registerID(msg.id, msg.name)
+					if result then
+						reply = {
+							command = msg.command .. "_respond",
+							result = result,
+							name = name,
+						}
+						say("user " .. tostring(msg.id) .. " registered as " .. name)
+					else
+						reply = {
+							command = msg.command .. "_respond",
+							result = result,
+						}
+						say("user " .. tostring(msg.id) .. " failed to register as " .. tostring(msg.name) .. ": " .. name)
+					end
+					encTransmit(reply, msgID, msg.id)
+				end
+			elseif not server.checkRegister(msg.id) then
 				encTransmit({
 					command = msg.command .. "_respond",
 					result = false,
@@ -390,35 +493,22 @@ server.networking = function(verbose)
 				say("unregistered users can burn in hell")
 			else
 
-				if msg.command == "register" then
-					if (
-						type(msg.id) == "number" and
-						type(msg.name) == "string"
-					) then
-						local reply
-						local result, name = server.registerID(msg.id, msg.name)
-						if result then
-							reply = {
-								command = msg.command .. "_respond",
-								result = result,
-								name = name,
-							}
-						else
-							reply = {
-								command = msg.command .. "_respond",
-								result = result,
-							}
-						end
-						encTransmit(reply, msgID, msg.id)
-						say("user " .. tostring(msg.id) .. " registered as " .. name)
-					end
-				elseif msg.command == "find_server" then
+				-- all the real nice stuff
+
+				if msg.command == "find_server" then
 					encTransmit({
 						command = msg.command .. "_respond",
 						server = yourID,
 						result = true
 					}, msgID, msg.id)
-					say("find_server found (aes)")
+					say("find_server (aes)")
+				elseif msg.command == "get_names" then
+					encTransmit({
+						command = msg.command .. "_respond",
+						result = true,
+						names = names
+					}, msgID, msg.id)
+					say("get_names", msg.id)
 				elseif msg.command == "send_mail" then
 					if (
 						msg.recipient and
@@ -430,20 +520,27 @@ server.networking = function(verbose)
 							result = server.recordMail(msg.id, msg.recipient, msg.subject, msg.message, msg.attachments)
 						}
 						encTransmit(reply, msgID, msg.id)
-						say("mail sent", msg.id)
+						say("send_mail", msg.id)
 					end
 				elseif msg.command == "get_mail" then
-					if (
-						msg.id
-					) then
-						local mail = server.getMail(msg.id)
-						local reply = {
-							command = msg.command .. "_respond",
-							result = true,
-							mail = mail,
-						}
-						encTransmit(reply, msgID, msg.id)
+					local mail = server.getMail(msg.id)
+					local reply = {
+						command = msg.command .. "_respond",
+						result = true,
+						mail = mail,
+					}
+					encTransmit(reply, msgID, msg.id)
+					say("get_mail", msg.id)
+				elseif msg.command == "delete_mail" then
+					local result = false
+					if type(msg.mail) == "number" then
+						result = server.deleteMail(msg.id, msg.mail)
 					end
+					encTransmit({
+						command = msg.command .. "_respond",
+						result = result,
+					}, msgID, msg.id)
+					say("delete_mail", msg.id)
 				end
 
 			end
@@ -453,17 +550,10 @@ server.networking = function(verbose)
 end
 
 if isServer then
-	server.networking(true)
+	names["server"] = yourID
+	server.makeServer(true)
 else
 	-- make a whole client interface and shit
-	local srv = client.findServer()
-	print(srv)
-	client.register(srv, "buttman")
 end
---[[
-server.recordMail(1, 1, "Testing the sysmail.", "Forgive me, but I'm just testing SysMail as it's being made.")
-local messages = server.getMail(1)
-print(textutils.serialize(messages))
---]]
 
 return {client = client, server = server}
