@@ -197,13 +197,14 @@ local transmit = function(msg, msgID)
 	})
 end
 
-local encTransmit = function(msg, msgID, recipient)
+local encTransmit = function(msg, msgID, recipient, encID)
 	modem = getModem(onlyUseWiredModems)
-	if not keyList[recipient] then
+	local key = keyList[encID or recipient]
+	if not key then
 		error("You do not possess the key of the recipient.")
 	else
 		modem.transmit(config.channel, config.channel, {
-			msg = aeslua.encrypt(keyList[recipient], textutils.serialize(msg)),
+			msg = aeslua.encrypt(key, textutils.serialize(msg)),
 			encrypted = true,
 			msgID = msgID,
 			recipient = recipient
@@ -211,7 +212,7 @@ local encTransmit = function(msg, msgID, recipient)
 	end
 end
 
-local receive = function(msgID, specifyCommand, timer)
+local receive = function(msgID, specifyCommand, encID, timer)
 	local evt, msg, tID
 	if timer then
 		tID = os.startTimer(timer)
@@ -222,12 +223,20 @@ local receive = function(msgID, specifyCommand, timer)
 		if evt[1] == "modem_message" then
 			if type(evt[5]) == "table" then
 				if evt[5].encrypted then
-					if not keyList[yourID] then
-						--error("keyList[yourID] was nil when decrypting!")
-					elseif not evt[5].msg then
-						--error("evt[5].msg was nil when decrypting!")
-					else
-						msg = textutils.unserialize(aeslua.decrypt(keyList[yourID], evt[5].msg))
+					if true then
+						if encID then
+							msg = aeslua.decrypt(keyList[encID], evt[5].msg)
+						else
+							for id, key in pairs(keyList) do
+								if msg then break end
+								if id ~= encID then
+									msg = aeslua.decrypt(key, evt[5].msg)
+								end
+							end
+						end
+						if msg then
+							msg = textutils.unserialize(msg)
+						end
 					end
 				else
 					msg = evt[5].msg
@@ -260,13 +269,15 @@ local server = {}	-- all server-specific commands
 ----                       ----
 
 -- if you want a super duper secure network, manually enter the server ID into this
-client.findServer = function(recipient)
+client.findServer = function(srv)
 	local msgID = math.random(1, 2^30)
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(tonumber(srv) or (not srv), "invalid server")
 	transmit({
 		id = yourID,
 		command = "find_server"
 	}, msgID)
-	local reply, isEncrypted = receive(msgID, "find_server_respond", 2)
+	local reply, isEncrypted = receive(msgID, "find_server_respond", srv)
 	if type(reply) == "table" then
 		if reply.server then
 			return reply.server
@@ -277,23 +288,33 @@ end
 -- Registers your ID to a name.
 client.register = function(srv, username)
 	local msgID = math.random(1, 2^30)
+	assert(srv, "register( server, username )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
 	encTransmit({
 		id = yourID,
 		command = "register",
 		name = username
-	}, msgID, srv)
-	local reply, isEncrypted = receive(msgID, "register_respond", 2)
-	return reply ~= nil
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "register_respond", yourID)
+	if reply then
+		return reply.result
+	else
+		return false
+	end
 end
 
 -- Gets a list of all registered ID names
 client.getNames = function(srv)
 	local msgID = math.random(1, 2^30)
+	assert(srv, "getNames( server )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
 	encTransmit({
 		id = yourID,
 		command = "get_names"
-	}, msgID, srv)
-	local reply, isEncrypted = receive(msgID, "get_names_respond", 2)
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "get_names_respond", yourID)
 	if type(reply) == "table" then
 		return reply.names
 	else
@@ -303,11 +324,16 @@ end
 
 -- Sends an email to a recipient ID.
 client.sendMail = function(srv, recipient, subject, message, attachments)
-	assert(srv, "server ID expected")
+	assert(srv, "sendMail( server, recipient, subject, message, attachments )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	assert(type(subject) == "string", "invalid subject")
+	assert(type(message) == "string", "invalid message")
 	local msgID = math.random(1, 2^30)
 	if type(recipient) == "string" then
 		recipient = getNameID(recipient)
 	end
+	assert(recipient, "invalid recipient")
 	encTransmit({
 		command = "send_mail",
 		id = yourID,
@@ -315,8 +341,8 @@ client.sendMail = function(srv, recipient, subject, message, attachments)
 		subject = subject,
 		message = message,
 		attachments = attachments
-	}, msgID, srv)
-	local reply, isEncrypted = receive(msgID, "send_mail_respond", 2)
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "send_mail_respond", yourID)
 	if (isEncrypted and type(reply) == "table") then
 		return reply.result
 	else
@@ -326,11 +352,14 @@ end
 
 client.getMail = function(srv)
 	local msgID = math.random(1, 2^30)
+	assert(srv, "getMail( server )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
 	encTransmit({
 		command = "get_mail",
 		id = yourID,
-	}, msgID, srv)
-	local reply, isEncrypted = receive(msgID, "get_mail_respond", 2)
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "get_mail_respond", yourID)
 	if (isEncrypted and type(reply) == "table") then
 		return reply.mail
 	else
@@ -340,12 +369,16 @@ end
 
 client.deleteMail = function(srv, mail)
 	local msgID = math.random(1, 2^30)
+	assert(srv, "deleteMail( server, mailEntryNumber )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	assert(type(mail) == "number", "invalid mail entry")
 	encTransmit({
 		command = "delete_mail",
 		id = yourID,
 		mail = mail,
-	}, msgID, srv)
-	local reply, isEncrypted = receive(msgID, "delete_mail_respond", 2)
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "delete_mail_respond", yourID)
 	if (isEncrypted and type(reply) == "table") then
 		return reply.result
 	else
@@ -470,100 +503,102 @@ server.makeServer = function(verbose)
 	end
 
 	while true do
+	names = names
 
 		msg, isEncrypted, msgID = receive()
 
-		if not isEncrypted then
-			if msg.command == "find_server" then
-				transmit({
-					command = msg.command .. "_respond",
-					server = yourID,
-				}, msgID, msg.id)
-				say("find_server")
-			end
-		elseif type(msg.id) == "number" and type(msg.command) == "string" then
-			if msg.command == "register" then
-				if (
-					type(msg.id) == "number" and
-					type(msg.name) == "string"
-				) then
-					local reply
-					local result, name = server.registerID(msg.id, msg.name)
-					if result then
-						reply = {
-							command = msg.command .. "_respond",
-							result = result,
-							name = name,
-						}
-						say("user " .. tostring(msg.id) .. " registered as " .. name)
-					else
-						reply = {
-							command = msg.command .. "_respond",
-							result = result,
-						}
-						say("user " .. tostring(msg.id) .. " failed to register as " .. tostring(msg.name) .. ": " .. name)
-					end
-					encTransmit(reply, msgID, msg.id)
-				end
-			elseif not server.checkRegister(msg.id) then
-				encTransmit({
-					command = msg.command .. "_respond",
-					result = false,
-					errorMsg = "not registered"
-				}, msgID, msg.id)
-				say("unregistered users can burn in hell")
-			else
-
-				-- all the real nice stuff
-
+		if msg then
+			if not isEncrypted then
 				if msg.command == "find_server" then
-					encTransmit({
+					transmit({
 						command = msg.command .. "_respond",
 						server = yourID,
-						result = true
-					}, msgID, msg.id)
-					say("find_server (aes)")
-				elseif msg.command == "get_names" then
+					}, msgID, msg.id, yourID)
+					say("find_server")
+				end
+			elseif type(msg.id) == "number" and type(msg.command) == "string" then
+				if msg.command == "register" then
+					if (
+						type(msg.id) == "number" and
+						type(msg.name) == "string"
+					) then
+						local reply
+						local result, name = server.registerID(msg.id, msg.name)
+						if result then
+							reply = {
+								command = msg.command .. "_respond",
+								result = result,
+								name = name,
+							}
+							say("user " .. tostring(msg.id) .. " registered as " .. name)
+						else
+							reply = {
+								command = msg.command .. "_respond",
+								result = result,
+							}
+							say("user " .. tostring(msg.id) .. " failed to register as " .. tostring(msg.name) .. ": " .. name)
+						end
+						encTransmit(reply, msgID, msg.id, msg.id)
+					end
+				elseif not server.checkRegister(msg.id) then
 					encTransmit({
 						command = msg.command .. "_respond",
-						result = true,
-						names = names
-					}, msgID, msg.id)
-					say("get_names", msg.id)
-				elseif msg.command == "send_mail" then
-					if (
-						msg.recipient and
-						type(msg.subject) == "string" and
-						type(msg.message) == "string"
-					) then
+						result = false,
+						errorMsg = "not registered"
+					}, msgID, msg.id, msg.id)
+					say("unregistered user attempt to use")
+				else
+
+					-- all the real nice stuff
+
+					if msg.command == "find_server" then
+						encTransmit({
+							command = msg.command .. "_respond",
+							server = yourID,
+							result = true
+						}, msgID, msg.id, msg.id)
+						say("find_server (aes)")
+					elseif msg.command == "get_names" then
+						encTransmit({
+							command = msg.command .. "_respond",
+							result = true,
+						}, msgID, msg.id, msg.id)
+						say("get_names", msg.id)
+					elseif msg.command == "send_mail" then
+						if (
+							msg.recipient and
+							type(msg.subject) == "string" and
+							type(msg.message) == "string"
+						) then
+							local reply = {
+								command = msg.command .. "_respond",
+								result = server.recordMail(msg.id, msg.recipient, msg.subject, msg.message, msg.attachments)
+							}
+							encTransmit(reply, msgID, msg.id, msg.id)
+							say("send_mail", msg.id)
+						end
+					elseif msg.command == "get_mail" then
+						local mail = server.getMail(msg.id)
 						local reply = {
 							command = msg.command .. "_respond",
-							result = server.recordMail(msg.id, msg.recipient, msg.subject, msg.message, msg.attachments)
+							result = true,
+							mail = mail,
 						}
-						encTransmit(reply, msgID, msg.id)
-						say("send_mail", msg.id)
+						encTransmit(reply, msgID, msg.id, msg.id)
+						say("get_mail", msg.id)
+					elseif msg.command == "delete_mail" then
+						local result = false
+						if type(msg.mail) == "number" then
+							result = server.deleteMail(msg.id, msg.mail, yourID)
+						end
+						encTransmit({
+							command = msg.command .. "_respond",
+							result = result,
+						}, msgID, msg.id, msg.id)
+						say("delete_mail", msg.id)
 					end
-				elseif msg.command == "get_mail" then
-					local mail = server.getMail(msg.id)
-					local reply = {
-						command = msg.command .. "_respond",
-						result = true,
-						mail = mail,
-					}
-					encTransmit(reply, msgID, msg.id)
-					say("get_mail", msg.id)
-				elseif msg.command == "delete_mail" then
-					local result = false
-					if type(msg.mail) == "number" then
-						result = server.deleteMail(msg.id, msg.mail)
-					end
-					encTransmit({
-						command = msg.command .. "_respond",
-						result = result,
-					}, msgID, msg.id)
-					say("delete_mail", msg.id)
-				end
 
+				end
 			end
 		end
 
