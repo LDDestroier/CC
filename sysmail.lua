@@ -37,6 +37,8 @@ local writeFile = function(path, contents)
 	end
 end
 
+local keyList, names = {}, {}
+
 local makeKey = function(ID, key)
 	return writeFile(fs.combine(config.keyPath, ID), key)
 end
@@ -45,21 +47,26 @@ local getKey = function(ID)
 	return readFile(fs.combine(config.keyPath, ID))
 end
 
-local keys = {}
-local names = textutils.unserialize(readFile(config.nameFile) or "{}")
+local readNames = function()
+	return textutils.unserialize(readFile(config.nameFile) or "{}") or {}
+end
 
--- keys[id] = key
--- names[name] = id
+local writeNames = function(_names)
+	return writeFile(config.nameFile, textutils.serialize(_names or names))
+end
+
+-- keyList[id] = key
+-- names[id] = name
 
 -- get personal key file
-keys[yourID] = ""
+keyList[yourID] = ""
 if fs.exists(fs.combine(config.keyPath, tostring(yourID))) then
-	keys[yourID] = readFile(fs.combine(config.keyPath, tostring(yourID)))
+	keyList[yourID] = readFile(fs.combine(config.keyPath, tostring(yourID)))
 else
 	for i = 1, 64 do
-		keys[yourID] = keys[yourID] .. string.char(math.random(11, 255))
+		keyList[yourID] = keyList[yourID] .. string.char(math.random(11, 255))
 	end
-	writeFile(fs.combine(config.keyPath, tostring(yourID)), keys[yourID])
+	writeFile(fs.combine(config.keyPath, tostring(yourID)), keyList[yourID])
 end
 
 local getAllKeys = function()
@@ -73,10 +80,8 @@ local getAllKeys = function()
 	return output
 end
 
-keys = getAllKeys()
-
---print(textutils.serialize(keys))
---error()
+names = readNames()
+keyList = getAllKeys()
 
 local apiData = {
 	["aeslua"] = {
@@ -152,7 +157,7 @@ local argList = {
 
 local argData, argErrors = interpretArgs({...}, argList)
 local isServer = argData["--server"]
-local serverID = argData[1]
+local serverName = argData[1] or "server"
 
 if ccemux and (not peripheral.find("modem")) then
 	ccemux.attach("top", "wireless_modem")
@@ -194,11 +199,11 @@ end
 
 local encTransmit = function(msg, msgID, recipient)
 	modem = getModem(onlyUseWiredModems)
-	if not keys[recipient] then
+	if not keyList[recipient] then
 		error("You do not possess the key of the recipient.")
 	else
 		modem.transmit(config.channel, config.channel, {
-			msg = aeslua.encrypt(keys[recipient], textutils.serialize(msg)),
+			msg = aeslua.encrypt(keyList[recipient], textutils.serialize(msg)),
 			encrypted = true,
 			msgID = msgID,
 			recipient = recipient
@@ -217,12 +222,12 @@ local receive = function(msgID, specifyCommand, timer)
 		if evt[1] == "modem_message" then
 			if type(evt[5]) == "table" then
 				if evt[5].encrypted then
-					if not keys[yourID] then
-						error("keys[yourID] was nil when decrypting!")
+					if not keyList[yourID] then
+						--error("keyList[yourID] was nil when decrypting!")
 					elseif not evt[5].msg then
-						error("evt[5].msg was nil when decrypting!")
+						--error("evt[5].msg was nil when decrypting!")
 					else
-						msg = textutils.unserialize(aeslua.decrypt(keys[yourID], evt[5].msg))
+						msg = textutils.unserialize(aeslua.decrypt(keyList[yourID], evt[5].msg))
 					end
 				else
 					msg = evt[5].msg
@@ -235,6 +240,14 @@ local receive = function(msgID, specifyCommand, timer)
 			end
 		elseif evt[1] == "timer" and evt[2] == tID then
 			return nil, nil, nil
+		end
+	end
+end
+
+local getNameID = function(name)
+	for k,v in pairs(names) do
+		if v == name then
+			return k
 		end
 	end
 end
@@ -293,7 +306,7 @@ client.sendMail = function(srv, recipient, subject, message, attachments)
 	assert(srv, "server ID expected")
 	local msgID = math.random(1, 2^30)
 	if type(recipient) == "string" then
-		recipient = names[recipient]
+		recipient = getNameID(recipient)
 	end
 	encTransmit({
 		command = "send_mail",
@@ -344,31 +357,33 @@ end
 ----    SERVER COMMANDS    ----
 ----                       ----
 
+-- check whether or not a name is valid to be used
 server.checkValidName = function(name)
-	if type(name) ~= "string" then
-		return false
-	else
-		return #name >= 3 or #name <= 64
-	end
-end
-
-server.checkRegister = function(id)
-	-- I make the code this stupid looking in case I add other stipulations
-	for name, id in pairs(names) do
-		if names[name] == id then
-			return name
+	if type(name) == "string" then
+		if #name >= 3 or #name <= 24 then
+			return true
 		end
 	end
 	return false
 end
 
+-- check whether or not an ID is registered
+server.checkRegister = function(id)
+	-- I make the code this stupid looking in case I add other stipulations
+	if names[id] or getNameID(names[id]) then
+		return true
+	else
+		return false
+	end
+end
+
 server.registerID = function(id, name)
 	local path = fs.combine(config.mailPath, tostring(id))
-	if not server.checkRegister(id) then
+	if ((not server.checkRegister(name)) or getNameID(name) == id) then
 		fs.makeDir(path)
-		names[tostring(name)] = id
-		writeFile(config.nameFile, textutils.serialize(names))
-		return true, names[name]
+		names[id] = name
+		writeNames()
+		return true, names[id]
 	else
 		return false, "name already exists"
 	end
@@ -386,7 +401,7 @@ server.recordMail = function(sender, _recipient, subject, message, attachments)
 	end
 
 	local msg = textutils.serialize({
-		sender = id,
+		sender = sender,
 		time = time,
 		read = false,
 		subject = subject,
@@ -435,6 +450,12 @@ server.deleteMail = function(id, del)
 		return true
 	else
 		return false
+	end
+end
+
+server.setName = function(newName)
+	if server.checkValidName(newName) then
+		names[yourID] = newName
 	end
 end
 
@@ -549,11 +570,202 @@ server.makeServer = function(verbose)
 	end
 end
 
+local clientInterface = function(srv)
+	local scr_x, scr_y = term.getSize()
+	local inbox = {}
+	local refresh = function()
+		inbox = client.getMail(srv)
+	end
+	local cwrite = function(text, y)
+		local cx, cy = term.getCursorPos()
+		term.setCursorPos(scr_x / 2 - #text / 2, y or cy)
+		term.write(text)
+	end
+	local explode = function(div, str, replstr, includeDiv)
+		if (div == '') then
+			return false
+		end
+		local pos, arr = 0, {}
+		for st, sp in function() return string.find(str, div, pos, false) end do
+			table.insert(arr, string.sub(replstr or str, pos, st - 1 + (includeDiv and #div or 0)))
+			pos = sp + 1
+		end
+		table.insert(arr, string.sub(replstr or str, pos))
+		return arr
+	end
+	srv = srv or tonumber( client.findServer(argData[1]) )
+	if not srv then
+		error("No server was found!")
+	end
+	for k,v in pairs(client.getNames(srv) or {}) do
+		names[k] = v
+	end
+
+	if not names[yourID] then
+		term.setBackgroundColor(colors.black)
+		term.setTextColor(colors.white)
+		term.clear()
+		local attempt
+		cwrite("Enter your name:", 3)
+		while true do
+			term.setCursorPos(2, 5)
+			term.write(":")
+			attempt = read()
+			if server.checkValidName(attempt) then
+				names[yourID] = attempt
+				writeNames()
+				client.register(srv, attempt)
+				break
+			else
+				term.clear()
+				cwrite("Bad name! Enter your name:", 3)
+			end
+		end
+	end
+
+	refresh()
+
+	local keyWrite = function(text, pos)
+		local txcol = term.getTextColor()
+		term.write(text:sub(1, pos - 1))
+		term.setTextColor(colors.yellow)
+		term.write(text:sub(pos, pos))
+		term.setTextColor(txcol)
+		term.write(text:sub(pos + 1))
+	end
+
+	local area_inbox = function()
+		local scroll = 0
+		local render = function(scroll)
+			local y = 1
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			for i = 1 + scroll, scroll + scr_y - 1 do
+				if inbox[i] then
+					term.setCursorPos(1, y)
+					term.setTextColor(colors.white)
+					term.write(names[inbox[i].sender]:sub(1, 10))
+
+					term.setCursorPos(11, y)
+					term.setTextColor(colors.white)
+					term.write(inbox[i].subject:sub(1, 12))
+
+					term.setCursorPos(24, y)
+					term.setTextColor(colors.gray)
+					term.write(inbox[i].message:sub(1, scr_x - 23))
+				end
+				y = y + 1
+			end
+			term.setCursorPos(1, scr_y)
+			term.setBackgroundColor(colors.gray)
+			term.clearLine()
+			term.setTextColor(colors.white)
+			--term.write(names[yourID] .. ": ")
+			keyWrite("Quit ", 1)
+			keyWrite("New ", 1)
+			keyWrite("Refresh ", 1)
+		end
+
+		-- logic(k)
+		local evt, key, mx, my
+		local adjY	-- mouse Y adjusted for scroll
+		while true do
+			render(scroll)
+			evt, key, mx, my = os.pullEvent()
+			if evt == "mouse_click" then
+				adjY = my + scroll
+				if inbox[adjY] then
+					return "view_mail", inbox[adjY]
+				end
+			elseif evt == "mouse_scroll" then
+				scroll = scroll + key
+			elseif evt == "key" then
+				if key == keys.q then
+					return "exit"
+				end
+			end
+		end
+	end
+
+	local area_view_mail = function(mail)
+		local scroll = 0
+		local writeHeader = function(left, right, y)
+			if y then
+				term.setCursorPos(1, y)
+			end
+			term.setTextColor(colors.lightGray)
+			term.write(left)
+			term.setTextColor(colors.white)
+			term.write(" " .. right)
+		end
+		local render = function(scroll)
+			term.setBackgroundColor(colors.black)
+			term.setTextColor(colors.lightGray)
+			term.clear()
+			writeHeader("From", names[mail.sender], 1)
+			writeHeader("Subject", mail.subject, 2)
+			local words = explode(" ", mail.message, nil, true)
+			local buffer = {""}
+			for i = 1, #words do
+				words[i] = words[i]:gsub("\n", (" "):rep(scr_x))
+				if #buffer[#buffer] + #words[i] > scr_x then
+					buffer[#buffer+1] = words[i]
+				else
+					buffer[#buffer] = buffer[#buffer] .. words[i]
+				end
+			end
+			local y = 3
+			for i = scroll + 1, scroll + scr_y - 3 do
+				if buffer[i] then
+					term.setCursorPos(1, y)
+					term.write(buffer[i])
+				end
+				y = y + 1
+			end
+			term.setCursorPos(1, scr_y)
+			term.setBackgroundColor(colors.gray)
+			term.setTextColor(colors.white)
+			term.clearLine()
+			keyWrite("Quit ", 1)
+			keyWrite("Reply ", 1)
+			keyWrite("Delete ", 1)
+		end
+
+		local evt, key, mx, my
+		while true do
+			render(scroll)
+			evt, key, mx, my = os.pullEvent()
+			if evt == "key" then
+				if key == keys.q then
+					return "exit"
+				end
+			elseif evt == "mouse_scroll" then
+				scroll = scroll + key
+			end
+		end
+	end
+
+	local res, output
+	while true do
+		res, output = area_inbox()
+		if res == "exit" then
+			term.setCursorPos(1, scr_y)
+			term.setBackgroundColor(colors.black)
+			term.clearLine()
+			sleep(0.05)
+			return
+		elseif res == "view_mail" then
+			area_view_mail(output)
+		end
+	end
+end
+
 if isServer then
-	names["server"] = yourID
+	names[yourID] = names[yourID] or serverName
+	writeNames()
 	server.makeServer(true)
-else
-	-- make a whole client interface and shit
+elseif shell then
+	clientInterface()
 end
 
 return {client = client, server = server}
