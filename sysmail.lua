@@ -7,11 +7,277 @@ local config = {
 	keyPath = fs.combine(mainPath, "keys"),
 	mailPath = fs.combine(mainPath, "mail"),
 	apiPath = fs.combine(mainPath, "api"),
-	nameFile = fs.combine(mainPath, "names")
+	nameFile = fs.combine(mainPath, "names"),
+	attachmentPath = "attachments"
 }
 
+-- used for picking attachments
+
+local lddfm = {scroll = 0, ypaths = {}}
+
+lddfm.scr_x, lddfm.scr_y = term.getSize()
+
+lddfm.setPalate = function(_p)
+	if type(_p) ~= "table" then _p = {} end
+	lddfm.p = { --the DEFAULT color palate
+		bg =        _p.bg or colors.gray,			-- whole background color
+		d_txt =     _p.d_txt or colors.yellow,		-- directory text color
+		d_bg =      _p.d_bg or colors.gray,			-- directory bg color
+		f_txt =     _p.f_txt or colors.white,		-- file text color
+		f_bg =      _p.f_bg or colors.gray,			-- file bg color
+		p_txt =     _p.p_txt or colors.black,		-- path text color
+		p_bg =      _p.p_bg or colors.lightGray,	-- path bg color
+		close_txt = _p.close_txt or colors.gray,	-- close button text color
+		close_bg =  _p.close_bg or colors.lightGray,-- close button bg color
+		scr =       _p.scr or colors.lightGray,		-- scrollbar color
+		scrbar =    _p.scrbar or colors.gray,		-- scroll tab color
+	}
+end
+
+lddfm.setPalate()
+
+lddfm.foldersOnTop = function(floop,path)
+	local output = {}
+	for a = 1, #floop do
+		if fs.isDir(fs.combine(path,floop[a])) then
+			table.insert(output,1,floop[a])
+		else
+			table.insert(output,floop[a])
+		end
+	end
+	return output
+end
+
+lddfm.filterFileFolders = function(list,path,_noFiles,_noFolders,_noCD,_doHidden)
+	local output = {}
+	for a = 1, #list do
+		local entry = fs.combine(path,list[a])
+		if fs.isDir(entry) then
+			if entry == ".." then
+				if not (_noCD or _noFolders) then table.insert(output,list[a]) end
+			else
+				if not ((not _doHidden) and list[a]:sub(1,1) == ".") then
+					if not _noFolders then table.insert(output,list[a]) end
+				end
+			end
+		else
+			if not ((not _doHidden) and list[a]:sub(1,1) == ".") then
+				if not _noFiles then table.insert(output,list[a]) end
+			end
+		end
+	end
+	return output
+end
+
+lddfm.isColor = function(col)
+	for k,v in pairs(colors) do
+		if v == col then
+			return true, k
+		end
+	end
+	return false
+end
+
+lddfm.clearLine = function(x1,x2,_y,_bg,_char)
+	local cbg, bg = term.getBackgroundColor()
+	local x,y = term.getCursorPos()
+	local sx,sy = term.getSize()
+	if type(_char) == "string" then char = _char else char = " " end
+	if type(_bg) == "number" then
+		if lddfm.isColor(_bg) then bg = _bg
+		else bg = cbg end
+	else bg = cbg end
+	term.setCursorPos(x1 or 1, _y or y)
+	term.setBackgroundColor(bg)
+	if x2 then --it pains me to add an if statement to something as simple as this
+		term.write((char or " "):rep(x2-x1))
+	else
+		term.write((char or " "):rep(sx-(x1 or 0)))
+	end
+	term.setBackgroundColor(cbg)
+	term.setCursorPos(x,y)
+end
+
+lddfm.render = function(_x1,_y1,_x2,_y2,_rlist,_path,_rscroll,_canClose,_scrbarY)
+	local px,py = term.getCursorPos()
+	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
+	local rlist = _rlist or {"Invalid directory."}
+	local path = _path or "And that's terrible."
+	ypaths = {}
+	local rscroll = _rscroll or 0
+	for a = y1, y2 do
+		lddfm.clearLine(x1,x2,a,lddfm.p.bg)
+	end
+	term.setCursorPos(x1,y1)
+	term.setTextColor(lddfm.p.p_txt)
+	lddfm.clearLine(x1,x2+1,y1,lddfm.p.p_bg)
+	term.setBackgroundColor(lddfm.p.p_bg)
+	term.write(("/"..path):sub(1,x2-x1))
+	for a = 1,(y2-y1) do
+		if rlist[a+rscroll] then
+			term.setCursorPos(x1,a+(y1))
+			if fs.isDir(fs.combine(path,rlist[a+rscroll])) then
+				lddfm.clearLine(x1,x2,a+(y1),lddfm.p.d_bg)
+				term.setTextColor(lddfm.p.d_txt)
+				term.setBackgroundColor(lddfm.p.d_bg)
+			else
+				lddfm.clearLine(x1,x2,a+(y1),lddfm.p.f_bg)
+				term.setTextColor(lddfm.p.f_txt)
+				term.setBackgroundColor(lddfm.p.f_bg)
+			end
+			term.write(rlist[a+rscroll]:sub(1,x2-x1))
+			ypaths[a+(y1)] = rlist[a+rscroll]
+		else
+			lddfm.clearLine(x1,x2,a+(y1),lddfm.p.bg)
+		end
+	end
+	local scrbarY = _scrbarY or math.ceil( (y1+1)+( (_rscroll/(#_rlist-(y2-(y1+1))))*(y2-(y1+1)) ) )
+	for a = y1+1, y2 do
+		term.setCursorPos(x2,a)
+		if a == scrbarY then
+			term.setBackgroundColor(lddfm.p.scrbar)
+		else
+			term.setBackgroundColor(lddfm.p.scr)
+		end
+		term.write(" ")
+	end
+	if _canClose then
+		term.setCursorPos(x2-4,y1)
+		term.setTextColor(lddfm.p.close_txt)
+		term.setBackgroundColor(lddfm.p.close_bg)
+		term.write("close")
+	end
+	term.setCursorPos(px,py)
+	return scrbarY
+end
+
+lddfm.coolOutro = function(x1,y1,x2,y2,_bg,_txt,char)
+	local cx, cy = term.getCursorPos()
+	local bg, txt = term.getBackgroundColor(), term.getTextColor()
+	term.setTextColor(_txt or colors.white)
+	term.setBackgroundColor(_bg or colors.black)
+	local _uwah = 0
+	for y = y1, y2 do
+		for x = x1, x2 do
+			_uwah = _uwah + 1
+			term.setCursorPos(x,y)
+			term.write(char or " ")
+			if _uwah >= math.ceil((x2-x1)*1.63) then sleep(0) _uwah = 0 end
+		end
+	end
+	term.setTextColor(txt)
+	term.setBackgroundColor(bg)
+	term.setCursorPos(cx,cy)
+end
+
+lddfm.scrollMenu = function(amount,list,y1,y2)
+	if #list >= y2-y1 then
+		lddfm.scroll = lddfm.scroll + amount
+		if lddfm.scroll < 0 then
+			lddfm.scroll = 0
+		end
+		if lddfm.scroll > #list-(y2-y1) then
+			lddfm.scroll = #list-(y2-y1)
+		end
+	end
+end
+
+lddfm.makeMenu = function(_x1,_y1,_x2,_y2,_path,_noFiles,_noFolders,_noCD,_noSelectFolders,_doHidden,_p,_canClose)
+	if _noFiles and _noFolders then
+		return false, "C'mon, man..."
+	end
+	if _x1 == true then
+		return false, "arguments: x1, y1, x2, y2, path, noFiles, noFolders, noCD, noSelectFolders, doHidden, palate, canClose" -- a little help
+	end
+	lddfm.setPalate(_p)
+	local path, list = _path or ""
+	lddfm.scroll = 0
+	local _pbg, _ptxt = term.getBackgroundColor(), term.getTextColor()
+	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
+	local keysDown = {}
+	local _barrY
+	while true do
+		list = lddfm.foldersOnTop(lddfm.filterFileFolders(fs.list(path),path,_noFiles,_noFolders,_noCD,_doHidden),path)
+		if (fs.getDir(path) ~= "..") and not (_noCD or _noFolders) then
+			table.insert(list,1,"..")
+		end
+		_res, _barrY = pcall( function() return lddfm.render(x1,y1,x2,y2,list,path,lddfm.scroll,_canClose) end)
+		if not _res then
+			error(_barrY)
+		end
+		local evt = {os.pullEvent()}
+		if evt[1] == "mouse_scroll" then
+			lddfm.scrollMenu(evt[2],list,y1,y2)
+		elseif evt[1] == "mouse_click" then
+			local butt,mx,my = evt[2],evt[3],evt[4]
+			if (butt == 1 and my == y1 and mx <= x2 and mx >= x2-4) and _canClose then
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return false
+			elseif ypaths[my] and (mx >= x1 and mx < x2) then --x2 is reserved for the scrollbar, breh
+				if fs.isDir(fs.combine(path,ypaths[my])) then
+					if _noCD or butt == 3 then
+						if not _noSelectFolders or _noFolders then
+							--lddfm.coolOutro(x1,y1,x2,y2)
+							term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+							return fs.combine(path,ypaths[my])
+						end
+					else
+						path = fs.combine(path,ypaths[my])
+						lddfm.scroll = 0
+					end
+				else
+					term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+					return fs.combine(path,ypaths[my])
+				end
+			end
+		elseif evt[1] == "key" then
+			keysDown[evt[2]] = true
+			if evt[2] == keys.enter and not (_noFolders or _noCD or _noSelectFolders) then --the logic for _noCD being you'd normally need to go back a directory to select the current directory.
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return path
+			end
+			if evt[2] == keys.up then
+				lddfm.scrollMenu(-1,list,y1,y2)
+			elseif evt[2] == keys.down then
+				lddfm.scrollMenu(1,list,y1,y2)
+			end
+			if evt[2] == keys.pageUp then
+				lddfm.scrollMenu(y1-y2,list,y1,y2)
+			elseif evt[2] == keys.pageDown then
+				lddfm.scrollMenu(y2-y1,list,y1,y2)
+			end
+			if evt[2] == keys.home then
+				lddfm.scroll = 0
+			elseif evt[2] == keys["end"] then
+				if #list > (y2-y1) then
+					lddfm.scroll = #list-(y2-y1)
+				end
+			end
+			if evt[2] == keys.h then
+				if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
+					_doHidden = not _doHidden
+				end
+			elseif _canClose and (evt[2] == keys.x or evt[2] == keys.q or evt[2] == keys.leftCtrl) then
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return false
+			end
+		elseif evt[1] == "key_up" then
+			keysDown[evt[2]] = false
+		end
+	end
+end
+
 local alphasort = function(tbl)
-	table.sort(tbl, function(a,b) return string.lower(a) < string.lower(b) end)
+	table.sort(tbl, function(a,b)
+		if type(a) == "table" then
+			return string.lower(a.time) > string.lower(b.time)
+		else
+			return string.lower(a) > string.lower(b)
+		end
+	end)
 	return tbl
 end
 
@@ -361,9 +627,9 @@ client.getMail = function(srv)
 	}, msgID, srv, yourID)
 	local reply, isEncrypted = receive(msgID, "get_mail_respond", yourID)
 	if (isEncrypted and type(reply) == "table") then
-		return reply.mail
-	else
-		return nil
+		if reply.mail then
+			return alphasort(reply.mail)
+		end
 	end
 end
 
@@ -477,7 +743,7 @@ server.getMail = function(id)
 end
 
 server.deleteMail = function(id, del)
-	local mails = alphasort(fs.list(fs.combine(config.mailPath, tostring(id))))
+	local mails = alphasort( fs.list(fs.combine(config.mailPath, tostring(id))) )
 	if mails[del] then
 		fs.delete(fs.combine(config.mailPath, tostring(id) .. "/" .. mails[del]))
 		return true
@@ -503,7 +769,6 @@ server.makeServer = function(verbose)
 	end
 
 	while true do
-	names = names
 
 		msg, isEncrypted, msgID = receive()
 
@@ -628,6 +893,18 @@ local clientInterface = function(srv)
 		table.insert(arr, string.sub(replstr or str, pos))
 		return arr
 	end
+	local dialogueBox = function(msg)
+		local height = 7
+		local baseY = scr_y / 2 - height / 2
+		for y = 1, height do
+			term.setCursorPos(1, (scr_y / 2) - (baseY / 2) + (y - 1))
+			term.clearLine()
+		end
+		cwrite(("="):rep(scr_x), baseY)
+		cwrite(msg, baseY + height / 2)
+		cwrite(("="):rep(scr_x), baseY + height - 1)
+		sleep(1)
+	end
 	srv = srv or tonumber( client.findServer(argData[1]) )
 	if not srv then
 		error("No server was found!")
@@ -669,6 +946,16 @@ local clientInterface = function(srv)
 		term.write(text:sub(pos + 1))
 	end
 
+	local writeHeader = function(left, right, y)
+		if y then
+			term.setCursorPos(1, y)
+		end
+		term.setTextColor(colors.lightGray)
+		term.write(left)
+		term.setTextColor(colors.white)
+		term.write(" " .. right)
+	end
+
 	local area_inbox = function()
 		local scroll = 0
 		local render = function(scroll)
@@ -683,11 +970,11 @@ local clientInterface = function(srv)
 
 					term.setCursorPos(11, y)
 					term.setTextColor(colors.white)
-					term.write(inbox[i].subject:sub(1, 12))
+					term.write(inbox[i].subject:sub(1, 18))
 
-					term.setCursorPos(24, y)
+					term.setCursorPos(30, y)
 					term.setTextColor(colors.gray)
-					term.write(inbox[i].message:sub(1, scr_x - 23))
+					term.write(inbox[i].message:sub(1, scr_x - 30))
 				end
 				y = y + 1
 			end
@@ -706,39 +993,338 @@ local clientInterface = function(srv)
 		local adjY	-- mouse Y adjusted for scroll
 		while true do
 			render(scroll)
+			inbox = alphasort(inbox)
 			evt, key, mx, my = os.pullEvent()
 			if evt == "mouse_click" then
 				adjY = my + scroll
 				if inbox[adjY] then
-					return "view_mail", inbox[adjY]
+					return "view_mail", {adjY}
 				end
 			elseif evt == "mouse_scroll" then
 				scroll = scroll + key
 			elseif evt == "key" then
-				if key == keys.q then
+				if key == keys.n then
+					return "new_mail"
+				elseif key == keys.r then
+					return "refresh"
+				elseif key == keys.q then
 					return "exit"
 				end
 			end
 		end
 	end
 
-	local area_view_mail = function(mail)
-		local scroll = 0
-		local writeHeader = function(left, right, y)
-			if y then
-				term.setCursorPos(1, y)
+	local niftyRead = function(prebuffer, startX, startY, startCursorMX, startCursorMY, allowEnter, maxLines, maxLength, history)
+		local cx, cy = term.getCursorPos()
+		local histPos = 0
+		startX, startY = startX or cx, startY or cy
+		local buffer = {{}}
+		local unassemble = function(pBuffer)
+			local output = {{""}}
+			local y = 1
+			local x = 1
+			for i = 1, #pBuffer do
+				if pBuffer:sub(i,i) == "\n" then
+					x = 1
+					y = y + 1
+					output[y] = {""}
+				else
+					output[y][x] = pBuffer:sub(i,i)
+					x = x + 1
+				end
 			end
-			term.setTextColor(colors.lightGray)
-			term.write(left)
-			term.setTextColor(colors.white)
-			term.write(" " .. right)
+			return output
 		end
+		if prebuffer then
+			buffer = unassemble(prebuffer)
+		end
+		local curY = startCursorMY and math.max(1, math.min(startCursorMY - (startY - 1), #buffer)) or 1
+		local curX = startCursorMX and math.max(1, math.min(startCursorMX - (startX - 1), #buffer[curY] + 1)) or 1
+		local biggestHeight = math.max(1, #buffer)
+		local getLength = function()
+			local output = 0
+			for ln = 1, #buffer do
+				output = output + #buffer[ln]
+				if ln ~= #buffer then	-- account for newline chars
+					output = output + 1
+				end
+			end
+			return output
+		end
+		local render = function()
+			for y = startY, startY + (biggestHeight - 1) do
+				term.setCursorPos(startX, y)
+				term.write((" "):rep(maxLength))
+			end
+			term.setCursorPos(startX, startY)
+			local words
+			local x = startX
+			local y = startY
+			for ln = 1, #buffer do
+				words = explode(" ", table.concat(buffer[ln]), nil, true)
+				for i = 1, #words do
+					if x + #words[i] > scr_x and y < maxLines then
+						x = startX
+						y = y + 1
+					end
+					term.setCursorPos(x, y)
+					term.write(words[i])
+					x = x + #words[i]
+				end
+				term.write(" ")
+				if ln ~= #buffer then
+					y = y + 1
+					x = startX
+				end
+			end
+			term.setCursorPos(curX + startX - 1, curY + startY - 1)
+			biggestHeight = math.max(#buffer, biggestHeight)
+		end
+
+		local assemble = function(buffer)
+			local output = ""
+			for ln = 1, #buffer do
+				output = output .. table.concat(buffer[ln])
+				if ln ~= #buffer then
+					output = output .. "\n"
+				end
+			end
+			return output
+		end
+
+		if history then
+			history[0] = assemble(buffer)
+		end
+
+		local evt, key, mx, my
+		local keysDown = {}
+		term.setCursorBlink(true)
+		while true do
+			render()
+			evt, key, mx, my = os.pullEvent()
+			if evt == "char" then
+				if getLength() < maxLength then
+					table.insert(buffer[curY], curX, key)
+					curX = curX + 1
+					if histPos == 0 and history then
+						history[histPos] = assemble(buffer)
+					end
+				end
+			elseif evt == "key_up" then
+				keysDown[key] = nil
+			elseif evt == "mouse_click" then
+				if key == 1 then
+					if my - (startY - 1) > maxLines or my < startY then
+						term.setCursorBlink(false)
+						return assemble(buffer), "mouse_click", mx, my
+					else
+						curY = math.max(1, math.min(my - (startY - 1), #buffer))
+						curX = math.max(1, math.min(mx - (startX - 1), #buffer[curY] + 1))
+					end
+				end
+			elseif evt == "key" then
+				keysDown[key] = true
+				if key == keys.left then
+					if curX == 1 then
+						if curY > 1 then
+							curY = curY - 1
+							curX = #buffer[curY] + 1
+						end
+					elseif curX > 1 then
+						curX = curX - 1
+					end
+				elseif key == keys.right then
+					if curX == #buffer[curY] + 1 then
+						if curY < #buffer then
+							curY = curY + 1
+							curX = 1
+						end
+					elseif curX < #buffer[curY] then
+						curX = curX + 1
+					end
+				elseif key == keys.up then
+					if history then
+						if histPos < #history then
+							histPos = histPos + 1
+							buffer = unassemble(history[histPos])
+							curY = #buffer
+							curX = #buffer[curY] + 1
+						end
+					else
+						if curY > 1 then
+							curY = curY - 1
+							curX = math.min(curX, #buffer[curY] + 1)
+						else
+							curX = 1
+						end
+					end
+				elseif key == keys.down then
+					if history then
+						if histPos > 0 then
+							histPos = histPos - 1
+							buffer = unassemble(history[histPos])
+							curY = #buffer
+							curX = #buffer[curY] + 1
+						end
+					else
+						if curY < #buffer then
+							curY = curY + 1
+							curX = math.min(curX, #buffer[curY] + 1)
+						else
+							curX = #buffer[curY] + 1
+						end
+					end
+				elseif key == keys.enter then
+					if allowEnter and not (keysDown[keys.leftAlt] or keysDown[keys.rightAlt]) and #buffer < maxLines then
+						curY = curY + 1
+						table.insert(buffer, curY, {})
+						for i = curX, #buffer[curY - 1] do
+							buffer[curY][#buffer[curY] + 1] = buffer[curY - 1][i]
+							buffer[curY - 1][i] = nil
+						end
+						curX = 1
+					else
+						term.setCursorBlink(false)
+						return assemble(buffer), "key", keys.enter
+					end
+				elseif key == keys.tab or (key == keys.q and (keysDown[keys.leftAlt] or keysDown[keys.rightAlt])) then
+					term.setCursorBlink(false)
+					return assemble(buffer), "key", key
+				elseif key == keys.backspace then
+					if curX > 1 then
+						table.remove(buffer[curY], curX - 1)
+						curX = curX - 1
+					elseif curY > 1 then
+						curX = #buffer[curY - 1] + 1
+						for i = 1, #buffer[curY] do
+							buffer[curY - 1][#buffer[curY - 1] + 1] = buffer[curY][i]
+						end
+						table.remove(buffer, curY)
+						curY = curY - 1
+					end
+				elseif key == keys.delete then
+					if buffer[curY][curX] then
+						table.remove(buffer[curY], curX)
+					end
+				end
+			end
+		end
+	end
+
+	local area_new_mail = function(recipient, subject, message)
+		recipient = recipient or ""
+		subject = subject or ""
+		message = message or ""
+		local attachments = {}
+		sleep(0.05)
+		local mode = "recipient"
+		render = function()
+			term.setTextColor(colors.white)
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			writeHeader("To:", recipient, 1)
+			writeHeader("Subject:", subject, 2)
+			writeHeader("Attachments:", "", 3)
+			for name, contents in pairs(attachments) do
+				term.write(name .. " ")
+			end
+			term.setCursorPos(1, 4)
+			term.setBackgroundColor(colors.gray)
+			term.setTextColor(colors.lightGray)
+			term.clearLine()
+			cwrite("(Alt+Enter = SEND, Alt+Q = QUIT)")
+			term.setTextColor(colors.white)
+			term.setBackgroundColor(colors.black)
+			if mode ~= "message" then
+				term.setCursorPos(1, 5)
+				write(message)
+			end
+		end
+		local mx, my, evt = 1, 1
+		local _mx, _my, userList
+		while true do
+			render()
+			if mode == "message" then
+				message, evt, _mx, _my = niftyRead(message, 1, 5, mx, my, true, 16, 512)
+			elseif mode == "subject" then
+				subject, evt, _mx, _my = niftyRead(subject, 10, 2, mx, 1, false, 1, 64)
+			elseif mode == "recipient" then
+				names = client.getNames(srv) or names
+				userList = {}
+				for k,v in pairs(names) do
+					userList[#userList + 1] = v
+				end
+				recipient, evt, _mx, _my = niftyRead(recipient, 5, 1, mx, 1, false, 1, 24, userList)
+			end
+			if evt == "mouse_click" then
+				mx, my = _mx, _my
+				if my == 1 then
+					mode = "recipient"
+				elseif my == 2 then
+					mode = "subject"
+				elseif my == 3 then
+					local newAttachment = lddfm.makeMenu(1, 4, scr_x, scr_y, "", false, false, false, true, false, nil, true)
+					if newAttachment then
+						local name = fs.getName(newAttachment)
+						if attachments[name] then
+							attachments[name] = nil
+						else
+							attachments[name] = readFile(newAttachment)
+						end
+					end
+				elseif my >= 5 then
+					mode = "message"
+				end
+			elseif evt == "key" then
+				if _mx == keys.enter or _mx == keys.tab then
+					if mode == "recipient" then
+						mode = "subject"
+					elseif mode == "subject" then
+						mode = "message"
+					elseif mode == "message" and _mx == keys.enter then
+						local recip
+						names = client.getNames(srv) or names
+						if tonumber(recipient) then
+							recip = tonumber(recipient)
+							if not names[recip] then
+								recip = nil
+							end
+						else
+							recip = getNameID(recipient)
+						end
+						if recip then
+							client.sendMail(srv, recip, subject, message)
+							dialogueBox("Message sent!")
+							refresh()
+							return
+						else
+							dialogueBox("There's no such recipient.")
+						end
+					end
+				elseif _mx == keys.q then
+					return
+				end
+			end
+		end
+		niftyRead(nil, 1, 1, nil, true)
+	end
+
+	local area_view_mail = function(mailEntry)
+		local scroll = 0
+		local mail = inbox[mailEntry]
 		local render = function(scroll)
 			term.setBackgroundColor(colors.black)
 			term.setTextColor(colors.lightGray)
 			term.clear()
+			local y
 			writeHeader("From", names[mail.sender], 1)
 			writeHeader("Subject", mail.subject, 2)
+			if type(mail.attachments) == "table" then
+				writeHeader("Attachments:","",3)
+				y = 4
+			else
+				y = 3
+			end
 			local words = explode(" ", mail.message, nil, true)
 			local buffer = {""}
 			for i = 1, #words do
@@ -749,8 +1335,7 @@ local clientInterface = function(srv)
 					buffer[#buffer] = buffer[#buffer] .. words[i]
 				end
 			end
-			local y = 3
-			for i = scroll + 1, scroll + scr_y - 3 do
+			for i = scroll + 1, scroll + scr_y - y do
 				if buffer[i] then
 					term.setCursorPos(1, y)
 					term.write(buffer[i])
@@ -771,7 +1356,13 @@ local clientInterface = function(srv)
 			render(scroll)
 			evt, key, mx, my = os.pullEvent()
 			if evt == "key" then
-				if key == keys.q then
+				if key == keys.r then
+					area_new_mail(names[mail.sender], "Re: " .. mail.subject, "\n\n~~~\nAt UTC epoch " .. mail.time .. ", " .. names[mail.sender] .. " wrote:\n\n" .. mail.message)
+				elseif key == keys.d then
+					client.deleteMail(srv, mailEntry)
+					refresh()
+					return
+				elseif key == keys.q then
 					return "exit"
 				end
 			elseif evt == "mouse_scroll" then
@@ -789,8 +1380,12 @@ local clientInterface = function(srv)
 			term.clearLine()
 			sleep(0.05)
 			return
+		elseif res == "refresh" then
+			refresh()
 		elseif res == "view_mail" then
-			area_view_mail(output)
+			area_view_mail(table.unpack(output or {}))
+		elseif res == "new_mail" then
+			area_new_mail(table.unpack(output or {}))
 		end
 	end
 end
