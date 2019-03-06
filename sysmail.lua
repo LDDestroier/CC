@@ -1,6 +1,6 @@
 local mainPath = ".sysmail"
 local yourID = os.getComputerID()
-local onlyUseWiredModems = false
+local onlyUseWiredModems = true
 local defaultTimer = 3
 
 local config = {
