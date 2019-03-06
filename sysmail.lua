@@ -1443,7 +1443,7 @@ local clientInterface = function(srv)
 					client.deleteMail(srv, mailEntry)
 					refresh()
 					return
-				elseif key == keys.a and getTableLength(mail.attachments) > 0 https://github.com/LDDestroier/CC/raw/master/sysmail.luathen
+				elseif key == keys.a and getTableLength(mail.attachments) > 0 then
 					local path = downloadAttachments()
 					dialogueBox("DL'd to '" .. path .. "/'")
 				elseif key == keys.q then
