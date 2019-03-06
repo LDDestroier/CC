@@ -534,6 +534,7 @@ local getNameID = function(name)
 			return k
 		end
 	end
+	return nil
 end
 
 local client = {}	-- all client-specific commands
@@ -558,6 +559,7 @@ client.findServer = function(srv)
 			return reply.server
 		end
 	end
+	return nil
 end
 
 -- Registers your ID to a name.
