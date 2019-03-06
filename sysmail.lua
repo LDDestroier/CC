@@ -1,6 +1,7 @@
 local mainPath = ".sysmail"
 local yourID = os.getComputerID()
 local onlyUseWiredModems = false
+local defaultTimer = 3
 
 local config = {
 	channel = 1024,
@@ -10,6 +11,14 @@ local config = {
 	nameFile = fs.combine(mainPath, "names"),
 	attachmentPath = "attachments"
 }
+
+local getTableLength = function(tbl)
+	local output = 0
+	for k,v in pairs(tbl) do
+		output = output + 1
+	end
+	return output
+end
 
 -- used for picking attachments
 
@@ -543,7 +552,7 @@ client.findServer = function(srv)
 		id = yourID,
 		command = "find_server"
 	}, msgID)
-	local reply, isEncrypted = receive(msgID, "find_server_respond", srv)
+	local reply, isEncrypted = receive(msgID, "find_server_respond", srv, defaultTimer)
 	if type(reply) == "table" then
 		if reply.server then
 			return reply.server
@@ -562,7 +571,7 @@ client.register = function(srv, username)
 		command = "register",
 		name = username
 	}, msgID, srv, yourID)
-	local reply, isEncrypted = receive(msgID, "register_respond", yourID)
+	local reply, isEncrypted = receive(msgID, "register_respond", yourID, defaultTimer)
 	if reply then
 		return reply.result
 	else
@@ -580,7 +589,7 @@ client.getNames = function(srv)
 		id = yourID,
 		command = "get_names"
 	}, msgID, srv, yourID)
-	local reply, isEncrypted = receive(msgID, "get_names_respond", yourID)
+	local reply, isEncrypted = receive(msgID, "get_names_respond", yourID, defaultTimer)
 	if type(reply) == "table" then
 		return reply.names
 	else
@@ -608,7 +617,7 @@ client.sendMail = function(srv, recipient, subject, message, attachments)
 		message = message,
 		attachments = attachments
 	}, msgID, srv, yourID)
-	local reply, isEncrypted = receive(msgID, "send_mail_respond", yourID)
+	local reply, isEncrypted = receive(msgID, "send_mail_respond", yourID, defaultTimer)
 	if (isEncrypted and type(reply) == "table") then
 		return reply.result
 	else
@@ -625,7 +634,7 @@ client.getMail = function(srv)
 		command = "get_mail",
 		id = yourID,
 	}, msgID, srv, yourID)
-	local reply, isEncrypted = receive(msgID, "get_mail_respond", yourID)
+	local reply, isEncrypted = receive(msgID, "get_mail_respond", yourID, defaultTimer)
 	if (isEncrypted and type(reply) == "table") then
 		if reply.mail then
 			return alphasort(reply.mail)
@@ -644,7 +653,7 @@ client.deleteMail = function(srv, mail)
 		id = yourID,
 		mail = mail,
 	}, msgID, srv, yourID)
-	local reply, isEncrypted = receive(msgID, "delete_mail_respond", yourID)
+	local reply, isEncrypted = receive(msgID, "delete_mail_respond", yourID, defaultTimer)
 	if (isEncrypted and type(reply) == "table") then
 		return reply.result
 	else
@@ -768,11 +777,21 @@ server.makeServer = function(verbose)
 		end
 	end
 
+	if verbose then
+		term.clear()
+		term.setCursorPos(1,1)
+		print("Make sure client keys are copied to key folder!")
+	end
+
+	say("SysMail server started.")
+
 	while true do
 
-		msg, isEncrypted, msgID = receive()
+		msg, isEncrypted, msgID = receive(nil, nil, nil, 5)
 
-		if msg then
+		if not msg then
+			keyList = getAllKeys()
+		else
 			if not isEncrypted then
 				if msg.command == "find_server" then
 					transmit({
@@ -878,7 +897,7 @@ local clientInterface = function(srv)
 	end
 	local cwrite = function(text, y)
 		local cx, cy = term.getCursorPos()
-		term.setCursorPos(scr_x / 2 - #text / 2, y or cy)
+		term.setCursorPos(scr_x / 2 - (#text - 1) / 2, y or cy)
 		term.write(text)
 	end
 	local explode = function(div, str, replstr, includeDiv)
@@ -893,9 +912,10 @@ local clientInterface = function(srv)
 		table.insert(arr, string.sub(replstr or str, pos))
 		return arr
 	end
-	local dialogueBox = function(msg)
+	local dialogueBox = function(msg, timeout)
 		local height = 7
 		local baseY = scr_y / 2 - height / 2
+		term.setBackgroundColor(colors.gray)
 		for y = 1, height do
 			term.setCursorPos(1, (scr_y / 2) - (baseY / 2) + (y - 1))
 			term.clearLine()
@@ -903,14 +923,16 @@ local clientInterface = function(srv)
 		cwrite(("="):rep(scr_x), baseY)
 		cwrite(msg, baseY + height / 2)
 		cwrite(("="):rep(scr_x), baseY + height - 1)
-		sleep(1)
+		local evt
+		local tID = os.startTimer(timeout or 2)
+		repeat
+			evt = {os.pullEvent()}
+		until (evt[1] == "key") or (evt[1] == "timer" and evt[2] == tID)
+		term.setBackgroundColor(colors.black)
 	end
 	srv = srv or tonumber( client.findServer(argData[1]) )
 	if not srv then
 		error("No server was found!")
-	end
-	for k,v in pairs(client.getNames(srv) or {}) do
-		names[k] = v
 	end
 
 	if not names[yourID] then
@@ -926,13 +948,17 @@ local clientInterface = function(srv)
 			if server.checkValidName(attempt) then
 				names[yourID] = attempt
 				writeNames()
-				client.register(srv, attempt)
 				break
 			else
 				term.clear()
 				cwrite("Bad name! Enter your name:", 3)
 			end
 		end
+	end
+	client.register(srv, names[yourID])
+
+	for k,v in pairs(client.getNames(srv) or {}) do
+		names[k] = v
 	end
 
 	refresh()
@@ -986,9 +1012,17 @@ local clientInterface = function(srv)
 			keyWrite("Quit ", 1)
 			keyWrite("New ", 1)
 			keyWrite("Refresh ", 1)
+			term.setCursorPos(scr_x - #names[yourID], scr_y)
+			term.setTextColor(colors.lightGray)
+			term.write(names[yourID])
 		end
 
 		-- logic(k)
+		local barCommands = {
+			[keys.q] = {1, scr_y, 4},
+			[keys.n] = {6, scr_y, 3},
+			[keys.r] = {10, scr_y, 7},
+		}
 		local evt, key, mx, my
 		local adjY	-- mouse Y adjusted for scroll
 		while true do
@@ -999,9 +1033,16 @@ local clientInterface = function(srv)
 				adjY = my + scroll
 				if inbox[adjY] then
 					return "view_mail", {adjY}
+				else
+					for key, data in pairs(barCommands) do
+						if my == data[2] and mx >= data[1] and mx <= data[1] + data[3] - 1 then
+							os.queueEvent("key", key)
+							break
+						end
+					end
 				end
 			elseif evt == "mouse_scroll" then
-				scroll = scroll + key
+				scroll = math.max(0, scroll + key)
 			elseif evt == "key" then
 				if key == keys.n then
 					return "new_mail"
@@ -1039,7 +1080,7 @@ local clientInterface = function(srv)
 			buffer = unassemble(prebuffer)
 		end
 		local curY = startCursorMY and math.max(1, math.min(startCursorMY - (startY - 1), #buffer)) or 1
-		local curX = startCursorMX and math.max(1, math.min(startCursorMX - (startX - 1), #buffer[curY] + 1)) or 1
+		local curX = startCursorMX and math.max(1, math.min(startCursorMX - (startX - 1), #buffer[curY])) or 1
 		local biggestHeight = math.max(1, #buffer)
 		local getLength = function()
 			local output = 0
@@ -1119,7 +1160,7 @@ local clientInterface = function(srv)
 						return assemble(buffer), "mouse_click", mx, my
 					else
 						curY = math.max(1, math.min(my - (startY - 1), #buffer))
-						curX = math.max(1, math.min(mx - (startX - 1), #buffer[curY] + 1))
+						curX = math.max(1, math.min(mx - (startX - 1), #buffer[curY]))
 					end
 				end
 			elseif evt == "key" then
@@ -1293,7 +1334,7 @@ local clientInterface = function(srv)
 							recip = getNameID(recipient)
 						end
 						if recip then
-							client.sendMail(srv, recip, subject, message)
+							client.sendMail(srv, recip, subject, message, attachments)
 							dialogueBox("Message sent!")
 							refresh()
 							return
@@ -1317,19 +1358,37 @@ local clientInterface = function(srv)
 			term.setTextColor(colors.lightGray)
 			term.clear()
 			local y
-			writeHeader("From", names[mail.sender], 1)
-			writeHeader("Subject", mail.subject, 2)
-			if type(mail.attachments) == "table" then
+			writeHeader("From:", names[mail.sender], 1)
+			writeHeader("Subject:", mail.subject, 2)
+			if getTableLength(mail.attachments) > 0 then
 				writeHeader("Attachments:","",3)
-				y = 4
+				for name, contents in pairs(mail.attachments) do
+					term.write(name .. " ")
+				end
+				y = 5
 			else
-				y = 3
+				y = 4
 			end
-			local words = explode(" ", mail.message, nil, true)
+			term.setTextColor(colors.gray)
+			term.setCursorPos(1, y - 1)
+			term.write(("="):rep(scr_x))
+			term.setTextColor(colors.white)
+			local words = {}
+			local lines = explode("\n", mail.message, nil, true)
+			for i = 1, #lines do
+				local inWords = explode(" ", lines[i], nil, true)
+				for ii = 1, #inWords do
+					words[#words+1] = inWords[ii]
+				end
+				if i ~= #lines then
+					words[#words+1] = "\n"
+				end
+			end
 			local buffer = {""}
 			for i = 1, #words do
-				words[i] = words[i]:gsub("\n", (" "):rep(scr_x))
-				if #buffer[#buffer] + #words[i] > scr_x then
+				if words[i] == "\n" then
+					buffer[#buffer+1] = ""
+				elseif #buffer[#buffer] + #words[i] > scr_x then
 					buffer[#buffer+1] = words[i]
 				else
 					buffer[#buffer] = buffer[#buffer] .. words[i]
@@ -1348,9 +1407,30 @@ local clientInterface = function(srv)
 			term.clearLine()
 			keyWrite("Quit ", 1)
 			keyWrite("Reply ", 1)
+			if getTableLength(mail.attachments) > 0 then
+				keyWrite("DL.Attachments ", 4)
+			end
 			keyWrite("Delete ", 1)
 		end
 
+		local downloadAttachments = function()
+			local path = fs.combine(config.attachmentPath, names[mail.sender])
+			for name, contents in pairs(mail.attachments) do
+				writeFile(fs.combine(path, name), contents)
+			end
+			return path
+		end
+
+		local barCommands = {
+			[keys.q] = {1, scr_y, 4},
+			[keys.r] = {6, scr_y, 5},
+		}
+		if getTableLength(mail.attachments) > 0 then
+			barCommands[keys.a] = {12, scr_y, 14}
+			barCommands[keys.d] = {27, scr_y, 6}
+		else
+			barCommands[keys.d] = {12, scr_y, 6}
+		end
 		local evt, key, mx, my
 		while true do
 			render(scroll)
@@ -1362,11 +1442,26 @@ local clientInterface = function(srv)
 					client.deleteMail(srv, mailEntry)
 					refresh()
 					return
+				elseif key == keys.a then
+					local path = downloadAttachments()
+					dialogueBox("DL'd to '" .. path .. "/'")
 				elseif key == keys.q then
 					return "exit"
 				end
+			elseif evt == "mouse_click" then
+				if my == 3 and getTableLength(mail.attachments) > 0 then
+					local path = downloadAttachments()
+					dialogueBox("DL'd to '" .. path .. "/'")
+				else
+					for key, data in pairs(barCommands) do
+						if my == data[2] and mx >= data[1] and mx <= data[1] + data[3] - 1 then
+							os.queueEvent("key", key)
+							break
+						end
+					end
+				end
 			elseif evt == "mouse_scroll" then
-				scroll = scroll + key
+				scroll = math.max(0, scroll + key)
 			end
 		end
 	end
