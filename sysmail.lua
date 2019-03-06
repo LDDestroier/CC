@@ -845,6 +845,7 @@ server.makeServer = function(verbose)
 					elseif msg.command == "get_names" then
 						encTransmit({
 							command = msg.command .. "_respond",
+							names = names,
 							result = true,
 						}, msgID, msg.id, msg.id)
 						say("get_names", msg.id)
