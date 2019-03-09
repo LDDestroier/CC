@@ -20,7 +20,6 @@ local stage = {
 
 -- ripped from NFTE
 local getSize = function(image)
-	assert(checkValid(image), "Invalid image.")
 	local x, y = 0, #image[1]
 	for y = 1, #image[1] do
 		x = math.max(x, #image[1][y])
@@ -46,11 +45,8 @@ local makeRectangle = function(width, height, char, text, back)
 	return output
 end
 local stretchImage = function(_image, sx, sy, noRepeat)
-	assert(checkValid(_image), "Invalid image.")
 	local output = {{},{},{}}
 	local image = deepCopy(_image)
-	if sx < 0 then image = flipX(image) end
-	if sy < 0 then image = flipY(image) end
 	sx, sy = math.abs(sx), math.abs(sy)
 	local imageX, imageY = getSize(image)
 	local tx, ty
