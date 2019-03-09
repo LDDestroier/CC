@@ -19,6 +19,15 @@ local stage = {
 }
 
 -- ripped from NFTE
+colorSwap = function(image, text, back)
+	local output = {{},{},{}}
+	for y = 1, #image[1] do
+		output[1][y] = image[1][y]
+		output[2][y] = image[2][y]:gsub(".", text)
+		output[3][y] = image[3][y]:gsub(".", back or text)
+	end
+	return output
+end
 local makeRectangle = function(width, height, char, text, back)
 	local output = {{},{},{}}
 	for y = 1, height do
