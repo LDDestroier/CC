@@ -19,7 +19,15 @@ local stage = {
 }
 
 -- ripped from NFTE
-colorSwap = function(image, text, back)
+local getSize = function(image)
+	assert(checkValid(image), "Invalid image.")
+	local x, y = 0, #image[1]
+	for y = 1, #image[1] do
+		x = math.max(x, #image[1][y])
+	end
+	return x, y
+end
+local colorSwap = function(image, text, back)
 	local output = {{},{},{}}
 	for y = 1, #image[1] do
 		output[1][y] = image[1][y]
