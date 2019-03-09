@@ -296,7 +296,9 @@ local render = function()
 	term.setCursorPos(1,1)
 	term.write(players[you].health)
 	term.setCursorPos(scr_x - 3,1)
-	term.write(players[2].health)
+	if players[2] then
+		term.write(players[2].health)
+	end
 end
 
 local control = {
@@ -443,7 +445,13 @@ local runGame = function()
 			local dmg = act.stage.getDamage(player.x, player.y, player.owner)
 			if player.cooldown.iframe == 0 and dmg > 0 then
 				player.health = player.health - dmg
-				player.cooldown.iframe = 32
+				if player.health <= 0 then
+					table.remove(players, id)
+				else
+					player.cooldown.iframe = 16
+					player.cooldown.move = 8
+					player.cooldown.shoot = 4
+				end
 			elseif player.control.buster and player.cooldown.shoot == 0 then
 				act.projectile.newProjectile(player.x, player.y, player.owner)
 				player.cooldown.shoot = 8
