@@ -1,6 +1,3 @@
--- slowly, I'll get rid of NFTE as a dependency by copying over specific functions from it
--- local nfte = dofile("nfte.lua")
-
 local scr_x, scr_y = term.getSize()
 local keysDown, miceDown = {}, {}
 
@@ -12,6 +9,7 @@ local FRAME = 0
 
 local stage = {
 	panels = {},
+	damage = {},
 	panelWidth = 6,
 	panelHeight = 2,
 	scrollX = 0,
@@ -177,7 +175,6 @@ act.stage.newPanel = function(x, y, panelType, owner)
 		reserved = false,
 		crackedLevel = 0,	-- 0 is okay, 1 is cracked, 2 is broken
 		owner = owner or (x > 3 and 2 or 1),
-		damage = {},
 		cooldown = {
 			owner = 0,
 			broken = 0,
@@ -193,26 +190,26 @@ act.stage.checkExist = function(x, y)
 	return false
 end
 act.stage.setDamage = function(x, y, damage, owner, time)
-	if act.stage.checkExist(x, y) then
-		stage.panels[y][x].damage[owner] = {
-			owner = owner,
-			time = time,
-			damage = damage,
-		}
-	end
+	stage.damage[y] = stage.damage[y] or {}
+	stage.damage[y][x] = stage.damage[y][x] or {}
+	stage.damage[y][x][owner] = {
+		owner = owner,
+		time = time,
+		damage = damage,
+	}
 end
 act.stage.getDamage = function(x, y, owner)
-	if act.stage.checkExist(x, y) then
-		local totalDamage = 0
-		for k,v in pairs(stage.panels[y][x].damage) do
-			if k ~= owner then
-				totalDamage = totalDamage + v.damage
+	local totalDamage = 0
+	if stage.damage[y] then
+		if stage.damage[y][x] then
+			for k,v in pairs(stage.damage[y][x]) do
+				if k ~= owner then
+					totalDamage = totalDamage + v.damage
+				end
 			end
 		end
-		return totalDamage
-	else
-		return 0
 	end
+	return totalDamage
 end
 
 act.player.newPlayer = function(x, y, owner)
@@ -375,16 +372,14 @@ local reduceCooldowns = function()
 			players[i].cooldown[k] = math.max(0, v - 1)
 		end
 	end
-	for y = 1, #stage.panels do
-		for x = 1, #stage.panels[y] do
-
-			for owner, damageData in pairs(stage.panels[y][x].damage) do
-				stage.panels[y][x].damage[owner].time = math.max(0, damageData.time - 1)
+	for y, row in pairs(stage.damage) do
+		for x, panel in pairs(row) do
+			for owner, damageData in pairs(panel) do
+				stage.damage[y][x][owner].time = math.max(0, damageData.time - 1)
 				if damageData.time == 0 then
-					stage.panels[y][x].damage[owner] = nil
+					stage.damage[y][x][owner] = nil
 				end
 			end
-
 		end
 	end
 end
