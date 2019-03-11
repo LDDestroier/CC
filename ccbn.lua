@@ -2,6 +2,7 @@ local scr_x, scr_y = term.getSize()
 local keysDown, miceDown = {}, {}
 
 local players = {}
+local objects = {}
 local projectiles = {}
 local you = 1
 local yourID = os.getComputerID()
@@ -302,6 +303,7 @@ local images = {
 		["6"] = {{"","  ","","  ",""},{"f5ff","4  4","66ff","2  2","affa"},{"5f55","4  f","6f66","2  2"," aaf"}},
 		["7"] = {{"","  ","","","  "},{"5555","  f4","ffff","2f22"," fa "},{"5ff5","  4f","6666"," 2ff"," af "}},
 	},
+	rockcube = {{"","",""},{"7887","8777","7777"},{"8778","7778","8888"}},
 	cannon = {{"",""},{"ff","77"},{"77","  ",}},
 	buster = {{""},{"f4"},{"4f"}}
 }
@@ -383,6 +385,7 @@ act.player.newPlayer = function(x, y, owner, direction, image)
 		chipQueue = {
 			"shockwave",
 			"invis",
+			"rockcube",
 			"airshot",
 			"minibomb",
 			"lilbomb",
@@ -400,6 +403,25 @@ act.player.newPlayer = function(x, y, owner, direction, image)
 	}
 end
 
+local newObject = function(x, y, owner, direction, objectType)
+	objects[#objects + 1] = {
+		x = x,
+		y = y,
+		image = images[objectType],
+		owner = owner,
+		direction = direction,
+		type = "object",
+		friendlyFire = true,
+		objectType = objectType,
+		health = 500,
+		maxHealth = 500,
+		frame = 0,
+		cooldown = {
+			iframe = 0,
+		}
+	}
+end
+
 local checkPlayerAtPos = function(x, y, ignoreThisOne)
 	x, y = round(x), round(y)
 	for id, player in pairs(players) do
@@ -409,6 +431,18 @@ local checkPlayerAtPos = function(x, y, ignoreThisOne)
 			end
 		end
 	end
+end
+
+local checkObjectAtPos = function(x, y, ignoreThisOne)
+	x, y = round(x), round(y)
+	for id, obj in pairs(objects) do
+		if id ~= ignoreThisOne or obj.friendlyFire then
+			if obj.x == x and obj.y == y then
+				return id
+			end
+		end
+	end
+	return false
 end
 
 local control = {
@@ -441,11 +475,11 @@ local checkIfSolid = function(x, y)
 	return false
 end
 
-local checkIfWalkable = function(x, y, p)
+local checkIfWalkable = function(x, y, pID, oID)
 	x, y = round(x), round(y)
 	if checkIfSolid(x, y) then
-		if (not stage.panels[y][x].reserved) or stage.panels[y][x].reserved == p then
-			if stage.panels[y][x].owner == players[p].owner or stage.panels[y][x].owner == 0 then
+		if not checkObjectAtPos(x, y, oID) then
+			if not checkPlayerAtPos(x, y, pID) then
 				return true
 			end
 		end
@@ -461,6 +495,17 @@ local movePlayer = function(pID, xmove, ymove, doCooldown)
 		if doCooldown then
 			player.cooldown.move = 3
 		end
+		return true
+	else
+		return false
+	end
+end
+
+local moveObject = function(oID, xmove, ymove)
+	local object = objects[oID]
+	if (xmove ~= 0 or ymove ~= 0) and checkIfWalkable(object.x + xmove, object.y + ymove, oID) then
+		object.x = object.x + xmove
+		object.y = object.y + ymove
 		return true
 	else
 		return false
@@ -488,9 +533,14 @@ local movePlayers = function()
 end
 
 local reduceCooldowns = function()
-	for i = 1, #players do
-		for k,v in pairs(players[i].cooldown) do
-			players[i].cooldown[k] = math.max(0, v - 1)
+	for id, player in pairs(players) do
+		for k,v in pairs(player.cooldown) do
+			players[id].cooldown[k] = math.max(0, v - 1)
+		end
+	end
+	for id, object in pairs(objects) do
+		for k,v in pairs(object.cooldown) do
+			objects[id].cooldown[k] = math.max(0, v - 1)
 		end
 	end
 	for y, row in pairs(stage.damage) do
@@ -505,6 +555,26 @@ local reduceCooldowns = function()
 	end
 end
 
+local checkProjectileCollisions = function(info)
+
+	local struckPlayer = false
+	local struckObject = false
+	local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
+	local cObject = checkObjectAtPos(info.x, info.y, info.owner)
+
+	if cPlayer then
+		if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
+			struckPlayer = cPlayer
+		end
+	end
+	if cObject then
+		if objects[cObject].cooldown.iframe == 0 then
+			struckObject = cObject
+		end
+	end
+	return struckPlayer, struckObject
+end
+
 local chips = {
 
 	buster = {
@@ -517,23 +587,31 @@ local chips = {
 			}
 		},
 		logic = function(info)
-			info.x = info.x + (2 / stage.panelWidth) * info.direction
-			info.y = info.y
+			info.x = info.x + (3 / stage.panelWidth) * info.direction
+
+			local struckPlayer, struckObject = checkProjectileCollisions(info)
 			act.stage.setDamage(info.x, info.y, 1, info.owner, 1, true)
 
-			-- delete projectile if collide with player
-			local hasStruck = false
-			local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
-			if cPlayer then
-				if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
-					hasStruck = cPlayer
-				end
-			end
-			if info.frame > 50 or hasStruck then
+			if info.frame > 50 or struckPlayer or struckObject then
 				return false
 			else
 				return true, {{images.buster, info.x, info.y}}
 			end
+		end
+	},
+
+	rockcube = {
+		info = {
+			name = "RockCube",
+			description = "Creates a cube-shaped rock!",
+			cooldown = {
+				move = 10,
+				shoot = 5
+			}
+		},
+		logic = function(info)
+			newObject(info.x + 1, info.y, info.owner, info.direction, "rockcube")
+			return false
 		end
 	},
 
@@ -549,17 +627,12 @@ local chips = {
 		logic = function(info)
 			info.x = info.x + (2 / stage.panelWidth) * info.direction
 			info.y = info.y
+
 			act.stage.setDamage(info.x, info.y, 40, info.owner, 2)
 
-			-- delete projectile if collide with player
-			local hasStruck = false
-			local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
-			if cPlayer then
-				if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
-					hasStruck = cPlayer
-				end
-			end
-			if info.frame > 50 or hasStruck then
+			local struckPlayer, struckObject = checkProjectileCollisions(info)
+
+			if info.frame > 50 or struckPlayer or struckObject then
 				return false
 			else
 				return true, {{images.cannon, info.x, info.y}}
@@ -581,7 +654,7 @@ local chips = {
 				info.x = info.x + info.direction / 2
 			end
 			info.x = info.x + (3 / stage.panelWidth) * info.direction
-			info.y = info.y
+
 			act.stage.setDamage(info.x, info.y, 60, info.owner, 10)
 
 			if info.frame > 50 or not checkIfSolid(info.x, info.y) then
@@ -594,7 +667,7 @@ local chips = {
 
 	shotgun = {
 		info = {
-			name = "Cannon",
+			name = "Shotgun",
 			description = "Hits enemy as well as the panel behind!",
 			cooldown = {
 				shoot = 10,
@@ -603,19 +676,13 @@ local chips = {
 		},
 		logic = function(info)
 			info.x = info.x + (2 / stage.panelWidth) * info.direction
-			info.y = info.y
+
 			act.stage.setDamage(info.x, info.y, 40, info.owner, 2)
 
-			-- delete projectile if collide with player
-			local hasStruck = false
-			local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
-			if cPlayer then
-				if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
-					hasStruck = cPlayer
-				end
-			end
-			if info.frame > 50 or hasStruck then
-				if hasStruck then
+			local struckPlayer, struckObject = checkProjectileCollisions(info)
+
+			if info.frame > 50 or struckPlayer or struckObject then
+				if struckPlayer then
 					act.stage.setDamage(info.x + info.direction, info.y, 40, info.owner, 2)
 				end
 				return false
@@ -636,20 +703,18 @@ local chips = {
 		},
 		logic = function(info)
 			info.x = info.x + (2 / stage.panelWidth) * info.direction
-			info.y = info.y
+
 			act.stage.setDamage(info.x, info.y, 20, info.owner, 2)
 
-			-- delete projectile if collide with player
-			local hasStruck = false
-			local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
-			if cPlayer then
-				if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
-					hasStruck = cPlayer
-				end
-			end
-			if info.frame > 50 or hasStruck then
-				if hasStruck then
-					if movePlayer(hasStruck, info.direction, 0, true) then
+			local struckPlayer, struckObject = checkProjectileCollisions(info)
+
+			if info.frame > 50 or struckPlayer or struckObject then
+				if struckPlayer then
+					if movePlayer(struckPlayer, info.direction, 0, true) then
+						act.stage.setDamage(info.x + info.direction, info.y, 20, info.owner, 2)
+					end
+				elseif struckObject then
+					if moveObject(struckObject, info.direction, 0) then
 						act.stage.setDamage(info.x + info.direction, info.y, 20, info.owner, 2)
 					end
 				end
@@ -974,6 +1039,9 @@ local render = function()
 	for k,v in pairs(players) do
 		sortedList[#sortedList+1] = v
 	end
+	for k,v in pairs(objects) do
+		sortedList[#sortedList+1] = v
+	end
 	table.sort(sortedList, function(a,b) return a.y >= b.y end)
 	for k,v in pairs(sortedList) do
 		if v.type == "player" then
@@ -1000,6 +1068,14 @@ local render = function()
 				end
 
 			end
+		elseif v.type == "object" then
+			sx = (v.x - 1) * stage.panelWidth  + 3 + stage.scrollX
+			sy = (v.y - 1) * stage.panelHeight - 1 + stage.scrollY
+			buffer[#buffer + 1] = {
+				colorSwap(v.image, {["f"] = " "}),
+				math.floor((v.x - 1) * stage.panelWidth  + 3 + stage.scrollX),
+				math.floor((v.y - 1) * stage.panelHeight + 1 + stage.scrollY)
+			}
 		end
 	end
 	for y = #stage.panels, 1, -1 do
@@ -1125,6 +1201,17 @@ local runGame = function()
 						for k,v in pairs(chips.buster.info.cooldown or {}) do
 							player.cooldown[k] = v
 						end
+					end
+				end
+			end
+			for id, object in pairs(objects) do
+				local dmg, flinching = act.stage.getDamage(object.x, object.y, object.owner)
+				if object.cooldown.iframe == 0 then
+					object.health = object.health - dmg
+					if object.health <= 0 then
+						table.remove(objects, id)
+					else
+						object.cooldown.iframe = 2
 					end
 				end
 			end
