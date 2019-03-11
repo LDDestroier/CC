@@ -4,8 +4,15 @@ local keysDown, miceDown = {}, {}
 local players = {}
 local projectiles = {}
 local you = 1
+local yourID = os.getComputerID()
+
+local gameID = "test-game"
+local waitingForGame = false
+local isHost = true
+local channel = 1024
 
 local FRAME = 0
+local useSkynet = false -- will be added much later
 
 local stage = {
 	panels = {},
@@ -171,6 +178,40 @@ local drawImage = function(image, x, y, terminal)
 	terminal.setCursorPos(cx,cy)
 end
 
+local modem
+local getModem = function()
+	local modems = {peripheral.find("modem")}
+	if #modems == 0 then
+		if ccemux then
+			ccemux.attach("top", "wireless_modem")
+			modem = peripheral.wrap("top")
+		else
+			error("A modem is needed.")
+		end
+	else
+		modem = modems[1]
+	end
+	modem.open(channel)
+	return modem
+end
+
+local transmit = function(msg)
+	if useSkynet then
+		-- add skynet stuff later
+	else
+		modem.transmit(channel, channel, msg)
+	end
+end
+
+local receive = function()
+	if useSkynet then
+		-- again, skynet is for later, keep your pants on
+	else
+		local evt = {os.pullEvent("modem_message")}
+		return evt[5]
+	end
+end
+
 local images = {
 	panel = {
 		normal = {{"","",""},{"eeeee7","e78877","eeeeee"},{"77777e","78888e","eeeeee"}},
@@ -233,13 +274,13 @@ act.stage.getDamage = function(x, y, owner)
 	return totalDamage, flinching
 end
 
-act.player.newPlayer = function(x, y, owner, image)
+act.player.newPlayer = function(x, y, owner, direction, image)
 	players[#players + 1] = {
 		x = x,
 		y = y,
 		owner = owner,
 		type = "player",
-		direction = 1,
+		direction = direction or 1,
 		health = 1000,
 		maxHealth = 1000,
 		image = image,
@@ -302,7 +343,7 @@ local chips = {
 			local hasStruck = false
 			local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
 			if cPlayer then
-				if players[cPlayer].cooldown.iframe == 0 then
+				if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
 					hasStruck = cPlayer
 				end
 			end
@@ -332,7 +373,7 @@ local chips = {
 			local hasStruck = false
 			local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
 			if cPlayer then
-				if players[cPlayer].cooldown.iframe == 0 then
+				if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
 					hasStruck = cPlayer
 				end
 			end
@@ -355,7 +396,7 @@ local chips = {
 		},
 		logic = function(info)
 
-			act.stage.setDamage(info.x + 1, info.y, 80, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction, info.y, 80, info.owner, 4)
 
 			return false
 		end
@@ -372,8 +413,8 @@ local chips = {
 		},
 		logic = function(info)
 
-			act.stage.setDamage(info.x + 1, info.y, 80, info.owner, 4)
-			act.stage.setDamage(info.x + 2, info.y, 80, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction,     info.y, 80, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction * 2, info.y, 80, info.owner, 4)
 
 			return false
 		end
@@ -390,9 +431,9 @@ local chips = {
 		},
 		logic = function(info)
 
-			act.stage.setDamage(info.x + 1, info.y - 1, 80, info.owner, 4)
-			act.stage.setDamage(info.x + 1, info.y,     80, info.owner, 4)
-			act.stage.setDamage(info.x + 1, info.y + 1, 80, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction, info.y - 1, 80, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction, info.y,     80, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction, info.y + 1, 80, info.owner, 4)
 
 			return false
 		end
@@ -409,12 +450,12 @@ local chips = {
 		},
 		logic = function(info)
 
-			act.stage.setDamage(info.x + 1, info.y - 1, 400, info.owner, 4)
-			act.stage.setDamage(info.x + 2, info.y - 1, 400, info.owner, 4)
-			act.stage.setDamage(info.x + 1, info.y,     400, info.owner, 4)
-			act.stage.setDamage(info.x + 2, info.y,     400, info.owner, 4)
-			act.stage.setDamage(info.x + 1, info.y + 1, 400, info.owner, 4)
-			act.stage.setDamage(info.x + 2, info.y + 1, 400, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction,     info.y - 1, 400, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction * 2, info.y - 1, 400, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction,     info.y,     400, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction * 2, info.y,     400, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction,     info.y + 1, 400, info.owner, 4)
+			act.stage.setDamage(info.x + info.direction * 2, info.y + 1, 400, info.owner, 4)
 
 			return false
 		end
@@ -430,20 +471,38 @@ local chips = {
 			}
 		},
 		logic = function(info)
-			if info.frame == 0 then
-				info.x = 0
-				info.y = 3
-			end
-			if info.y > 1 then
-				if info.x < 6 then
+			if info.direction == 1 then
+				if info.frame == 0 then
+					info.x = 0
+					info.y = 3
+				end
+				if info.y > 1 then
+					if info.x <= 6 then
+						info.x = info.x + (2 / stage.panelWidth)
+					else
+						info.y = info.y - (2 / stage.panelHeight)
+					end
+				elseif info.x > 0 then
+					info.x = info.x - (2 / stage.panelWidth)
+				else
+					return false
+				end
+			elseif info.direction == -1 then
+				if info.frame == 0 then
+					info.x = 7
+					info.y = 3
+				end
+				if info.y > 1 then
+					if info.x > 1 then
+						info.x = info.x - (2 / stage.panelWidth)
+					else
+						info.y = info.y - (2 / stage.panelHeight)
+					end
+				elseif info.x <= 7 then
 					info.x = info.x + (2 / stage.panelWidth)
 				else
-					info.y = info.y - (2 / stage.panelHeight)
+					return false
 				end
-			elseif info.x > 0 then
-				info.x = info.x - (2 / stage.panelWidth)
-			else
-				return false
 			end
 			act.stage.setDamage(info.x, info.y, 60, info.owner, 2, false)
 			return true, {{images.cannon, info.x, info.y}}
@@ -467,7 +526,7 @@ local chips = {
 				act.stage.setDamage(info.x, info.y, 50, info.owner, 2, false)
 				return false
 			else
-				info.x = info.x + maxDist / maxFrames
+				info.x = info.x + (maxDist / maxFrames) * info.direction
 			end
 			return true, {{images.cannon, info.x, info.y - parabola}}
 		end
@@ -492,7 +551,7 @@ local chips = {
 				act.stage.setDamage(info.x, info.y + 1, 50, info.owner, 2, false)
 				return false
 			else
-				info.x = info.x + maxDist / maxFrames
+				info.x = info.x + (maxDist / maxFrames) * info.direction
 			end
 			return true, {{images.cannon, info.x, info.y - parabola}}
 		end
@@ -519,7 +578,7 @@ local chips = {
 				act.stage.setDamage(info.x + 1, info.y,     50, info.owner, 2, false)
 				return false
 			else
-				info.x = info.x + maxDist / maxFrames
+				info.x = info.x + (maxDist / maxFrames) * info.direction
 			end
 			return true, {{images.cannon, info.x, info.y - parabola}}
 		end
@@ -538,7 +597,7 @@ act.projectile.newProjectile = function(x, y, player, chipType)
 		id = id,
 		owner = player.owner,
 		player = player,
-		direction = 1,
+		direction = player.direction,
 		frame = 0,
 		chipType = chipType
 	}
@@ -550,18 +609,32 @@ for y = 1, 3 do
 	end
 end
 
-act.player.newPlayer(2, 2, 1, "6")
-
-act.player.newPlayer(4, 1, 2, "7")
-act.player.newPlayer(5, 2, 2, "7")
-act.player.newPlayer(4, 3, 2, "7")
+act.player.newPlayer(2, 2, 1, 1, "6")
+act.player.newPlayer(5, 2, 2, -1, "7")
 
 local render = function()
 	local buffer, im = {}
 	local sx, sy
 	local sortedList = {}
-	if false then
-		for k, v in pairs(projectiles) do
+	for k,v in pairs(projectiles) do
+		sortedList[#sortedList+1] = v
+	end
+	for k,v in pairs(players) do
+		sortedList[#sortedList+1] = v
+	end
+	table.sort(sortedList, function(a,b) return a.y >= b.y end)
+	for k,v in pairs(sortedList) do
+		if v.type == "player" then
+			if v.cooldown.iframe == 0 or (FRAME % 2 == 0) then
+				sx = (v.x - 1) * stage.panelWidth  + 3 + stage.scrollX
+				sy = (v.y - 1) * stage.panelHeight - 1 + stage.scrollY
+				buffer[#buffer + 1] = {
+					colorSwap(images.player[v.image], {["f"] = " "}),
+					sx,
+					sy
+				}
+			end
+		elseif v.type == "projectile" then
 			sx = math.floor((v.x - 1) * stage.panelWidth  + 4 + stage.scrollX)
 			sy = math.floor((v.y - 1) * stage.panelHeight + 1 + stage.scrollY)
 			if sx >= -1 and sx <= scr_x and v.imageData then
@@ -574,54 +647,6 @@ local render = function()
 					}
 				end
 
-			end
-		end
-		local pList = deepCopy(players)
-		table.sort(pList, function(a,b) return a.y > b.y end)
-		for i = 1, #pList do
-			if pList[i].cooldown.iframe == 0 or (FRAME % 2 == 0) then
-				sx = (pList[i].x - 1) * stage.panelWidth  + 3 + stage.scrollX
-				sy = (pList[i].y - 1) * stage.panelHeight - 1 + stage.scrollY
-				buffer[#buffer + 1] = {
-					colorSwap(images.player[pList[i].image], {["f"] = " "}),
-					sx,
-					sy
-				}
-			end
-		end
-	else
-		for k,v in pairs(projectiles) do
-			sortedList[#sortedList+1] = v
-		end
-		for k,v in pairs(players) do
-			sortedList[#sortedList+1] = v
-		end
-		table.sort(sortedList, function(a,b) return a.y > b.y end)
-		for k,v in pairs(sortedList) do
-			if v.type == "player" then
-				if v.cooldown.iframe == 0 or (FRAME % 2 == 0) then
-					sx = (v.x - 1) * stage.panelWidth  + 3 + stage.scrollX
-					sy = (v.y - 1) * stage.panelHeight - 1 + stage.scrollY
-					buffer[#buffer + 1] = {
-						colorSwap(images.player[v.image], {["f"] = " "}),
-						sx,
-						sy
-					}
-				end
-			elseif v.type == "projectile" then
-				sx = math.floor((v.x - 1) * stage.panelWidth  + 4 + stage.scrollX)
-				sy = math.floor((v.y - 1) * stage.panelHeight + 1 + stage.scrollY)
-				if sx >= -1 and sx <= scr_x and v.imageData then
-
-					for kk, imd in pairs(v.imageData) do
-						buffer[#buffer + 1] = {
-							colorSwap(imd[1], {["f"] = " "}),
-							math.floor((imd[2] - 1) * stage.panelWidth  + 4 + stage.scrollX),
-							math.floor((imd[3] - 1) * stage.panelHeight + 1 + stage.scrollY)
-						}
-					end
-
-				end
 			end
 		end
 	end
@@ -662,8 +687,8 @@ local render = function()
 			term.write(player.health)
 		end
 	end
-	term.setCursorPos(1, 2)
-	term.write("Frame: " .. FRAME)
+	term.setCursorPos(1, scr_y - 1)
+	term.write("Frame: " .. FRAME .. ", isHost = " .. tostring(isHost) .. ", you = " .. tostring(you))
 end
 
 local control = {
@@ -687,7 +712,7 @@ local checkIfWalkable = function(x, y, p)
 		if stage.panels[y][x] then
 			if stage.panels[y][x].crackedLevel < 2 then
 				if (not stage.panels[y][x].reserved) or stage.panels[y][x].reserved == p then
-					if stage.panels[y][x].owner == p or stage.panels[y][x].owner == 0 then
+					if stage.panels[y][x].owner == players[p].owner or stage.panels[y][x].owner == 0 then
 						return true
 					end
 				end
@@ -712,10 +737,10 @@ local movePlayers = function()
 			elseif p.control.moveLeft then
 				xmove = -1
 			end
-			if (xmove ~= 0 or ymove ~= 0) and checkIfWalkable(p.x + xmove, p.y + ymove, p.owner) then
+			if (xmove ~= 0 or ymove ~= 0) and checkIfWalkable(p.x + xmove, p.y + ymove, i) then
 				p.x = p.x + xmove
 				p.y = p.y + ymove
-				p.cooldown.move = 4
+				p.cooldown.move = 3
 			end
 		end
 	end
@@ -758,62 +783,145 @@ end
 local runGame = function()
 	while true do
 		FRAME = FRAME + 1
-		getControls()
 
-		for id, proj in pairs(projectiles) do
-			local success, imageData = chips[proj.chipType].logic(proj)
-			if success then
-				projectiles[id].imageData = imageData
-				projectiles[id].frame = proj.frame + 1
-			else
-				projectiles[id] = nil
-			end
-		end
-
-		for y = 1, #stage.panels do
-			for x = 1, #stage.panels[y] do
-				stage.panels[y][x].reserved = false
-			end
-		end
-
-		for id, player in pairs(players) do
-			stage.panels[player.y][player.x].reserved = id
-			local dmg, flinching = act.stage.getDamage(player.x, player.y, player.owner)
-			if player.cooldown.iframe == 0 and dmg > 0 then
-				player.health = player.health - dmg
-				if player.health <= 0 then
-					table.remove(players, id)
-				elseif flinching then
-					player.cooldown.iframe = 16
-					player.cooldown.move = 8
-					player.cooldown.shoot = 6
+		if isHost then
+			getControls()
+			for id, proj in pairs(projectiles) do
+				local success, imageData = chips[proj.chipType].logic(proj)
+				if success then
+					projectiles[id].imageData = imageData
+					projectiles[id].frame = proj.frame + 1
+				else
+					projectiles[id] = nil
 				end
-			elseif player.cooldown.shoot == 0 then
-				if player.control.chip then
-					if player.chipQueue[1] then
-						if chips[player.chipQueue[1]] then
-							act.projectile.newProjectile(player.x, player.y, player, player.chipQueue[1])
-							for k,v in pairs(chips[player.chipQueue[1]].info.cooldown or {}) do
-								player.cooldown[k] = v
+			end
+
+			for y = 1, #stage.panels do
+				for x = 1, #stage.panels[y] do
+					stage.panels[y][x].reserved = false
+				end
+			end
+
+			for id, player in pairs(players) do
+				stage.panels[player.y][player.x].reserved = id
+				local dmg, flinching = act.stage.getDamage(player.x, player.y, player.owner)
+				if player.cooldown.iframe == 0 and dmg > 0 then
+					player.health = player.health - dmg
+					if player.health <= 0 then
+						table.remove(players, id)
+					elseif flinching then
+						player.cooldown.iframe = 16
+						player.cooldown.move = 8
+						player.cooldown.shoot = 6
+					end
+				elseif player.cooldown.shoot == 0 then
+					if player.control.chip then
+						if player.chipQueue[1] then
+							if chips[player.chipQueue[1]] then
+								act.projectile.newProjectile(player.x, player.y, player, player.chipQueue[1])
+								for k,v in pairs(chips[player.chipQueue[1]].info.cooldown or {}) do
+									player.cooldown[k] = v
+								end
+								table.remove(player.chipQueue, 1)
 							end
-							table.remove(player.chipQueue, 1)
+						end
+					elseif player.control.buster then
+						act.projectile.newProjectile(player.x, player.y, player, "buster")
+						for k,v in pairs(chips.buster.info.cooldown or {}) do
+							player.cooldown[k] = v
 						end
 					end
-				elseif player.control.buster then
-					act.projectile.newProjectile(player.x, player.y, player, "buster")
-					for k,v in pairs(chips.buster.info.cooldown or {}) do
-						player.cooldown[k] = v
-					end
 				end
 			end
+			reduceCooldowns()
+			movePlayers()
+			transmit({
+				gameID = gameID,
+				command = "get_state",
+				players = players,
+				projectiles = projectiles,
+				stage = stage,
+				id = id
+			})
+		else
+			getControls()
+			transmit({
+				gameID = gameID,
+				command = "set_controls",
+				id = yourID,
+				pID = you,
+				control = players[you].control
+			})
 		end
-
-		reduceCooldowns()
-		movePlayers()
 
 		render()
 		sleep(0.05)
 	end
 end
 
-parallel.waitForAny(getInput, runGame)
+local interpretNetMessage = function(msg)
+	if waitingForGame then
+		if msg.command == "find_game" then
+			local time = os.epoch("utc")
+			if msg.time > time then
+				isHost = false
+				you = 2
+			else
+				isHost = true
+				you = 1
+			end
+			return true
+		end
+	elseif msg.gameID == gameID then
+		if isHost then
+			if msg.command == "set_controls" then
+				players[msg.pID].control = msg.control
+			end
+		else
+			if msg.command == "get_state" then
+				players = msg.players
+				projectiles = msg.projectiles
+				stage.panels = msg.stage.panels
+				stage.damage = msg.stage.damage
+			end
+		end
+	end
+end
+
+local networking = function()
+	local msg
+	while true do
+		msg = receive()
+		if type(msg) == "table" then
+			interpretNetMessage(msg)
+		end
+	end
+end
+
+local startGame = function()
+	getModem()
+	local time = os.epoch("utc")
+	transmit({
+		gameID = gameID,
+		command = "find_game",
+		respond = false,
+		id = yourID,
+		time = time,
+	})
+	local msg
+	waitingForGame = true
+	repeat
+		msg = receive()
+	until interpretNetMessage(msg)
+	transmit({
+		gameID = gameID,
+		command = "find_game",
+		respond = true,
+		id = yourID,
+		time = isHost and math.huge or -math.huge,
+	})
+	waitingForGame = false
+	parallel.waitForAny(getInput, runGame, networking)
+end
+
+startGame()
