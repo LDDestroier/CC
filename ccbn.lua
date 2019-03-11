@@ -6,13 +6,61 @@ local projectiles = {}
 local you = 1
 local yourID = os.getComputerID()
 
-local gameID = "test-game"
+-- recommended at 0.1 for netplay, which you'll be doing all the time so yeah
+local gameDelayInit = 0.1
+
+local gameID = math.random(0, 2^30)
 local waitingForGame = false
 local isHost = true
 local channel = 1024
 
+local function interpretArgs(tInput, tArgs)
+	local output = {}
+	local errors = {}
+	local usedEntries = {}
+	for aName, aType in pairs(tArgs) do
+		output[aName] = false
+		for i = 1, #tInput do
+			if not usedEntries[i] then
+				if tInput[i] == aName and not output[aName] then
+					if aType then
+						usedEntries[i] = true
+						if type(tInput[i+1]) == aType or type(tonumber(tInput[i+1])) == aType then
+							usedEntries[i+1] = true
+							if aType == "number" then
+								output[aName] = tonumber(tInput[i+1])
+							else
+								output[aName] = tInput[i+1]
+							end
+						else
+							output[aName] = nil
+							errors[1] = errors[1] and (errors[1] + 1) or 1
+							errors[aName] = "expected " .. aType .. ", got " .. type(tInput[i+1])
+						end
+					else
+						usedEntries[i] = true
+						output[aName] = true
+					end
+				end
+			end
+		end
+	end
+	for i = 1, #tInput do
+		if not usedEntries[i] then
+			output[#output+1] = tInput[i]
+		end
+	end
+	return output, errors
+end
+
+local argList = interpretArgs({...}, {
+	["skynet"] = false,	-- use Skynet HTTP multiplayer
+	["debug"] = false,	-- show various variable values
+})
+
 local FRAME = 0
-local useSkynet = false -- will be added much later
+local useSkynet = argList.skynet
+local showDebug = argList.debug
 
 local stage = {
 	panels = {},
@@ -178,26 +226,61 @@ local drawImage = function(image, x, y, terminal)
 	terminal.setCursorPos(cx,cy)
 end
 
+local skynet
+local skynetPath = "skynet"
+local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
+
 local modem
 local getModem = function()
-	local modems = {peripheral.find("modem")}
-	if #modems == 0 then
-		if ccemux then
-			ccemux.attach("top", "wireless_modem")
-			modem = peripheral.wrap("top")
+	if useSkynet then
+		if skynet then
+			local isOpen = false
+			for i = 1, #skynet.open_channels do
+				if skynet.open_channels == channel then
+					isOpen = true
+				end
+			end
+			if not isOpen then
+				skynet.open(channel)
+			end
+			return skynet
 		else
-			error("A modem is needed.")
+			if fs.exists(skynetPath) then
+				skynet = dofile(skynetPath)
+				skynet.open(channel)
+			else
+				local prog = http.get(skynetURL)
+				if prog then
+					local file = fs.open(skynetPath, "w")
+					file.write(prog.readAll())
+					file.close()
+					skynet = dofile(skynetPath)
+					skynet.open(channel)
+				else
+					error("Skynet can't be downloaded! Use modems instead.")
+				end
+			end
 		end
 	else
-		modem = modems[1]
+		local modems = {peripheral.find("modem")}
+		if #modems == 0 then
+			if ccemux then
+				ccemux.attach("top", "wireless_modem")
+				modem = peripheral.wrap("top")
+			else
+				error("A modem is needed.")
+			end
+		else
+			modem = modems[1]
+		end
+		modem.open(channel)
+		return modem
 	end
-	modem.open(channel)
-	return modem
 end
 
 local transmit = function(msg)
 	if useSkynet then
-		-- add skynet stuff later
+		skynet.send(channel, msg)
 	else
 		modem.transmit(channel, channel, msg)
 	end
@@ -205,10 +288,9 @@ end
 
 local receive = function()
 	if useSkynet then
-		-- again, skynet is for later, keep your pants on
+		return ({skynet.receive(channel)})[2]
 	else
-		local evt = {os.pullEvent("modem_message")}
-		return evt[5]
+		return ({os.pullEvent("modem_message")})[5]
 	end
 end
 
@@ -687,8 +769,10 @@ local render = function()
 			term.write(player.health)
 		end
 	end
-	term.setCursorPos(1, scr_y - 1)
-	term.write("Frame: " .. FRAME .. ", isHost = " .. tostring(isHost) .. ", you = " .. tostring(you))
+	if showDebug then
+		term.setCursorPos(1, scr_y - 1)
+		term.write("Frame: " .. FRAME .. ", isHost = " .. tostring(isHost) .. ", you = " .. tostring(you))
+	end
 end
 
 local control = {
@@ -770,6 +854,12 @@ local getInput = function()
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
 			keysDown[evt[2]] = true
+			if keysDown[keys.leftCtrl] and keysDown[keys.t] then
+				if skynet and useSkynet then
+					skynet.socket.close()
+				end
+				return
+			end
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		elseif evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
@@ -855,7 +945,8 @@ local runGame = function()
 		end
 
 		render()
-		sleep(0.05)
+
+		sleep(gameDelayInit)
 	end
 end
 
@@ -913,6 +1004,7 @@ local startGame = function()
 	repeat
 		msg = receive()
 	until interpretNetMessage(msg)
+	gameID = isHost and gameID or msg.gameID
 	transmit({
 		gameID = gameID,
 		command = "find_game",
