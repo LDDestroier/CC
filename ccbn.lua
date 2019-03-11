@@ -989,6 +989,12 @@ local networking = function()
 	end
 end
 
+local cwrite = function(text, y)
+	local cx, cy = term.getCursorPos()
+	term.setCursorPos(scr_x / 2 - #text / 2, y or (scr_y / 2))
+	term.write(text)
+end
+
 local startGame = function()
 	getModem()
 	local time = os.epoch("utc")
@@ -1001,6 +1007,8 @@ local startGame = function()
 	})
 	local msg
 	waitingForGame = true
+	term.clear()
+	cwrite("Waiting for game...")
 	repeat
 		msg = receive()
 	until interpretNetMessage(msg)
@@ -1013,7 +1021,12 @@ local startGame = function()
 		time = isHost and math.huge or -math.huge,
 	})
 	waitingForGame = false
-	parallel.waitForAny(getInput, runGame, networking)
+	parallel.waitForAny(runGame, networking)
 end
 
-startGame()
+parallel.waitForAny(startGame, getInput)
+
+term.setBackgroundColor(colors.black)
+term.clear()
+cwrite("Thanks for playing!")
+term.setCursorPos(1, scr_y)
