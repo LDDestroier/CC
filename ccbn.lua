@@ -330,7 +330,7 @@ act.stage.checkExist = function(x, y)
 	end
 	return false
 end
-act.stage.setDamage = function(x, y, damage, owner, time, noFlinch)
+act.stage.setDamage = function(x, y, damage, owner, time, noFlinch, safePlayers, safeObjects)
 	x, y = round(x), round(y)
 	stage.damage[y] = stage.damage[y] or {}
 	stage.damage[y][x] = stage.damage[y][x] or {}
@@ -338,19 +338,23 @@ act.stage.setDamage = function(x, y, damage, owner, time, noFlinch)
 		owner = owner,
 		time = time,
 		damage = damage,
-		flinching = not noFlinch
+		flinching = not noFlinch,
+		safePlayers = safePlayers or {},
+		safeObjects = safeObjects or {}
 	}
 end
-act.stage.getDamage = function(x, y, owner)
+act.stage.getDamage = function(x, y, pID, oID, pIDsafeCheck, oIDsafeCheck)
 	local totalDamage = 0
 	local flinching = false
 	x, y = round(x), round(y)
 	if stage.damage[y] then
 		if stage.damage[y][x] then
 			for k, v in pairs(stage.damage[y][x]) do
-				if k ~= owner and v.damage then
-					totalDamage = totalDamage + v.damage
-					flinching = flinching or v.flinching
+				if k ~= (players[pID] or {}).owner and k ~= (objects[oID] or {}).owner and v.damage then
+					if not (v.safePlayers[pIDsafeCheck] or v.safeObjects[oIDsafeCheck]) then
+						totalDamage = totalDamage + v.damage
+						flinching = flinching or v.flinching
+					end
 				end
 			end
 		end
@@ -493,11 +497,13 @@ local checkIfSolid = function(x, y)
 end
 
 local checkIfWalkable = function(x, y, pID, oID)
-	x, y = round(x), round(y)
-	if checkIfSolid(x, y) then
-		if not checkObjectAtPos(x, y, oID) then
-			if not checkPlayerAtPos(x, y, pID) then
-				return true
+	if x >= 1 and x <= 6 then
+		x, y = round(x), round(y)
+		if checkIfSolid(x, y) then
+			if not checkObjectAtPos(x, y, oID) then
+				if not checkPlayerAtPos(x, y, pID) and (not pID or stage.panels[y][x].owner == players[pID].owner) then
+					return true
+				end
 			end
 		end
 	end
@@ -510,7 +516,7 @@ local movePlayer = function(pID, xmove, ymove, doCooldown)
 		player.x = player.x + xmove
 		player.y = player.y + ymove
 		if doCooldown then
-			player.cooldown.move = 3
+			player.cooldown.move = 2
 		end
 		return true
 	else
@@ -623,8 +629,8 @@ local chips = {
 			name = "RockCube",
 			description = "Creates a cube-shaped rock!",
 			cooldown = {
-				move = 10,
-				shoot = 4
+				shoot = 10,
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -681,7 +687,7 @@ local chips = {
 				return false
 			else
 				info.player.x = info.player.x + (5 / stage.panelWidth) * info.player.direction
-				act.stage.setDamage(info.player.x, info.player.y, 80, info.owner, 2, false)
+				act.stage.setDamage(info.player.x, info.player.y, 80, info.owner, 4, false)
 				return true
 			end
 		end
@@ -702,7 +708,12 @@ local chips = {
 			end
 			info.x = info.x + (3 / stage.panelWidth) * info.direction
 
-			act.stage.setDamage(info.x, info.y, 60, info.owner, 10)
+			act.stage.setDamage(info.x, info.y, 60, info.owner, 10, false, {}, info.safeObjects)
+
+			local struckObject = checkObjectAtPos(info.x, info.y)
+			if struckObject then
+				info.safeObjects[struckObject] = true
+			end
 
 			if info.frame > 50 or not checkIfSolid(info.x, info.y) then
 				return false
@@ -978,7 +989,13 @@ local chips = {
 					return false
 				end
 			end
-			act.stage.setDamage(info.x, info.y, 60, info.owner, 2, false)
+
+			local struckObject = checkObjectAtPos(info.x, info.y)
+			if struckObject then
+				info.safeObjects[struckObject] = true
+			end
+
+			act.stage.setDamage(info.x, info.y, 60, info.owner, 2, false, {}, info.safeObjects)
 			return true, {{images.cannon, info.x, info.y}}
 		end
 	},
@@ -1091,6 +1108,8 @@ act.projectile.newProjectile = function(x, y, player, chipType)
 	projectiles[id] = {
 		x = x,
 		y = y,
+		safeObjects = {},
+		safePlayers = {},
 		type = "projectile",
 		initX = x,
 		initY = y,
@@ -1255,7 +1274,7 @@ local runGame = function()
 				if player.canMove then
 					stage.panels[player.y][player.x].reserved = id
 				end
-				local dmg, flinching = act.stage.getDamage(player.x, player.y, player.owner)
+				local dmg, flinching = act.stage.getDamage(player.x, player.y, id)
 				if player.cooldown.iframe == 0 and dmg > 0 then
 					player.health = player.health - dmg
 					if player.health <= 0 then
@@ -1290,7 +1309,7 @@ local runGame = function()
 				end
 			end
 			for id, object in pairs(objects) do
-				local dmg, flinching = act.stage.getDamage(object.x, object.y, not object.friendlyFire and object.owner)
+				local dmg, flinching = act.stage.getDamage(object.x, object.y, nil, not object.friendlyFire and id, nil, id)
 				if object.cooldown.iframe == 0 and dmg > 0 then
 					object.health = object.health - dmg
 					if object.health <= 0 then
@@ -1301,12 +1320,14 @@ local runGame = function()
 				end
 				if object.xvel ~= 0 or object.yvel ~= 0 then
 					if not moveObject(id, object.xvel, object.yvel) then
-						if checkPlayerAtPos(object.x + 1, object.y) then
+						if checkPlayerAtPos(object.x + 1, object.y) or checkObjectAtPos(object.x + 1, object.y) then
 							act.stage.setDamage(object.x + object.xvel, object.y + object.yvel, object.smackDamage, 0, 2, false)
 							table.remove(objects, id)
 						else
 							object.xvel = 0
 							object.yvel = 0
+							object.x = round(object.x)
+							object.y = round(object.y)
 						end
 					end
 				end
