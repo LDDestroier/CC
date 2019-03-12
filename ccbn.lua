@@ -1385,7 +1385,9 @@ local interpretNetMessage = function(msg)
 	elseif msg.gameID == gameID then
 		if isHost then
 			if msg.command == "set_controls" then
-				players[msg.pID].control = msg.control
+				if players[msg.pID] then
+					players[msg.pID].control = msg.control
+				end
 			end
 		else
 			if msg.command == "get_state" then
