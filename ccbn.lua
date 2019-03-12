@@ -8,7 +8,7 @@ local you = 1
 local yourID = os.getComputerID()
 
 -- recommended at 0.1 for netplay, which you'll be doing all the time so yeah
-local gameDelayInit = 0.1
+local gameDelayInit = 0.05
 
 local gameID = math.random(0, 2^30)
 local waitingForGame = false
@@ -516,7 +516,11 @@ local movePlayer = function(pID, xmove, ymove, doCooldown)
 		player.x = player.x + xmove
 		player.y = player.y + ymove
 		if doCooldown then
-			player.cooldown.move = 2
+			if gameDelayInit < 0.1 then
+				player.cooldown.move = 3
+			else
+				player.cooldown.move = 2
+			end
 		end
 		return true
 	else
@@ -629,7 +633,7 @@ local chips = {
 			name = "RockCube",
 			description = "Creates a cube-shaped rock!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 4
 			}
 		},
@@ -644,7 +648,7 @@ local chips = {
 			name = "Cannon",
 			description = "Fires a shot forwards!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 4
 			}
 		},
@@ -668,8 +672,8 @@ local chips = {
 			name = "Dash",
 			description = "Dash forwards to deal massive damage!",
 			cooldown = {
-				shoot = 10,
-				move = 4
+				shoot = 6,
+				move = 2
 			}
 		},
 		logic = function(info)
@@ -678,16 +682,20 @@ local chips = {
 				info.playerInitX = info.player.x
 				info.playerInitY = info.player.y
 			end
-			if info.player.x > 7 or info.player.x < 0 then
-				info.player.x = info.playerInitX
-				info.player.y = info.playerInitY
-				info.player.cooldown.shoot = 10
-				info.player.cooldown.move = 4
-				info.player.canMove = true
-				return false
+			if info.frame > 2 then -- start on frame 3
+				if info.player.x > 7 or info.player.x < 0 then
+					info.player.x = info.playerInitX
+					info.player.y = info.playerInitY
+					info.player.cooldown.shoot = 6
+					info.player.cooldown.move = 2
+					info.player.canMove = true
+					return false
+				else
+					info.player.x = info.player.x + (5 / stage.panelWidth) * info.player.direction
+					act.stage.setDamage(info.player.x, info.player.y, 80, info.owner, 4, false)
+					return true
+				end
 			else
-				info.player.x = info.player.x + (5 / stage.panelWidth) * info.player.direction
-				act.stage.setDamage(info.player.x, info.player.y, 80, info.owner, 4, false)
 				return true
 			end
 		end
@@ -728,7 +736,7 @@ local chips = {
 			name = "Shotgun",
 			description = "Hits enemy as well as the panel behind!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 4
 			}
 		},
@@ -756,7 +764,7 @@ local chips = {
 			name = "CrossGun",
 			description = "Shoots four diagonal panels around enemy!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 4
 			}
 		},
@@ -914,7 +922,7 @@ local chips = {
 			name = "LifeSword",
 			description = "Slash 2x3 area with devastating power!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -936,7 +944,7 @@ local chips = {
 			name = "Invis",
 			description = "Makes you invincible for a short time!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -951,7 +959,7 @@ local chips = {
 			name = "Boomer",
 			description = "Boomerang that orbits stage!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -1005,7 +1013,7 @@ local chips = {
 			name = "MiniBomb",
 			description = "Lob a small bomb 2 panels forward!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -1028,7 +1036,7 @@ local chips = {
 			name = "LilBomb",
 			description = "Lob a little bomb 2 panels forward!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -1053,7 +1061,7 @@ local chips = {
 			name = "CrossBomb",
 			description = "Lob a cross-shaped bomb 2 panels forward!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -1079,7 +1087,7 @@ local chips = {
 			name = "BigBomb",
 			description = "Lob a 3x3 grenade 2 panels forward!",
 			cooldown = {
-				shoot = 10,
+				shoot = 6,
 				move = 5
 			}
 		},
@@ -1131,9 +1139,37 @@ end
 act.player.newPlayer(2, 2, 1, 1, "6")
 act.player.newPlayer(5, 2, 2, -1, "7")
 
+local stageImageStitch
+local stageChanged = true
+
+local makeStageImageStitch = function()
+	local buffer = {}
+	local im
+	for y = #stage.panels, 1, -1 do
+		for x = 1, #stage.panels[y] do
+			im = images.panel[stage.panels[y][x].panelType]
+			if stage.panels[y][x].owner == 2 then
+				im = colorSwap(im, {e = "b"})
+			end
+			if act.stage.getDamage(x, y) > 0 then
+				im = colorSwap(im, {["7"] = "4", ["8"] = "4"})
+			end
+			buffer[#buffer + 1] = {
+				im,
+				(x - 1) * stage.panelWidth  + 2,
+				(y - 1) * stage.panelHeight + 2
+			}
+		end
+	end
+	return merge(table.unpack(buffer))
+end
+
 local render = function()
 	local buffer, im = {}
 	local sx, sy
+	if stageChanged then
+		stageImageStitch = makeStageImageStitch()
+	end
 	local sortedList = {}
 	for k,v in pairs(projectiles) do
 		sortedList[#sortedList+1] = v
@@ -1180,22 +1216,11 @@ local render = function()
 			}
 		end
 	end
-	for y = #stage.panels, 1, -1 do
-		for x = 1, #stage.panels[y] do
-			im = images.panel[stage.panels[y][x].panelType]
-			if stage.panels[y][x].owner == 2 then
-				im = colorSwap(im, {e = "b"})
-			end
-			if act.stage.getDamage(x, y) > 0 then
-				im = colorSwap(im, {["7"] = "4", ["8"] = "4"})
-			end
-			buffer[#buffer + 1] = {
-				im,
-				(x - 1) * stage.panelWidth  + 2 + stage.scrollX,
-				(y - 1) * stage.panelHeight + 2 + stage.scrollY
-			}
-		end
-	end
+	buffer[#buffer + 1] = {
+		stageImageStitch,
+		stage.scrollX + 1,
+		stage.scrollY + 1
+	}
 	buffer[#buffer + 1] = {makeRectangle(scr_x, scr_y, "f", "f", "f"), 1, 1}
 	drawImage(colorSwap(merge(table.unpack(buffer)), {[" "] = "f"}), 1, 1)
 
@@ -1320,7 +1345,7 @@ local runGame = function()
 				end
 				if object.xvel ~= 0 or object.yvel ~= 0 then
 					if not moveObject(id, object.xvel, object.yvel) then
-						if checkPlayerAtPos(object.x + 1, object.y) or checkObjectAtPos(object.x + 1, object.y) then
+						if checkPlayerAtPos(object.x + object.xvel, object.y) or checkObjectAtPos(object.x + 1, object.y) then
 							act.stage.setDamage(object.x + object.xvel, object.y + object.yvel, object.smackDamage, 0, 2, false)
 							table.remove(objects, id)
 						else
@@ -1334,6 +1359,7 @@ local runGame = function()
 			end
 			reduceCooldowns()
 			movePlayers()
+			sleep(gameDelayInit)
 			transmit({
 				gameID = gameID,
 				command = "get_state",
@@ -1344,7 +1370,6 @@ local runGame = function()
 				stagePanels = stage.panels,
 				id = id
 			})
-			sleep(gameDelayInit)
 		else
 			getControls()
 			if players[you] then
@@ -1385,9 +1410,7 @@ local interpretNetMessage = function(msg)
 	elseif msg.gameID == gameID then
 		if isHost then
 			if msg.command == "set_controls" then
-				if players[msg.pID] then
-					players[msg.pID].control = msg.control
-				end
+				players[msg.pID].control = msg.control
 			end
 		else
 			if msg.command == "get_state" then
