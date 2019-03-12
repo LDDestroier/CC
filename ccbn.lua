@@ -76,6 +76,12 @@ local round = function(num)
 	return math.floor(0.5 + num)
 end
 
+local cwrite = function(text, y)
+	local cx, cy = term.getCursorPos()
+	term.setCursorPos(scr_x / 2 - #text / 2, y or (scr_y / 2))
+	term.write(text)
+end
+
 -- ripped from NFTE
 local deepCopy
 deepCopy = function(tbl)
@@ -1290,8 +1296,12 @@ local runGame = function()
 			end
 
 			for y = 1, #stage.panels do
-				for x = 1, #stage.panels[y] do
-					stage.panels[y][x].reserved = false
+				if stage.panels[y] then
+					for x = 1, #stage.panels[y] do
+						if stage.panels[y][x] then
+							stage.panels[y][x].reserved = false
+						end
+					end
 				end
 			end
 
@@ -1410,7 +1420,9 @@ local interpretNetMessage = function(msg)
 	elseif msg.gameID == gameID then
 		if isHost then
 			if msg.command == "set_controls" then
-				players[msg.pID].control = msg.control
+				if players[msg.pID] then
+					players[msg.pID].control = msg.control
+				end
 			end
 		else
 			if msg.command == "get_state" then
@@ -1434,12 +1446,6 @@ local networking = function()
 			interpretNetMessage(msg)
 		end
 	end
-end
-
-local cwrite = function(text, y)
-	local cx, cy = term.getCursorPos()
-	term.setCursorPos(scr_x / 2 - #text / 2, y or (scr_y / 2))
-	term.write(text)
 end
 
 local startGame = function()
