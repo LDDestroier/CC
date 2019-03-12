@@ -368,6 +368,7 @@ act.player.newPlayer = function(x, y, owner, direction, image)
 		health = 1000,
 		maxHealth = 1000,
 		image = image,
+		canMove = true,
 		cooldown = {
 			move = 0,
 			shoot = 0,
@@ -383,10 +384,11 @@ act.player.newPlayer = function(x, y, owner, direction, image)
 			custom = false
 		},
 		chipQueue = {
-			"shockwave",
-			"invis",
+			"dash",
 			"rockcube",
 			"airshot",
+			"shockwave",
+			"invis",
 			"minibomb",
 			"lilbomb",
 			"crossbomb",
@@ -403,18 +405,33 @@ act.player.newPlayer = function(x, y, owner, direction, image)
 	}
 end
 
+local objectTypes = {
+	rockcube = {
+		image = images.rockcube,
+		friendlyFire = true,		-- can it hit its owner?
+		health = 500,				-- amount of damage before disintegrating
+		maxHealth = 500,			-- just a formality
+		smackDamage = 200,			-- amount of damage it will do if launched at enemy
+		doYeet = true,				-- whether or not to fly backwards and do smackDamage to target
+	}
+}
+
 local newObject = function(x, y, owner, direction, objectType)
 	objects[#objects + 1] = {
 		x = x,
 		y = y,
-		image = images[objectType],
+		image = objectTypes[objectType].image,
+		friendlyFire = objectTypes[objectType].friendlyFire or true,
+		health = objectTypes[objectType].health or 500,
+		maxHealth = objectTypes[objectType].maxHealth or 500,
+		smackDamage = objectTypes[objectType].smackDamage or 100,
+		doYeet = objectTypes[objectType].doYeet or false,
+		xvel = 0,
+		yvel = 0,
 		owner = owner,
 		direction = direction,
 		type = "object",
-		friendlyFire = true,
 		objectType = objectType,
-		health = 500,
-		maxHealth = 500,
 		frame = 0,
 		cooldown = {
 			iframe = 0,
@@ -436,7 +453,7 @@ end
 local checkObjectAtPos = function(x, y, ignoreThisOne)
 	x, y = round(x), round(y)
 	for id, obj in pairs(objects) do
-		if id ~= ignoreThisOne or obj.friendlyFire then
+		if id ~= ignoreThisOne then
 			if obj.x == x and obj.y == y then
 				return id
 			end
@@ -503,7 +520,7 @@ end
 
 local moveObject = function(oID, xmove, ymove)
 	local object = objects[oID]
-	if (xmove ~= 0 or ymove ~= 0) and checkIfWalkable(object.x + xmove, object.y + ymove, oID) then
+	if (xmove ~= 0 or ymove ~= 0) and checkIfWalkable(object.x + xmove, object.y + ymove, nil, oID) then
 		object.x = object.x + xmove
 		object.y = object.y + ymove
 		return true
@@ -517,7 +534,7 @@ local movePlayers = function()
 	for i = 1, #players do
 		xmove, ymove = 0, 0
 		p = players[i]
-		if p.cooldown.move == 0 then
+		if p.cooldown.move == 0 and p.canMove then
 			if p.control.moveUp then
 				ymove = -1
 			elseif p.control.moveDown then
@@ -559,8 +576,8 @@ local checkProjectileCollisions = function(info)
 
 	local struckPlayer = false
 	local struckObject = false
-	local cPlayer = checkPlayerAtPos(info.x, info.y, info.owner)
-	local cObject = checkObjectAtPos(info.x, info.y, info.owner)
+	local cPlayer = checkPlayerAtPos(info.x, info.y) --, info.owner)
+	local cObject = checkObjectAtPos(info.x, info.y) --, info.owner)
 
 	if cPlayer then
 		if players[cPlayer].cooldown.iframe == 0 and players[cPlayer].owner ~= info.owner then
@@ -589,8 +606,9 @@ local chips = {
 		logic = function(info)
 			info.x = info.x + (3 / stage.panelWidth) * info.direction
 
+			act.stage.setDamage(info.x, info.y, 1, info.owner, 2, true)
+
 			local struckPlayer, struckObject = checkProjectileCollisions(info)
-			act.stage.setDamage(info.x, info.y, 1, info.owner, 1, true)
 
 			if info.frame > 50 or struckPlayer or struckObject then
 				return false
@@ -606,11 +624,11 @@ local chips = {
 			description = "Creates a cube-shaped rock!",
 			cooldown = {
 				move = 10,
-				shoot = 5
+				shoot = 4
 			}
 		},
 		logic = function(info)
-			newObject(info.x + 1, info.y, info.owner, info.direction, "rockcube")
+			newObject(info.x + info.direction, info.y, info.owner, info.direction, "rockcube")
 			return false
 		end
 	},
@@ -621,12 +639,11 @@ local chips = {
 			description = "Fires a shot forwards!",
 			cooldown = {
 				shoot = 10,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
 			info.x = info.x + (2 / stage.panelWidth) * info.direction
-			info.y = info.y
 
 			act.stage.setDamage(info.x, info.y, 40, info.owner, 2)
 
@@ -640,13 +657,43 @@ local chips = {
 		end
 	},
 
+	dash = {
+		info = {
+			name = "Dash",
+			description = "Dash forwards to deal massive damage!",
+			cooldown = {
+				shoot = 10,
+				move = 4
+			}
+		},
+		logic = function(info)
+			if info.frame == 0 then
+				info.player.canMove = false
+				info.playerInitX = info.player.x
+				info.playerInitY = info.player.y
+			end
+			if info.player.x > 7 or info.player.x < 0 then
+				info.player.x = info.playerInitX
+				info.player.y = info.playerInitY
+				info.player.cooldown.shoot = 10
+				info.player.cooldown.move = 4
+				info.player.canMove = true
+				return false
+			else
+				info.player.x = info.player.x + (5 / stage.panelWidth) * info.player.direction
+				act.stage.setDamage(info.player.x, info.player.y, 80, info.owner, 2, false)
+				return true
+			end
+		end
+	},
+
 	shockwave = {
 		info = {
 			name = "ShockWave",
 			description = "Piercing ground wave!",
 			cooldown = {
 				shoot = 14,
-				move = 7
+				move = 8
 			}
 		},
 		logic = function(info)
@@ -671,7 +718,7 @@ local chips = {
 			description = "Hits enemy as well as the panel behind!",
 			cooldown = {
 				shoot = 10,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -683,7 +730,39 @@ local chips = {
 
 			if info.frame > 50 or struckPlayer or struckObject then
 				if struckPlayer then
+					act.stage.setDamage(info.x, info.y, 40, info.owner, 2)
 					act.stage.setDamage(info.x + info.direction, info.y, 40, info.owner, 2)
+				end
+				return false
+			else
+				return true, {{images.cannon, info.x, info.y}}
+			end
+		end
+	},
+
+	crossgun = {
+		info = {
+			name = "CrossGun",
+			description = "Shoots four diagonal panels around enemy!",
+			cooldown = {
+				shoot = 10,
+				move = 4
+			}
+		},
+		logic = function(info)
+			info.x = info.x + (2 / stage.panelWidth) * info.direction
+
+			act.stage.setDamage(info.x, info.y, 30, info.owner, 2)
+
+			local struckPlayer, struckObject = checkProjectileCollisions(info)
+
+			if info.frame > 50 or struckPlayer or struckObject then
+				if struckPlayer then
+					act.stage.setDamage(info.x - 1, info.y - 1, 30, info.owner, 2)
+					act.stage.setDamage(info.x + 1, info.y - 1, 30, info.owner, 2)
+					act.stage.setDamage(info.x - 1, info.y + 1, 30, info.owner, 2)
+					act.stage.setDamage(info.x + 1, info.y + 1, 30, info.owner, 2)
+					act.stage.setDamage(info.x,     info.y,     30, info.owner, 2)
 				end
 				return false
 			else
@@ -698,7 +777,7 @@ local chips = {
 			description = "Fires a pushing shot forwards!",
 			cooldown = {
 				shoot = 8,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -714,8 +793,12 @@ local chips = {
 						act.stage.setDamage(info.x + info.direction, info.y, 20, info.owner, 2)
 					end
 				elseif struckObject then
-					if moveObject(struckObject, info.direction, 0) then
-						act.stage.setDamage(info.x + info.direction, info.y, 20, info.owner, 2)
+					if objects[struckObject].doYeet then
+						objects[struckObject].xvel = (4 / stage.panelWidth) * info.direction
+					else
+						if moveObject(struckObject, info.direction, 0) then
+							act.stage.setDamage(info.x + info.direction, info.y, 20, info.owner, 2)
+						end
 					end
 				end
 				return false
@@ -731,7 +814,7 @@ local chips = {
 			description = "Slash forwards 1 panel!",
 			cooldown = {
 				shoot = 8,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -748,7 +831,7 @@ local chips = {
 			description = "Slash for as much damage as you have taken!",
 			cooldown = {
 				shoot = 8,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -765,7 +848,7 @@ local chips = {
 			description = "Slash forwards 2 panels!",
 			cooldown = {
 				shoot = 8,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -783,7 +866,7 @@ local chips = {
 			description = "Slash forwards 3 panels!",
 			cooldown = {
 				shoot = 8,
-				move = 5
+				move = 4
 			}
 		},
 		logic = function(info)
@@ -1169,7 +1252,9 @@ local runGame = function()
 			end
 
 			for id, player in pairs(players) do
-				stage.panels[player.y][player.x].reserved = id
+				if player.canMove then
+					stage.panels[player.y][player.x].reserved = id
+				end
 				local dmg, flinching = act.stage.getDamage(player.x, player.y, player.owner)
 				if player.cooldown.iframe == 0 and dmg > 0 then
 					player.health = player.health - dmg
@@ -1205,13 +1290,24 @@ local runGame = function()
 				end
 			end
 			for id, object in pairs(objects) do
-				local dmg, flinching = act.stage.getDamage(object.x, object.y, object.owner)
-				if object.cooldown.iframe == 0 then
+				local dmg, flinching = act.stage.getDamage(object.x, object.y, not object.friendlyFire and object.owner)
+				if object.cooldown.iframe == 0 and dmg > 0 then
 					object.health = object.health - dmg
 					if object.health <= 0 then
 						table.remove(objects, id)
 					else
 						object.cooldown.iframe = 2
+					end
+				end
+				if object.xvel ~= 0 or object.yvel ~= 0 then
+					if not moveObject(id, object.xvel, object.yvel) then
+						if checkPlayerAtPos(object.x + 1, object.y) then
+							act.stage.setDamage(object.x + object.xvel, object.y + object.yvel, object.smackDamage, 0, 2, false)
+							table.remove(objects, id)
+						else
+							object.xvel = 0
+							object.yvel = 0
+						end
 					end
 				end
 			end
@@ -1222,6 +1318,7 @@ local runGame = function()
 				command = "get_state",
 				players = players,
 				projectiles = projectiles,
+				objects = objects,
 				stageDamage = stage.damage,
 				stagePanels = stage.panels,
 				id = id
@@ -1241,6 +1338,7 @@ local runGame = function()
 			evt, getStateInfo = os.pullEvent("ccbn_get_state")
 			players = getStateInfo.players
 			projectiles = getStateInfo.projectiles
+			objects = getStateInfo.objects
 			stage.damage = getStateInfo.stageDamage
 			stage.panels = getStateInfo.stagePanels
 		end
@@ -1273,6 +1371,7 @@ local interpretNetMessage = function(msg)
 				os.queueEvent("ccbn_get_state", {
 					players = msg.players,
 					projectiles = msg.projectiles,
+					objects = msg.objects,
 					stageDamage = msg.stageDamage,
 					stagePanels = msg.stagePanels
 				})
