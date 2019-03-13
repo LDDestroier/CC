@@ -20,7 +20,7 @@ return {
 				info.player.cooldown.shoot = 4
 				return false
 			elseif info.frame % 2 == 0 then
-				act.projectile.newProjectile(info.x, info.y, info.player, "vulcan_internal")
+				act.projectile.newProjectile(info.x, info.y, info.player, "vulcan_internal", info.frame < 3 * 2)
 			end
 		end
 		return true
