@@ -1,7 +1,11 @@
 local scr_x, scr_y = term.getSize()
 local keysDown, miceDown = {}, {}
 
-local config = {mainDir = "ccbn-data"}
+local useAbsoluteMainDir = false
+
+local config = {
+	mainDir = useAbsoluteMainDir and "ccbn-data" or fs.combine(fs.getDir(shell.getRunningProgram()), "ccbn-data")
+}
 config.chipDir = fs.combine(config.mainDir, "chipdata")
 config.objectDir = fs.combine(config.mainDir, "objectdata")
 
