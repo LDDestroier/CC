@@ -12,6 +12,7 @@ return {
 		if info.frame == 0 then
 			if act.stage.checkIfSolid(info.x + info.direction, info.y) then
 				info.panelType = stage.panels[info.y][info.x + info.direction].panelType
+				info.panelOwner = stage.panels[info.y][info.x + info.direction].owner
 				act.stage.crackPanel(info.x + info.direction, info.y, 2)
 				info.x = info.x + info.direction
 			else

@@ -13,7 +13,7 @@ return {
 		local maxFrames = 10
 		local parabola = math.sin((math.pi / maxFrames) * info.frame) * 2
 		if parabola < 0.1 and info.frame > 3 then
-			act.stage.setDamage(info.x, info.y, 50, info.owner, 2, false)
+			act.stage.setDamage(info.x, info.y, 50, info.owner, 1, false)
 			return false
 		else
 			info.x = info.x + (maxDist / maxFrames) * info.direction

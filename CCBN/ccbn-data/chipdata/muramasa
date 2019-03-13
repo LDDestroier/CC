@@ -10,7 +10,7 @@ return {
 	},
 	logic = function(info)
 
-		act.stage.setDamage(info.x + info.direction, info.y, math.min(info.player.maxHealth - info.player.health, 1000), info.owner, 2, false)
+		act.stage.setDamage(info.x + info.direction, info.y, math.min(info.player.maxHealth - info.player.health, 1000), info.owner, 1, false)
 
 		return false
 	end

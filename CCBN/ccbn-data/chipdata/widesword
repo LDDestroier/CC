@@ -10,9 +10,9 @@ return {
 	},
 	logic = function(info)
 
-		act.stage.setDamage(info.x + info.direction, info.y - 1, 80, info.owner, 4)
-		act.stage.setDamage(info.x + info.direction, info.y,     80, info.owner, 4)
-		act.stage.setDamage(info.x + info.direction, info.y + 1, 80, info.owner, 4)
+		act.stage.setDamage(info.x + info.direction, info.y - 1, 80, info.owner, 1)
+		act.stage.setDamage(info.x + info.direction, info.y,     80, info.owner, 1)
+		act.stage.setDamage(info.x + info.direction, info.y + 1, 80, info.owner, 1)
 
 		return false
 	end

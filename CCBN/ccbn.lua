@@ -1,6 +1,9 @@
 local scr_x, scr_y = term.getSize()
 local keysDown, miceDown = {}, {}
 
+-- recommended at 0.1 for netplay, which you'll be doing all the time so yeah
+local gameDelayInit = 0.1
+
 local useAbsoluteMainDir = false
 
 local config = {
@@ -17,7 +20,8 @@ local game = {
 	customMax = 200,
 	customSpeed = 1,
 	inChipSelect = true,
-	paused = false
+	paused = false,
+	turnNumber = 0
 }
 
 local you = 1
@@ -27,9 +31,6 @@ local revKeys = {}
 for k,v in pairs(keys) do
 	revKeys[v] = k
 end
-
--- recommended at 0.1 for netplay, which you'll be doing all the time so yeah
-local gameDelayInit = 0.05
 
 local gameID = math.random(0, 2^30)
 local waitingForGame = false
@@ -426,7 +427,7 @@ local images = {
 
 local cwrite = function(text, y)
 	local cx, cy = term.getCursorPos()
-	term.setCursorPos(scr_x / 2 - #text / 2, y or (scr_y / 2))
+	term.setCursorPos(0.5 + scr_x / 2 - #text / 2, y or (scr_y / 2))
 	term.write(text)
 end
 
@@ -516,7 +517,7 @@ act.stage.getDamage = function(x, y, pID, oID, pIDsafeCheck, oIDsafeCheck)
 end
 
 local premadeFolders = {
-	[1] = {	-- BN2 starting folder, modified slightly
+	[1] = {
 		{"cannon", "a"},
 		{"cannon", "a"},
 		{"hicannon", "b"},
@@ -604,7 +605,7 @@ local premadeFolders = {
 		{"recov30", "l"},
 		{"vulcan2", "c"},
 		{"vulcan1", "c"},
-		{"vulcan1", "c"},
+		{"boomer1", "c"},
 		{"geddon1", "f"},
 		{"shotgun", "d"},
 		{"shotgun", "d"},
@@ -1035,6 +1036,8 @@ local render = function(extraImage)
 	buffer[#buffer + 1] = {makeRectangle(scr_x, scr_y, "f", "f", "f"), 1, 1}
 	drawImage(colorSwap(merge(table.unpack(buffer)), {[" "] = "f"}), 1, 1)
 
+	term.setTextColor(colors.white)
+	term.setBackgroundColor(colors.black)
 	if players[you] then
 		if chips[players[you].chipQueue[1]] then
 			term.setCursorPos(1, scr_y)
@@ -1056,29 +1059,36 @@ local render = function(extraImage)
 		end
 	end
 
-	term.setTextColor(colors.white)
-	term.setBackgroundColor(colors.black)
-	if game.custom == game.customMax and FRAME % 8 <= 5 then
+	if game.custom == game.customMax and FRAME % 16 <= 12 and not game.inChipSelect then
 		cwrite("PUSH '" .. revKeys[control.custom]:upper() .. "'!", 2)
 	end
-	term.setBackgroundColor(colors.gray)
+	term.setTextColor(colors.lightGray)
 	term.setCursorPos(6, 1)
-	term.write("[CUSTOM][")
-	local barLength = scr_x - 20
+	term.write("CUSTOM")
+	term.setTextColor(colors.white)
+	term.write("[")
+	local barLength = scr_x - 18
 	if game.custom == game.customMax then
+		term.setTextColor(colors.gray)
 		term.setBackgroundColor(colors.lime)
 	else
+		term.setTextColor(colors.gray)
 		term.setBackgroundColor(colors.green)
 	end
 	for i = 1, barLength do
 		if (i / barLength) <= (game.custom / game.customMax) then
-			term.write("=")
+			if game.custom == game.customMax then
+				term.write("@")
+			else
+				term.write("=")
+			end
 		else
-			term.setBackgroundColor(colors.gray)
+			term.setBackgroundColor(colors.black)
 			term.write(" ")
 		end
 	end
-	term.setBackgroundColor(colors.gray)
+	term.setTextColor(colors.white)
+	term.setBackgroundColor(colors.black)
 	term.write("]")
 
 	if showDebug then
@@ -1089,6 +1099,8 @@ end
 
 local getInput = function()
 	local evt
+	keysDown = {}
+	miceDown = {}
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
@@ -1147,7 +1159,7 @@ local chipSelectScreen = function()
 			term.setCursorPos(3, y)
 			term.write((" "):rep(scr_x - 4))
 		end
-		cwrite(" Select Chips: ", 3)
+		cwrite(" Turn " .. game.turnNumber .. ", Select Chips: ", 3)
 		term.setTextColor(colors.lightGray)
 		cwrite(" (Push '" .. revKeys[control.chip]:upper() .. "' to add / '" .. revKeys[control.buster]:upper() .. "' to remove) ", 4)
 		cwrite(" (Push ENTER to confirm loadout) ", 5)
@@ -1190,8 +1202,8 @@ local chipSelectScreen = function()
 	end
 
 	local evt
+	render()
 	while true do
---		render()
 		renderMenu()
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
@@ -1242,19 +1254,25 @@ local waitingForClientChipSelection = false
 local runGame = function()
 	local evt, getStateInfo
 	render()
-	sleep(0.5)
+	sleep(0.35)
 	while true do
 		FRAME = FRAME + 1
 
-		render()
-
 		if game.inChipSelect then
+			game.turnNumber = game.turnNumber + 1
 			chipSelectScreen()
 			if isHost then
-				game.inChipSelect = false
 				game.custom = 0
 				local msg
-				cwrite("Waiting...", scr_y - 3)
+				render()
+				cwrite("Waiting for other player...", scr_y - 3)
+
+				transmit({
+					gameID = gameID,
+					command = "turn_ready",
+					pID = you,
+				})
+
 				repeat
 					sleep(0)
 				until cliChipSelect
@@ -1266,8 +1284,11 @@ local runGame = function()
 				transmit({
 					gameID = gameID,
 					command = "turn_ready",
-					pID = you,
+					pID = 1,
 				})
+				term.clearLine()
+				cwrite("READY!", scr_y - 3)
+				sleep(0.5)
 			else
 				transmit({
 					gameID = gameID,
@@ -1276,7 +1297,8 @@ local runGame = function()
 					chipQueue = players[you].chipQueue,
 					folder = players[you].folder,
 				})
-				cwrite("Waiting...", scr_y - 3)
+				render()
+				cwrite("Waiting for other player...", scr_y - 3)
 				repeat
 					msg = receive()
 					msg = type(msg) == "table" and msg or {}
@@ -1285,11 +1307,14 @@ local runGame = function()
 					msg.command == "turn_ready" and
 					players[msg.pID]
 				)
+				term.clearLine()
+				cwrite("READY!", scr_y - 3)
+				sleep(0.5)
 			end
+			game.inChipSelect = false
 		end
 
 		if isHost then
-			game.custom = math.min(game.customMax, game.custom + 1)
 			getControls()
 			for id, proj in pairs(projectiles) do
 				local success, imageData = chips[proj.chipType].logic(proj)
@@ -1379,14 +1404,15 @@ local runGame = function()
 					end
 				end
 			end
-			reduceCooldowns()
-			movePlayers()
 			if players[you] then
 				if players[you].control.custom and game.custom == game.customMax then
 					game.inChipSelect = true
 				end
 			end
+			render()
+			movePlayers()
 			sleep(gameDelayInit)
+			game.custom = math.min(game.customMax, game.custom + 1)
 			transmit({
 				gameID = gameID,
 				command = "get_state",
@@ -1398,6 +1424,7 @@ local runGame = function()
 				stagePanels = stage.panels,
 				id = id
 			})
+			reduceCooldowns()
 		else
 			getControls()
 			if players[you] then
@@ -1418,6 +1445,7 @@ local runGame = function()
 					})
 				end
 			end
+			render()
 			evt, getStateInfo = os.pullEvent("ccbn_get_state")
 			players = getStateInfo.players
 			projectiles = getStateInfo.projectiles
@@ -1623,9 +1651,129 @@ local makeMenu = function(x, y, options, _cpos)
 	end
 end
 
+local howToPlay = function()
+	local help = {
+		" (Scroll with mousewheel / arrows)",
+		" (Exit with 'Q')",
+		("="):rep(scr_x),
+		"",
+		"   If you're not familiar with",
+		" Megaman Battle Network, buckle up.",
+		"",
+		" Battles are separated into 'turns'.",
+		" At the beginning of each turn, you",
+		" select one or more battlechips to use",
+		" during that turn.",
+		"",
+		" Selecting battlechips has certain rules.",
+		" Battlechips are given alphabetic codes",
+		" You can only pick two or more battlechips",
+		" that have the same code, or are of the same",
+		" chip type. That means you can pick a",
+		" Cannon A and a Minibomb A, but you can't",
+		" add an extra Cannon B without removing",
+		" the Minibomb B.",
+		" ____   ____      ____         ",
+		"|    | |    |    |  ^ |        ",
+		"|  "..revKeys[control.buster]:upper().." | |  "..revKeys[control.chip]:upper().." |    |  | |        ",
+		"|____| |____|    |____|        ",
+		"           ____   ____   ____  ",
+		"          |    | |  | | |    | ",
+		"          | <- | |  V | | -> | ",
+		"          |____| |____| |____| ",
+		"",
+		" To move, use the ARROW KEYS.",
+		" Fire the MegaBuster with '"..revKeys[control.buster]:upper().."'. It's a free",
+		" action, but not very strong.",
+		" Use the currently selected battlechip",
+		" (indicated in the bottom-left corner)",
+		" with '"..revKeys[control.chip]:upper().."'.",
+		"",
+		" Once you use up all your chips, you will",
+		" need to wait for the Custom bar to refill.",
+		" Once it is full, push '"..revKeys[control.custom]:upper().."' and the turn will",
+		" end, and you can pick more battlechips.",
+		"",
+		" Keep in mind that this erases all currently",
+		" loaded battlechips, and that the opponent",
+		" can also end the turn without warning, so",
+		" make sure that your battlechips are used",
+		" before the bar fills!",
+		"",
+		"  ___________________________________",
+		" |yours|yours|yours|enemy|enemy|enemy|",
+		" |_____|_____|_____|_____|_____|_____|",
+		" |yours|yours|yours|enemy|enemy|enemy|",
+		" |_____|_____|_____|_____|_____|_____|",
+		" |yours|yours|yours|enemy|enemy|enemy|",
+		" |_____|_____|_____|_____|_____|_____|",
+		"",
+		" The stage that you stand on can also be",
+		" manipulated. Some chips, such as AreaGrab",
+		" can take away ownership of one or more",
+		" panels from the enemy for a short while.",
+		" Some chips, such as CrackShot, will break",
+		" panels, rendering them unusable for a short",
+		" while. Some chips will crack panels, such",
+		" as Geddon1. Stepping off of a cracked panel",
+		" will cause it to break.",
+		"",
+		" That's all I can think of. Sorry for all that",
+		" wall of text, and I hope you enjoy the game!",
+		"",
+		" ___   __   __   _             _         ",
+		"/   \\ |  | |  | | \\   |   | | / \\ | /  | ",
+		"| ___ |  | |  | |  |  |   | | |   |/\\  | ",
+		"\\__|  |__| |__| |_/   |__ \\_/ \\_/ |  \\ . ",
+	}
+
+	local scroll = 0
+	local maxScroll = #help - scr_y + 2
+
+	local rend = function(scroll)
+		term.setBackgroundColor(colors.black)
+		term.setTextColor(colors.white)
+		for y = 1, scr_y do
+			term.setCursorPos(1,y)
+			term.clearLine()
+			term.write(help[y + scroll] or "")
+		end
+	end
+
+	local evt
+	while true do
+		evt = {os.pullEvent()}
+		if evt[1] == "key" then
+			if evt[2] == keys.q then
+				return
+			elseif evt[2] == keys.up then
+				scroll = scroll - 1
+			elseif evt[2] == keys.down then
+				scroll = scroll + 1
+			elseif evt[2] == keys.pageUp then
+				scroll = scroll - scr_y
+			elseif evt[2] == keys.pageDown then
+				scroll = scroll + scr_y
+			elseif evt[2] == keys.home then
+				scroll = 0
+			elseif evt[2] == keys["end"] then
+				scroll = maxScroll
+			end
+		elseif evt[1] == "mouse_scroll" then
+			scroll = scroll + evt[2]
+		end
+		scroll = math.min(maxScroll, math.max(0, scroll))
+		rend(scroll)
+	end
+
+	sleep(0.1)
+	os.pullEvent("key")
+end
+
 local titleScreen = function()
 	local menuOptions = {
 		"Start Game",
+		"How to Play",
 		"Exit"
 	}
 	local choice
@@ -1641,6 +1789,8 @@ local titleScreen = function()
 		if choice == 1 then
 			parallel.waitForAny(startGame, getInput)
 		elseif choice == 2 then
+			howToPlay()
+		elseif choice == 3 then
 			return
 		end
 	end

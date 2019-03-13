@@ -15,7 +15,7 @@ return {
 		if parabola < 0.1 and info.frame > 3 then
 			for y = -1, 1 do
 				for x = -1, 1 do
-					act.stage.setDamage(info.x + x, info.y + y, 90, info.owner, 2, false)
+					act.stage.setDamage(info.x + x, info.y + y, 90, info.owner, 1, false)
 				end
 			end
 			return false

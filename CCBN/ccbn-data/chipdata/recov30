@@ -1,7 +1,7 @@
 local stage, players, objects, projectiles, act, images = ...
 return {
 	info = {
-		name = "Recon30",
+		name = "Recov30",
 		description = "Gives you 30 health!",
 		cooldown = {
 			shoot = 6,

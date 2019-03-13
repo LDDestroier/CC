@@ -21,7 +21,7 @@ return {
 		info.yadj = math.max(0, info.yadj - 0.5)
 
 		if info.yadj == 0 then
-			act.stage.setDamage(info.x, info.y, 80, info.owner, 2)
+			act.stage.setDamage(info.x, info.y, 80, info.owner, 1)
 			if not act.player.checkPlayerAtPos(info.x, info.y) then
 				stage.panels[info.y][info.x].owner = info.owner
 				stage.panels[info.y][info.x].cooldown.owner = 500
