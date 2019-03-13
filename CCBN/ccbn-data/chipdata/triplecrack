@@ -1,0 +1,19 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "TripleCrack",
+		description = "Destroys three panels in front!",
+		cooldown = {
+			shoot = 8,
+			move = 4
+		}
+	},
+	logic = function(info)
+
+		act.stage.crackPanel(info.x + info.direction, info.y - 1, 2)
+		act.stage.crackPanel(info.x + info.direction, info.y,     2)
+		act.stage.crackPanel(info.x + info.direction, info.y + 1, 2)
+
+		return false
+	end
+}

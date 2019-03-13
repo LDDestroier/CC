@@ -1,0 +1,17 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Muramasa",
+		description = "Slash for as much damage as you have taken!",
+		cooldown = {
+			shoot = 8,
+			move = 4
+		}
+	},
+	logic = function(info)
+
+		act.stage.setDamage(info.x + info.direction, info.y, math.min(info.player.maxHealth - info.player.health, 1000), info.owner, 2, false)
+
+		return false
+	end
+}

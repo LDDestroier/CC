@@ -1,0 +1,19 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "DoubleShot",
+		description = "Fires two panels forwards!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+
+		act.projectile.newProjectile(info.x,                  info.y, info.player, "panelshot", false, info.altDamage)
+		act.projectile.newProjectile(info.x + info.direction, info.y, info.player, "panelshot", true,  info.altDamage)
+
+		return false
+
+	end
+}

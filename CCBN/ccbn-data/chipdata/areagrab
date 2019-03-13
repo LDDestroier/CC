@@ -1,0 +1,43 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "AreaGrab",
+		description = "Grabs three panels from enemy!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+		if info.frame == 0 then
+			if info.owner == 1 then
+				info.x = 5
+				for y = 1, 3 do
+					for x = 2, 5 do
+						if stage.panels[y][x].owner ~= info.owner then
+							info.x = math.min(info.x, x)
+							break
+						end
+					end
+				end
+			else
+				info.x = 2
+				for y = 1, 3 do
+					for x = 5, 2, -1 do
+						if stage.panels[y][x].owner ~= info.owner then
+							info.x = math.max(info.x, x)
+							break
+						end
+					end
+				end
+			end
+		end
+
+		for y = 1, 3 do
+			act.projectile.newProjectile(info.x, y, info.player, "panelgrab_internal")
+		end
+
+		return false
+
+	end
+}

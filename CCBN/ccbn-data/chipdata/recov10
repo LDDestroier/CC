@@ -1,0 +1,15 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Recov10",
+		description = "Gives you 10 health!",
+		cooldown = {
+			shoot = 6,
+			move = 2
+		}
+	},
+	logic = function(info)
+		info.player.health = math.min(info.player.health + 10, info.player.maxHealth)
+		return false
+	end,
+}

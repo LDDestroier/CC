@@ -1,0 +1,17 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "RockCube",
+		description = "Creates a cube-shaped rock!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+		if act.stage.checkIfWalkable(info.x + info.direction, info.y) then
+			act.object.newObject(info.x + info.direction, info.y, info.owner, info.direction, "rockcube")
+		end
+		return false
+	end
+}

@@ -1,0 +1,54 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Boomer1",
+		description = "Boomerang that orbits stage!",
+		cooldown = {
+			shoot = 6,
+			move = 5
+		}
+	},
+	logic = function(info)
+		if info.direction == 1 then
+			if info.frame == 0 then
+				info.x = 0
+				info.y = 3
+			end
+			if info.y > 1 then
+				if info.x <= 6 then
+					info.x = info.x + (2 / stage.panelWidth)
+				else
+					info.y = info.y - (2 / stage.panelHeight)
+				end
+			elseif info.x > 0 then
+				info.x = info.x - (2 / stage.panelWidth)
+			else
+				return false
+			end
+		elseif info.direction == -1 then
+			if info.frame == 0 then
+				info.x = 7
+				info.y = 3
+			end
+			if info.y > 1 then
+				if info.x > 1 then
+					info.x = info.x - (2 / stage.panelWidth)
+				else
+					info.y = info.y - (2 / stage.panelHeight)
+				end
+			elseif info.x <= 7 then
+				info.x = info.x + (2 / stage.panelWidth)
+			else
+				return false
+			end
+		end
+
+		local struckObject = act.object.checkObjectAtPos(info.x, info.y)
+		if struckObject then
+			info.safeObjects[struckObject] = true
+		end
+
+		act.stage.setDamage(info.x, info.y, 60, info.owner, 2, false, {}, info.safeObjects)
+		return true, {{images.cannon, info.x, info.y}}
+	end
+}

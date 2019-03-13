@@ -1,0 +1,13 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	image = images.rockcube,
+	friendlyFire = true,		-- can it hit its owner?
+	health = 500,				-- amount of damage before disintegrating
+	maxHealth = 500,			-- just a formality
+	smackDamage = 200,			-- amount of damage it will do if launched at enemy
+	doYeet = true,				-- whether or not to fly backwards and do smackDamage to target
+	delayedTime = 400,			-- amount of frames before running delayedFunc()
+	delayedFunc = function()	-- will run every delayedTime frames
+		-- rockcubes do what rock cubes do
+	end,
+}

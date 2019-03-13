@@ -1,0 +1,37 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "PanelGrab",
+		description = "Grabs one panel from enemy!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+		if info.frame == 0 then
+			if info.owner == 1 then
+				info.x = 5
+				for x = 2, 5 do
+					if stage.panels[info.y][x].owner ~= info.owner then
+						info.x = x
+						break
+					end
+				end
+			else
+				info.x = 2
+				for x = 5, 2, -1 do
+					if stage.panels[info.y][x].owner ~= info.owner then
+						info.x = x
+						break
+					end
+				end
+			end
+		end
+
+		act.projectile.newProjectile(info.x, info.y, info.player, "panelgrab_internal")
+
+		return false
+
+	end
+}

@@ -1,0 +1,17 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "BusterUp",
+		description = "Raises your buster power by 1!",
+		cooldown = {
+			shoot = 8,
+			move = 4
+		}
+	},
+	logic = function(info)
+
+		info.player.busterPower = info.player.busterPower + 1
+
+		return false
+	end
+}

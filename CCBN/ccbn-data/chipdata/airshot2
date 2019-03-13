@@ -1,0 +1,37 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "AirShot2",
+		description = "Fires a better, pushing shot forwards!",
+		cooldown = {
+			shoot = 8,
+			move = 4
+		}
+	},
+	logic = function(info)
+		info.x = info.x + (2 / stage.panelWidth) * info.direction
+
+		act.stage.setDamage(info.x, info.y, 30, info.owner, 2)
+
+		local struckPlayer, struckObject = act.projectile.checkProjectileCollisions(info)
+
+		if info.frame > 50 or struckPlayer or struckObject then
+			if struckPlayer then
+				if act.player.movePlayer(struckPlayer, info.direction, 0, true) then
+					act.stage.setDamage(info.x + info.direction, info.y, 30, info.owner, 2)
+				end
+			elseif struckObject then
+				if objects[struckObject].doYeet then
+					objects[struckObject].xvel = (4 / stage.panelWidth) * info.direction
+				else
+					if act.object.moveObject(struckObject, info.direction, 0) then
+						act.stage.setDamage(info.x + info.direction, info.y, 30, info.owner, 2)
+					end
+				end
+			end
+			return false
+		else
+			return true, {{images.cannon, info.x, info.y}}
+		end
+	end
+}

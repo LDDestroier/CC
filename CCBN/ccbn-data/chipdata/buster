@@ -1,0 +1,24 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "MegaBuster",
+		description = "Fires a weak shot forwards!",
+		cooldown = {
+			shoot = 4,
+			move = 2
+		}
+	},
+	logic = function(info)
+		info.x = info.x + (3 / stage.panelWidth) * info.direction
+
+		act.stage.setDamage(info.x, info.y, info.player.busterPower or 1, info.owner, 1, true)
+
+		local struckPlayer, struckObject = act.projectile.checkProjectileCollisions(info)
+
+		if info.frame > 50 or struckPlayer or struckObject then
+			return false
+		else
+			return true, {{images.buster, info.x, info.y}}
+		end
+	end
+}

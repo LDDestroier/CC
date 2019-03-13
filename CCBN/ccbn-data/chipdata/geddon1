@@ -1,0 +1,21 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Geddon1",
+		description = "Cracks all panels!",
+		cooldown = {
+			shoot = 8,
+			move = 4
+		}
+	},
+	logic = function(info)
+
+		for y, row in pairs(stage.panels) do
+			for x, panel in pairs(row) do
+				act.stage.crackPanel(x, y, 1)
+			end
+		end
+
+		return false
+	end
+}

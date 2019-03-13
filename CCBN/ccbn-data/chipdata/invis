@@ -1,0 +1,15 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Invis",
+		description = "Makes you invincible for a short time!",
+		cooldown = {
+			shoot = 6,
+			move = 5
+		}
+	},
+	logic = function(info)
+		info.player.cooldown.iframe = 50
+		return false
+	end
+}

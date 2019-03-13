@@ -1,0 +1,36 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Dash",
+		description = "Dash forwards to deal massive damage!",
+		cooldown = {
+			shoot = 6,
+			move = 2
+		}
+	},
+	logic = function(info)
+		if info.frame == 0 then
+			info.player.canMove = false
+			info.player.canShoot = false
+			info.playerInitX = info.player.x
+			info.playerInitY = info.player.y
+		end
+		if info.frame > 2 then -- start on frame 3
+			if info.player.x > 7 or info.player.x < 0 then
+				info.player.x = info.playerInitX
+				info.player.y = info.playerInitY
+				info.player.cooldown.shoot = 6
+				info.player.cooldown.move = 2
+				info.player.canMove = true
+				info.player.canShoot = true
+				return false
+			else
+				info.player.x = info.player.x + (5 / stage.panelWidth) * info.player.direction
+				act.stage.setDamage(info.player.x, info.player.y, 80, info.owner, 4, false)
+				return true
+			end
+		else
+			return true
+		end
+	end
+}

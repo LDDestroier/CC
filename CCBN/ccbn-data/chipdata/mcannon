@@ -1,0 +1,24 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "M-Cannon",
+		description = "Fires a powerful shot forwards!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+		info.x = info.x + (2 / stage.panelWidth) * info.direction
+
+		act.stage.setDamage(info.x, info.y, 80, info.owner, 1)
+
+		local struckPlayer, struckObject = act.projectile.checkProjectileCollisions(info)
+
+		if info.frame > 50 or struckPlayer or struckObject then
+			return false
+		else
+			return true, {{images.cannon, info.x, info.y}}
+		end
+	end
+}

@@ -1,0 +1,27 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "BigBomb",
+		description = "Lob a 3x3 grenade 2 panels forward!",
+		cooldown = {
+			shoot = 6,
+			move = 5
+		}
+	},
+	logic = function(info)
+		local maxDist = 3
+		local maxFrames = 10
+		local parabola = math.sin((math.pi / maxFrames) * info.frame) * 2
+		if parabola < 0.1 and info.frame > 3 then
+			for y = -1, 1 do
+				for x = -1, 1 do
+					act.stage.setDamage(info.x + x, info.y + y, 90, info.owner, 2, false)
+				end
+			end
+			return false
+		else
+			info.x = info.x + (maxDist / maxFrames) * info.direction
+		end
+		return true, {{images.cannon, info.x, info.y - parabola}}
+	end
+}

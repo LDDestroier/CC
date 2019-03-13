@@ -1,0 +1,34 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "PanelGrab_Internal",
+		description = "Internal for PanelGrab and AreaGrab.",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+
+		if not stage.panels[info.y] then
+			return false
+		end
+
+		if info.frame == 0 then
+			info.yadj = 5
+		end
+
+		info.yadj = math.max(0, info.yadj - 0.5)
+
+		if info.yadj == 0 then
+			act.stage.setDamage(info.x, info.y, 80, info.owner, 2)
+			if not act.player.checkPlayerAtPos(info.x, info.y) then
+				stage.panels[info.y][info.x].owner = info.owner
+				stage.panels[info.y][info.x].cooldown.owner = 500
+			end
+			return false
+		end
+
+		return true, {{images.cannon, info.x, info.y - info.yadj}}
+	end
+}

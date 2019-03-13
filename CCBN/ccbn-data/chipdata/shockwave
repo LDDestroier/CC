@@ -1,0 +1,30 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "ShockWave",
+		description = "Piercing ground wave!",
+		cooldown = {
+			shoot = 14,
+			move = 8
+		}
+	},
+	logic = function(info)
+		if info.frame == 0 then
+			info.x = info.x + info.direction / 2
+		end
+		info.x = info.x + (3 / stage.panelWidth) * info.direction
+
+		act.stage.setDamage(info.x, info.y, 60, info.owner, 10, false, {}, info.safeObjects)
+
+		local struckObject = act.object.checkObjectAtPos(info.x, info.y)
+		if struckObject then
+			info.safeObjects[struckObject] = true
+		end
+
+		if info.frame > 50 or not act.stage.checkIfSolid(info.x, info.y) then
+			return false
+		else
+			return true
+		end
+	end
+}

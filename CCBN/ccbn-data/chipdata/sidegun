@@ -1,0 +1,29 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "SideGun",
+		description = "Hits enemy as well as panels above and below!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+		info.x = info.x + (2 / stage.panelWidth) * info.direction
+
+		act.stage.setDamage(info.x, info.y, 30, info.owner, 2)
+
+		local struckPlayer, struckObject = act.projectile.checkProjectileCollisions(info)
+
+		if info.frame > 50 or struckPlayer or struckObject then
+			if struckPlayer or struckObject then
+				act.stage.setDamage(info.x, info.y, 30, info.owner, 2)
+				act.stage.setDamage(info.x, info.y - 1, 30, info.owner, 2)
+				act.stage.setDamage(info.x, info.y + 1, 30, info.owner, 2)
+			end
+			return false
+		else
+			return true, {{images.cannon, info.x, info.y}}
+		end
+	end
+}

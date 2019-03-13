@@ -1,0 +1,28 @@
+local stage, players, objects, projectiles, act, images = ...
+return {
+	info = {
+		name = "Vulcan1",
+		description = "Fires three shots that damages panel behind!",
+		cooldown = {
+			shoot = 6,
+			move = 4
+		}
+	},
+	logic = function(info)
+		if info.frame == 0 then
+			info.player.canMove = false
+			info.player.canShoot = false
+		else
+			if info.frame == 3 * 2 + 1 then
+				info.player.canMove = true
+				info.player.canShoot = true
+				info.player.cooldown.shoot = 6
+				info.player.cooldown.shoot = 4
+				return false
+			elseif info.frame % 2 == 0 then
+				act.projectile.newProjectile(info.x, info.y, info.player, "vulcan_internal")
+			end
+		end
+		return true
+	end
+}
