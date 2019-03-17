@@ -19,6 +19,7 @@ local doDrawPlayerNames = true	-- draws the names of players onscreen
 local doRenderOwnName = false	-- if doDrawPlayerNames, also draws your own name
 local useSetVisible = false	-- use term.current().setVisible, which speeds things up at the cost of multishell
 local gridID = 1		-- determines which grid is used
+local mode = "menu"
 
 -- initial grid information, (hopefully) transferred to non-host players
 local initGrid = {
@@ -436,6 +437,8 @@ if not doGridDemo then
 	if useSkynet then
 		if fs.exists(skynetPath) then
 			skynet = dofile(skynetPath)
+			term.clear()
+			cwrite("Connecting to Skynet...", scr_y / 2)
 			skynet.open(port)
 		else
 			term.clear()
@@ -446,6 +449,7 @@ if not doGridDemo then
 				file.write(prog.readAll())
 				file.close()
 				skynet = dofile(skynetPath)
+				cwrite("Connecting to Skynet...", 1 + scr_y / 2)
 				skynet.open(port)
 			else
 				error("Could not download Skynet.")
@@ -1264,7 +1268,7 @@ local parseMouseInput = function(button, x, y, direction)
 	local cx = x - scr_mx
 	local cy = y - scr_my
 
-	if useLegacyMouseControl then -- outdated mouse input
+	if useLegacyMouseControl or mode == "demo" then -- outdated mouse input, useful for grid demo though
 		cx = cx * (scr_y / scr_x)
 		if cx > cy then
 			if -cx > cy then
@@ -1380,13 +1384,13 @@ local gridDemo = function()
 	end
 end
 
-local sendInfo = function(gameID)
+local sendInfo = function(gameID, doSendTime)
 	transmit(port, {
 		player = isHost and player or nil,
 		name = player[you].name,
 		putTrail = isPuttingDown,
 		gameID = gameID,
-		time = os.epoch("utc"),
+		time = doSendTime and os.epoch("utc"),
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
 		deadGuys = isHost and deadGuys or nil,
@@ -1417,7 +1421,7 @@ local deadAnimation = function(doSend)
 		lockInput = true
 	end
 	if doSend then
-		sendInfo(gamename)
+		sendInfo(gamename, isHost)
 	end
 	if deadGuys[you] or deadGuys[nou] then
 		termsetTextColor(colors.white)
@@ -1538,7 +1542,7 @@ local game = function()
 		else
 			setDirection(p, nil, control[lastDirectionPressed])
 			isPuttingDown = not keysDown[control.release]
-			sendInfo(gamename)
+			sendInfo(gamename, isHost)
 		end
 
 		if miceDown[3] then
@@ -1712,20 +1716,26 @@ end
 local decision
 
 local main = function()
-	local rVal
-	while true do
-		decision = titleScreen()
-		lockInput = false
-		if decision == "start" then
-			startGame()
-		elseif decision == "help" then
-			helpScreen()
-		elseif decision == "demo" then
-			parallel.waitForAny( getInput, gridDemo )
-		elseif decision == "exit" then
-			return cleanExit()
+	return pcall(function()
+		local rVal
+		while true do
+			mode = "menu"
+			decision = titleScreen()
+			lockInput = false
+			if decision == "start" then
+				mode = "game"
+				startGame()
+			elseif decision == "help" then
+				mode = "help"
+				helpScreen()
+			elseif decision == "demo" then
+				mode = "demo"
+				parallel.waitForAny( getInput, gridDemo )
+			elseif decision == "exit" then
+				return cleanExit()
+			end
 		end
-	end
+	end)
 end
 
 if doGridDemo then
