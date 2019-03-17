@@ -361,7 +361,7 @@ keyList = getAllKeys()
 local apiData = {
 	["aeslua"] = {
 		path = "aeslua.lua",
-		url = "https://gist.githubusercontent.com/SquidDev/86925e07cbabd70773e53d781bd8b2fe/raw/aeslua.lua",
+		url = "https://raw.githubusercontent.com/LDDestroier/CC/master/API/aeslua.lua",	-- thanks SquidDev
 		useLoadAPI = true,
 	}
 }
