@@ -24,8 +24,8 @@ local gridID = 1		-- determines which grid is used
 local initGrid = {
 	x1 = -100,
 	y1 = -100,
-	x2 = 40,
-	y2 = 40,
+	x2 = 100,
+	y2 = 100,
 	border = "#",
 	voidcol = "f",
 	forecol = "8",
@@ -322,68 +322,6 @@ if argumentName then
 	argumentName = argumentName:sub(1, 15) -- gotta enforce that limit
 end
 
-if doUpdateGame then
-	print("Downloading...")
-	local net = http.get("https://github.com/LDDestroier/CC/raw/master/tron.lua")
-	if net then
-		local file = fs.open(shell.getRunningProgram(), "w")
-		file.write(net.readAll())
-		file.close()
-		print("Updated!")
-	else
-		printError("Couldn't update!")
-	end
-	if useOnce then
-		return
-	else
-		sleep(0.2)
-	end
-end
-
-local modem, skynet
-if not doGridDemo then
-	if useSkynet then
-		if fs.exists(skynetPath) then
-			skynet = dofile(skynetPath)
-			skynet.open(port)
-		else
-			local prog = http.get(skynetURL)
-			if prog then
-				local file = fs.open(skynetPath, "w")
-				file.write(prog.readAll())
-				file.close()
-				skynet = dofile(skynetPath)
-				skynet.open(port)
-			else
-				error("Could not download Skynet.")
-			end
-		end
-	else
-		modem = peripheral.find("modem")
-		if (not modem) and ccemux then
-			ccemux.attach("top", "wireless_modem")
-			modem = peripheral.find("modem")
-		end
-		if modem then
-			modem.open(port)
-		else
-			error("You should attach a modem.")
-		end
-	end
-end
-
-local transmit = function(port, message)
-	if useSkynet then
-		skynet.send(port, message)
-	else
-		modem.transmit(port, port, message)
-	end
-end
-
-local gamename = ""
-local isHost
-
-local waitingForGame = true
 local toblit = {
 	[0] = " ",
 	[colors.white] = "0",
@@ -465,6 +403,80 @@ end
 local round = function(num, places)
 	return math.floor(num * 10^places) / 10^places
 end
+
+if doUpdateGame then
+	print("Downloading...")
+	local net = http.get("https://github.com/LDDestroier/CC/raw/master/tron.lua")
+	if net then
+		local file = fs.open(shell.getRunningProgram(), "w")
+		file.write(net.readAll())
+		file.close()
+		print("Updated!")
+	else
+		printError("Couldn't update!")
+	end
+	if useOnce then
+		return
+	else
+		sleep(0.2)
+		shell.run( shell.getRunningProgram(), table.concat({...}, " "):gsub("--update", "") )
+		return
+	end
+end
+
+local cwrite = function(text, y, xdiff, wordPosCheck)
+	wordPosCheck = wordPosCheck or #text
+	termsetCursorPos(mathfloor(scr_x / 2 - (#text + (xdiff or 0)) / 2), y or (scr_y - 2))
+	term.write(text)
+	return (scr_x / 2) - (#text / 2) + wordPosCheck
+end
+
+local modem, skynet
+if not doGridDemo then
+	if useSkynet then
+		if fs.exists(skynetPath) then
+			skynet = dofile(skynetPath)
+			skynet.open(port)
+		else
+			term.clear()
+			cwrite("Downloading Skynet...", scr_y / 2)
+			local prog = http.get(skynetURL)
+			if prog then
+				local file = fs.open(skynetPath, "w")
+				file.write(prog.readAll())
+				file.close()
+				skynet = dofile(skynetPath)
+				skynet.open(port)
+			else
+				error("Could not download Skynet.")
+			end
+		end
+	else
+		modem = peripheral.find("modem")
+		if (not modem) and ccemux then
+			ccemux.attach("top", "wireless_modem")
+			modem = peripheral.find("modem")
+		end
+		if modem then
+			modem.open(port)
+		else
+			error("You should attach a modem.")
+		end
+	end
+end
+
+local transmit = function(port, message)
+	if useSkynet then
+		skynet.send(port, message)
+	else
+		modem.transmit(port, port, message)
+	end
+end
+
+local gamename = ""
+local isHost
+
+local waitingForGame = true
 
 -- used in skynet matches if you are player 2
 local ping = 0
@@ -678,7 +690,7 @@ for k,v in pairs(images) do
 	-- give them easy-to-access x and y sizes
 	v.x = #v[1][1]
 	v.y = #v[1]
-	-- remove all that white bullshit that artifacts on cc:tweaked
+	-- fix white artifacting that occurs due to " " correlating to WHITE in term.blit
 	for y = 1, v.y do
 		for x = 1, v.x do
 			if v[2][y]:sub(x,x) ~= "" and v[3][y]:sub(x,x) ~= "" then
@@ -768,13 +780,6 @@ local dirArrow = {
 	[1] = "V",
 	[2] = "<"
 }
-
-local cwrite = function(text, y, xdiff, wordPosCheck)
-	wordPosCheck = wordPosCheck or #text
-	termsetCursorPos(mathfloor(scr_x / 2 - (#text + (xdiff or 0)) / 2), y or (scr_y - 2))
-	term.write(text)
-	return (scr_x / 2) - (#text / 2) + wordPosCheck
-end
 
 local doesIntersectBorder = function(x, y)
 	return mathfloor(x) == grid.x1 or mathfloor(x) == grid.x2 or mathfloor(y) == grid.y1 or mathfloor(y) == grid.y2
@@ -1096,7 +1101,7 @@ local nameChange = function(scrollInfo)
 		["3d6"] = colors.lime,
 		["lyqyd"] = colors.red,
 		["squiddev"] = colors.cyan,
-		["oeed"] = colors.green,
+		["oeed"] = colors.lime,
 		["dog"] = colors.purple,
 		["nothy"] = colors.lightGray,
 		["kepler"] = colors.cyan,
@@ -1116,7 +1121,13 @@ local nameChange = function(scrollInfo)
 		["dannysmc"] = colors.purple,
 		["kingdaro"] = colors.blue,
 		["valithor"] = colors.orange,
-		["logandark"] = colors.lightGray
+		["logandark"] = colors.lightGray,
+		["lupus590"] = colors.lightGray,
+		["nitrogenfingers"] = colors.green,
+		["gravityscore"] = colors.lime,
+		["1lann"] = colors.gray,
+		["konlab"] = colors.brown,
+		["elvishjerricco"] = colors.pink
 	}
 	local prevName = argumentName or player[you].initName
 	for x = 1, #prevName do
@@ -1244,8 +1255,8 @@ local cleanExit = function()
 	termsetBackgroundColor(colors.black)
 	termsetTextColor(colors.white)
 	termclear()
-	termsetCursorPos(1,1)
-	print("Thanks for playing!")
+	cwrite("Thanks for playing!", 2)
+	termsetCursorPos(1, scr_y)
 end
 
 local parseMouseInput = function(button, x, y, direction)
@@ -1365,7 +1376,7 @@ local gridDemo = function()
 		end
 		drawGrid(scrollX, scrollY, false, true)
 		ageTrails()
-		sleep(gameDelay)
+		sleep(0.05)
 	end
 end
 
@@ -1517,7 +1528,7 @@ local game = function()
 				netTime = tID
 			end
 		end
-		p = player[you]
+		p  = player[you]
 		np = player[nou]
 
 		if isHost then
@@ -1567,6 +1578,7 @@ local game = function()
 	end
 end
 
+local cTime -- current UTC time when looking for game
 local networking = function()
 	local evt, side, channel, repchannel, msg, distance
 	while true do
@@ -1580,7 +1592,7 @@ local networking = function()
 				if waitingForGame and (type(msg.time) == "number") then
 
 					-- called while waiting for match
-					if msg.time < os.epoch("utc") then
+					if msg.time < cTime then
 						isHost = false
 						you, nou = nou, you
 						gamename = msg.gameID
@@ -1597,7 +1609,7 @@ local networking = function()
 					transmit(port, {
 						player = player,
 						gameID = gamename,
-						time = isHost and (-math.huge) or (math.huge),
+						time = cTime,
 						name = argumentName,
 						grid = initGrid
 					})
@@ -1640,18 +1652,20 @@ local helpScreen = function()
 	termclear()
 	termsetCursorPos(1,2)
 	print([[
-		Move with arrow keys.
-		Pan the camera with WASD.
-		Hold SPACE to create gaps.
-		This takes fuel, which will
-		recharge over time..
+	Move your lightcycle with WASD
+	 or by tapping left click.
 
-		If you're P2 (red), a gray circle
-		will indicate where you'll turn,
-		to help with Skynet's netlag.
+	Pan the camera with arrows
+	 or by holding middle click.
 
-		That's basically it.
-		Press any key to go back.
+	Release the trail with spacebar
+	 or by holding right click.
+
+	If you're P2 (red), a gray circle
+	will indicate where you'll turn,
+	to help with Skynet's netlag.
+
+	Press any key to go back.
 	]])
 	waitForKey(0.25)
 end
@@ -1677,11 +1691,12 @@ local startGame = function()
 	end
 
 	waitingForGame = true
+	cTime = os.epoch("utc")
 	transmit(port, {
 		player = player,
 		gameID = gamename,
 		gameDelay = gameDelayInit,
-		time = os.epoch("utc"),
+		time = cTime,
 		name = argumentName,
 		grid = initGrid
 	})
