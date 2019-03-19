@@ -1,10 +1,12 @@
--- eldit
--- by lddestroier
+-- Eldit (still being made)
+-- by LDDestroier
 -- wget https://raw.githubusercontent.com/LDDestroier/CC/master/eldit.lua
 
 local scr_x, scr_y = term.getSize()
+local tArg = {...}
 
 local eldit = {}
+eldit.filename = tArg[1]
 eldit.buffer = {{}}
 eldit.scrollX = 0
 eldit.scrollY = 0
@@ -48,15 +50,40 @@ local explode = function(div, str, replstr, includeDiv)
 	return arr
 end
 
+local readFile = function(path)
+	if fs.exists(path) then
+		local file = fs.open(path, "r")
+		local contents = file.readAll()
+		file.close()
+		return contents
+	else
+		return nil
+	end
+end
+
+local writeFile = function(path, contents)
+	if fs.isReadOnly(path) or fs.isDir(path) then
+		return false
+	else
+		local file = fs.open(path, "w")
+		file.write(contents)
+		file.close()
+		return true
+	end
+end
+
 prompt = function(prebuffer)
 	local keysDown = {}
 	local miceDown = {}
+	local defaultBarLife = 10
+	local barmsg = "Started Eldit."
+	local barlife = defaultBarLife
 	if type(prebuffer) == "string" then
 		for i = 1, #prebuffer do
 			if prebuffer:sub(i,i) == "\n" then
 				eldit.buffer[#eldit.buffer + 1] = {}
 			else
-				eldit.buffer[#eldit.buffer] = prebuffer:sub(i,i)
+				eldit.buffer[#eldit.buffer][#eldit.buffer[#eldit.buffer] + 1] = prebuffer:sub(i,i)
 			end
 		end
 	elseif type(prebuffer) == "table" then
@@ -122,8 +149,12 @@ prompt = function(prebuffer)
 		term.setCursorPos(eldit.size.x, eldit.size.y + eldit.size.height - 1)
 		term.setBackgroundColor(colors.gray)
 		eClearLine()
-		for id,cur in pairs(eldit.cursors) do
-			term.write("(" .. cur.x .. "," .. cur.y .. ") ")
+		if barlife > 0 then
+			term.write(barmsg)
+		else
+			for id,cur in pairs(eldit.cursors) do
+				term.write("(" .. cur.x .. "," .. cur.y .. ") ")
+			end
 		end
 	end
 
@@ -154,17 +185,39 @@ prompt = function(prebuffer)
 		end
 	end
 
-	local adjustScroll = function(amount)
-		eldit.scrollY = math.min(
-			math.max(
-				0,
-				eldit.scrollY + amount
-			),
-			math.max(
-				0,
-				#eldit.buffer - eldit.size.height + 1
+	local getMaximumWidth = function()
+		local maxX = 0
+		for y = 1, #eldit.buffer do
+			maxX = math.max(maxX, #eldit.buffer[y])
+		end
+		return maxX
+	end
+
+	local adjustScroll = function(modx, mody)
+		if mody then
+			eldit.scrollY = math.min(
+				math.max(
+					0,
+					eldit.scrollY + mody
+				),
+				math.max(
+					0,
+					#eldit.buffer - eldit.size.height + 1
+				)
 			)
-		)
+		end
+		if modx then
+			eldit.scrollX = math.min(
+				math.max(
+					0,
+					eldit.scrollX + modx
+				),
+				math.max(
+					0,
+					getMaximumWidth() - eldit.size.width + 1
+				)
+			)
+		end
 	end
 
 	local removeRedundantCursors = function()
@@ -332,8 +385,22 @@ prompt = function(prebuffer)
 		scrollToCursor()
 	end
 
+	saveFile = function()
+		local compiled = ""
+		for y = 1, #eldit.buffer do
+			compiled = compiled .. table.concat(eldit.buffer[y])
+			if y < #eldit.buffer then
+				compiled = compiled .. "\n"
+			end
+		end
+		writeFile(eldit.filename, compiled)
+		barmsg = "Saved to '" .. eldit.filename .. "'."
+		barlife = defaultBarLife
+	end
+
 	local evt
 	local tID = os.startTimer(0.5)
+	local bartID = os.startTimer(0.1)
 	local doRender = true
 
 	while true do
@@ -347,67 +414,92 @@ prompt = function(prebuffer)
 				end
 				isCursorBlink = not isCursorBlink
 				doRender = true
+			elseif evt[2] == bartID then
+				bartID = os.startTimer(0.1)
+				barlife = math.max(0, barlife - 1)
 			end
 		elseif evt[1] == "char" or evt[1] == "paste" then
 			placeText(evt[2])
 			doRender = true
 		elseif evt[1] == "key" then
 			keysDown[evt[2]] = true
-			if evt[2] == keys.insert then
-				isInsert = not isInsert
-				doRender, isCursorBlink = true, true
+			if keysDown[keys.leftCtrl] or keysDown[keys.leftCtrl] then
 
-			elseif evt[2] == keys.enter then
-				makeNewLine()
-				doRender, isCursorBlink = true, false
+				if evt[2] == keys.backspace then
+					deleteText("word", "backward")
+					doRender, isCursorBlink = true, false
 
-			elseif evt[2] == keys.home then
-				eldit.cursors = {{
-					x = 1,
-					y = eldit.cursors[1].y,
-					lastX = 1
-				}}
-				doRender = true
+				elseif evt[2] == keys.delete then
+					deleteText("word", "forward")
+					doRender, isCursorBlink = true, false
 
-			elseif evt[2] == keys["end"] then
-				eldit.cursors = {{
-					x = #eldit.buffer[eldit.cursors[1].y] + 1,
-					y = eldit.cursors[1].y,
-					lastX = #eldit.buffer[eldit.cursors[1].y] + 1
-				}}
-				doRender = true
+				elseif evt[2] == keys.q then
+					return "exit"
 
-			elseif evt[2] == keys.pageUp then
-				adjustScroll(-eldit.size.height)
-				doRender = true
+				elseif evt[2] == keys.s then
+					saveFile()
 
-			elseif evt[2] == keys.pageDown then
-				adjustScroll(eldit.size.height)
-				doRender = true
+				end
 
-			elseif evt[2] == keys.backspace then
-				deleteText(keysDown[keys.leftCtrl] and "word" or "single", "backward")
-				doRender, isCursorBlink = true, false
+			else
 
-			elseif evt[2] == keys.delete then
-				deleteText(keysDown[keys.leftCtrl] and "word" or "single", keysDown[keys.leftCtrl] and "forward")
-				doRender, isCursorBlink = true, false
+				if evt[2] == keys.insert then
+					isInsert = not isInsert
+					doRender, isCursorBlink = true, true
 
-			elseif evt[2] == keys.left then
-				adjustCursor(-1, 0, true)
-				doRender, isCursorBlink = true, true
+				elseif evt[2] == keys.enter then
+					makeNewLine()
+					doRender, isCursorBlink = true, false
 
-			elseif evt[2] == keys.right then
-				adjustCursor(1, 0, true)
-				doRender, isCursorBlink = true, true
+				elseif evt[2] == keys.home then
+					eldit.cursors = {{
+						x = 1,
+						y = eldit.cursors[1].y,
+						lastX = 1
+					}}
+					doRender = true
 
-			elseif evt[2] == keys.up then
-				adjustCursor(0, -1, false)
-				doRender, isCursorBlink = true, true
+				elseif evt[2] == keys["end"] then
+					eldit.cursors = {{
+						x = #eldit.buffer[eldit.cursors[1].y] + 1,
+						y = eldit.cursors[1].y,
+						lastX = #eldit.buffer[eldit.cursors[1].y] + 1
+					}}
+					doRender = true
 
-			elseif evt[2] == keys.down then
-				adjustCursor(0, 1, false)
-				doRender, isCursorBlink = true, true
+				elseif evt[2] == keys.pageUp then
+					adjustScroll(-eldit.size.height)
+					doRender = true
+
+				elseif evt[2] == keys.pageDown then
+					adjustScroll(eldit.size.height)
+					doRender = true
+
+				elseif evt[2] == keys.backspace then
+					deleteText("single", "backward")
+					doRender, isCursorBlink = true, false
+
+				elseif evt[2] == keys.delete then
+					deleteText("single", nil)
+					doRender, isCursorBlink = true, false
+
+				elseif evt[2] == keys.left then
+					adjustCursor(-1, 0, true)
+					doRender, isCursorBlink = true, true
+
+				elseif evt[2] == keys.right then
+					adjustCursor(1, 0, true)
+					doRender, isCursorBlink = true, true
+
+				elseif evt[2] == keys.up then
+					adjustCursor(0, -1, false)
+					doRender, isCursorBlink = true, true
+
+				elseif evt[2] == keys.down then
+					adjustCursor(0, 1, false)
+					doRender, isCursorBlink = true, true
+
+				end
 
 			end
 		elseif evt[1] == "key_up" then
@@ -436,7 +528,11 @@ prompt = function(prebuffer)
 			miceDown[evt[2]] = nil
 		elseif evt[1] == "mouse_scroll" then
 			local amount = (keysDown[keys.leftCtrl] and eldit.size.height or 1) * evt[2]
-			adjustScroll(amount)
+			if keysDown[keys.leftAlt] then
+				adjustScroll(amount, 0)
+			else
+				adjustScroll(0, amount)
+			end
 			doRender = true
 		end
 		if doRender then
@@ -446,4 +542,16 @@ prompt = function(prebuffer)
 	end
 end
 
-prompt()
+if not eldit.filename then
+	print("eldit [filename]")
+	return
+end
+
+local contents = readFile(eldit.filename)
+
+local result = {prompt(contents)}
+if result[1] == "exit" then
+	term.setBackgroundColor(colors.black)
+	term.scroll(1)
+	term.setCursorPos(1, scr_y)
+end
