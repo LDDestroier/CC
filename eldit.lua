@@ -10,6 +10,10 @@ local argData = {
 
 local eldit = {}
 eldit.buffer = {{}}			-- stores all text, organized like eldit.buffer[yPos][xPos]
+eldit.undoBuffer = {{{}}}	-- stores buffers for undoing/redoing
+eldit.maxUndo = 16			-- maximum size of the undo buffer
+eldit.undoPos = 1			-- current position in undo buffer
+eldit.undoDelay = 0.5		-- amount of time to wait after typing, before the buffer is put in the undo buffer
 eldit.clipboards = {}		-- all clipboard entries
 eldit.selectedClipboard = 1	-- which clipboard to use
 eldit.scrollX = 0			-- horizontal scroll
@@ -136,6 +140,19 @@ local writeFile = function(path, contents)
 	end
 end
 
+local deepCopy
+deepCopy = function(tbl)
+	local output = {}
+	for k,v in pairs(tbl) do
+		if type(v) == "table" then
+			output[k] = deepCopy(v)
+		else
+			output[k] = v
+		end
+	end
+	return output
+end
+
 prompt = function(prebuffer, precy, _eldit)
 	local keysDown = {}					-- list of all keys being pressed
 	local miceDown = {}					-- list of all mouse buttons being pressed
@@ -156,6 +173,11 @@ prompt = function(prebuffer, precy, _eldit)
 	elseif type(prebuffer) == "table" then
 		eldit.buffer = prebuffer
 	end
+	eldit.undoBuffer[1] = {
+		buffer = deepCopy(eldit.buffer),
+		cursors = deepCopy(eldit.cursors),
+		selections = deepCopy(eldit.selections)
+	}
 	local isCursorBlink = false			-- blinks the background color on each cursor
 	local isInsert = false				-- will overwrite characters instead of appending them
 
@@ -239,7 +261,7 @@ prompt = function(prebuffer, precy, _eldit)
 			["\9"] = true
 		}
 		local lineNoLen = #tostring(#eldit.buffer)
-		local textPoses = {math.huge, math.huge}		-- used to identify space characters without text
+		local textPoses = {math.huge, -math.huge}		-- used to identify space characters without text
 		for y = 1, eldit.size.height - 1 do -- minus one because it reserves space for the bar
 			cy = y + eldit.scrollY
 			-- find text
@@ -665,6 +687,24 @@ prompt = function(prebuffer, precy, _eldit)
 		end
 	end
 
+	local compareBuffers
+	compareBuffers = function(left, right)
+		for k,v in pairs(left) do
+			if type(v) == "table" then
+				if not compareBuffers(v, right[k]) then
+					return false
+				end
+			elseif right then
+				if left[k] ~= right[k] then
+					return false
+				end
+			else
+				return false
+			end
+		end
+		return true
+	end
+
 	-- saves to file, duhh
 	local saveFile = function()
 		local compiled = ""
@@ -682,6 +722,7 @@ prompt = function(prebuffer, precy, _eldit)
 	local evt
 	local tID = os.startTimer(0.5)		-- timer for cursor blinking
 	local bartID = os.startTimer(0.1)	-- timer for bar message to go away
+	local undotID						-- timer for when the buffer is put in the undo buffer
 	local doRender = true				-- if true, renders
 
 	-- converts numerical key events to usable numbers
@@ -726,9 +767,29 @@ prompt = function(prebuffer, precy, _eldit)
 			elseif evt[2] == bartID then
 				bartID = os.startTimer(0.1)
 				barlife = math.max(0, barlife - 1)
+			elseif evt[2] == undotID then
+				if not compareBuffers(eldit.buffer, eldit.undoBuffer[#eldit.undoBuffer].buffer or {}) then
+					if #eldit.undoBuffer >= eldit.maxUndo then
+						repeat
+							table.remove(eldit.undoBuffer, 1)
+						until #eldit.undoBuffer < eldit.maxUndo
+					end
+					if eldit.undoPos < #eldit.undoBuffer then
+						repeat
+							table.remove(eldit.undoBuffer, 0)
+						until eldit.undoPos == #eldit.undoBuffer
+					end
+					eldit.undoPos = math.min(eldit.undoPos + 1, eldit.maxUndo)
+					table.insert(eldit.undoBuffer, {
+						buffer = deepCopy(eldit.buffer),
+						cursors = deepCopy(eldit.cursors),
+						selections = deepCopy(eldit.selections),
+					})
+				end
 			end
 		elseif (evt[1] == "char" and not keysDown[keys.leftCtrl]) then
 			placeText(evt[2])
+			undotID = os.startTimer(eldit.undoDelay)
 			doRender = true
 		elseif evt[1] == "paste" then
 			if keysDown[keys.leftShift] then
@@ -759,12 +820,14 @@ prompt = function(prebuffer, precy, _eldit)
 						end
 					end
 					barmsg = "Pasted from clipboard " .. eldit.selectedClipboard .. "."
+					undotID = os.startTimer(eldit.undoDelay)
 				else
 					barmsg = "Clipboard " .. eldit.selectedClipboard .. " is empty."
 				end
 				barlife = defaultBarLife
 			else
 				placeText(evt[2])
+				undotID = os.startTimer(eldit.undoDelay)
 			end
 			doRender = true
 		elseif evt[1] == "key" then
@@ -797,11 +860,27 @@ prompt = function(prebuffer, precy, _eldit)
 								deleteSelections()
 								barmsg = "Cut to clipboard " .. eldit.selectedClipboard .. "."
 								barlife = defaultBarLife
+								undotID = os.startTimer(eldit.undoDelay)
 							else
 								barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
 								barlife = defaultBarLife
 							end
 						end
+
+					elseif evt[2] == keys.z then
+						if eldit.undoPos < #eldit.undoBuffer then
+							eldit.undoPos = math.min(#eldit.undoBuffer, eldit.maxUndo, eldit.undoPos + 1)
+							eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
+							eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
+							eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
+							adjustCursor(0, 0, true)
+							barmsg = "Redone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
+							barlife = defaultBarLife
+						else
+							barmsg = "Reached top of undo buffer. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
+							barlife = defaultBarLife
+						end
+						doRender = true
 					end
 					-- In-editor pasting is done with the "paste" event!
 				else
@@ -809,12 +888,14 @@ prompt = function(prebuffer, precy, _eldit)
 						eldit.selectedClipboard = numToKey[evt[2]]
 						barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
 						barlife = defaultBarLife
+
 					elseif evt[2] == keys.backspace then
 						if #eldit.selections > 0 then
 							deleteSelections()
 						else
 							deleteText("word", "backward")
 						end
+						undotID = os.startTimer(eldit.undoDelay)
 						doRender, isCursorBlink = true, false
 
 					elseif evt[2] == keys.delete then
@@ -823,6 +904,7 @@ prompt = function(prebuffer, precy, _eldit)
 						else
 							deleteText("word", "forward")
 						end
+						undotID = os.startTimer(eldit.undoDelay)
 						doRender, isCursorBlink = true, false
 
 					elseif evt[2] == keys.q then
@@ -843,21 +925,47 @@ prompt = function(prebuffer, precy, _eldit)
 						}}
 						doRender = true
 
+					elseif evt[2] == keys.z then
+
+						if eldit.undoPos > 1 then
+							eldit.undoPos = math.max(1, eldit.undoPos - 1)
+							eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
+							eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
+							eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
+							adjustCursor(0, 0, true)
+							barmsg = "Undone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
+							barlife = defaultBarLife
+						else
+							barmsg = "Reached back of undo buffer."
+							barlife = defaultBarLife
+						end
+						doRender = true
+
 					elseif evt[2] == keys.left then
 						adjustCursor(-1, 0, true, "word")
 						doRender, isCursorBlink = true, true
+						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 
 					elseif evt[2] == keys.right then
 						adjustCursor(1, 0, true, "word")
 						doRender, isCursorBlink = true, true
+						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 
 					elseif evt[2] == keys.up then
 						adjustCursor(0, -1, false, "flip")
 						doRender, isCursorBlink = true, true
+						undotID = os.startTimer(eldit.undoDelay)
+						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 
 					elseif evt[2] == keys.down then
 						adjustCursor(0, 1, false, "flip")
 						doRender, isCursorBlink = true, true
+						undotID = os.startTimer(eldit.undoDelay)
+						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 
 					end
 				end
@@ -867,6 +975,8 @@ prompt = function(prebuffer, precy, _eldit)
 				if evt[2] == keys.tab then
 					placeText("\9")
 					doRender = true
+					undotID = os.startTimer(eldit.undoDelay)
+
 				elseif evt[2] == keys.insert then
 					isInsert = not isInsert
 					doRender, isCursorBlink = true, true
@@ -874,6 +984,7 @@ prompt = function(prebuffer, precy, _eldit)
 				elseif evt[2] == keys.enter then
 					makeNewLine()
 					doRender, isCursorBlink = true, false
+					undotID = os.startTimer(eldit.undoDelay)
 
 				elseif evt[2] == keys.home then
 					eldit.cursors = {{
@@ -908,6 +1019,7 @@ prompt = function(prebuffer, precy, _eldit)
 						deleteText("single", "backward")
 					end
 					doRender, isCursorBlink = true, false
+					undotID = os.startTimer(eldit.undoDelay)
 
 				elseif evt[2] == keys.delete then
 					if #eldit.selections > 0 then
@@ -916,23 +1028,31 @@ prompt = function(prebuffer, precy, _eldit)
 						deleteText("single", "forward")
 					end
 					doRender, isCursorBlink = true, false
+					undotID = os.startTimer(eldit.undoDelay)
 
 				elseif evt[2] == keys.left then
 					adjustCursor(-1, 0, true)
+					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 					doRender, isCursorBlink = true, true
 
 				elseif evt[2] == keys.right then
 					adjustCursor(1, 0, true)
+					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 					doRender, isCursorBlink = true, true
 
 				elseif evt[2] == keys.up then
 					adjustCursor(0, -1, false)
+					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 					doRender, isCursorBlink = true, true
 
 				elseif evt[2] == keys.down then
 					adjustCursor(0, 1, false)
 					doRender, isCursorBlink = true, true
-
+					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 				end
 
 			end
@@ -966,6 +1086,8 @@ prompt = function(prebuffer, precy, _eldit)
 			}
 			sortSelections()
 			adjustCursor(0, 0, true)
+			eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+			eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 			doRender = true
 		elseif evt[1] == "mouse_drag" then
 			local lineNoLen = #tostring(#eldit.buffer)
@@ -989,9 +1111,6 @@ prompt = function(prebuffer, precy, _eldit)
 						y = adjEY
 					}
 				}
-				if isSelecting then
-					--lastMouse.ctrl = false
-				end
 				sortSelections()
 				eldit.cursors[lastMouse.curID] = {
 					x = eldit.selections[selID][1].x,
@@ -1001,6 +1120,8 @@ prompt = function(prebuffer, precy, _eldit)
 
 				isSelecting = true
 				adjustCursor(0, 0)
+				eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+				eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 				doRender = true
 			end
 		elseif evt[1] == "mouse_up" then
