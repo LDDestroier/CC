@@ -185,16 +185,18 @@ prompt = function(prebuffer)
 		for y = 1, eldit.size.height - 1 do -- minus one because it reserves space for the bar
 			cy = y + eldit.scrollY
 			-- find text
-			for x = 1, #eldit.buffer[cy] do
-				if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
-					textPoses[1] = x
-					break
+			if eldit.buffer[cy] then
+				for x = 1, #eldit.buffer[cy] do
+					if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
+						textPoses[1] = x
+						break
+					end
 				end
-			end
-			for x = #eldit.buffer[cy], 1, -1 do
-				if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
-					textPoses[2] = x
-					break
+				for x = #eldit.buffer[cy], 1, -1 do
+					if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
+						textPoses[2] = x
+						break
+					end
 				end
 			end
 			local isHighlighted = false
@@ -213,18 +215,21 @@ prompt = function(prebuffer)
 				end
 			end
 			term.setCursorPos(eldit.size.x, eldit.size.y + y - 1)
-			if isHighlighted then
-				term.setBackgroundColor(colors.gray)
-				term.setTextColor(colors.white)
+			if cy <= #eldit.buffer then
+				if isHighlighted then
+					term.setBackgroundColor(colors.gray)
+					term.setTextColor(colors.white)
+				else
+					term.setBackgroundColor(colors.black)
+					term.setTextColor(colors.lightGray)
+				end
+				term.write(cy .. (" "):rep(lineNoLen - #tostring(y)))
 			else
-				term.setBackgroundColor(colors.black)
-				term.setTextColor(colors.lightGray)
+				term.write(" ")
 			end
-			term.write(cy .. (" "):rep(lineNoLen - #tostring(y)))
 			for x = lineNoLen + 1, eldit.size.width do
 				term.setCursorPos(eldit.size.x + x - 1, eldit.size.y + y - 1)
 				cx = x + eldit.scrollX - lineNoLen
-				cy = y + eldit.scrollY
 
 				if checkIfSelected(cx, cy) then
 					term.setBackgroundColor(colors.blue)
@@ -243,12 +248,16 @@ prompt = function(prebuffer)
 				else
 					term.setTextColor(colors.white)
 				end
-				if cx < textPoses[1] and eldit.buffer[cy][cx] then
-					term.setTextColor(colors.gray)
-					term.write("|")
-				elseif (cx > textPoses[2] and eldit.buffer[cy][cx]) then
-					term.setTextColor(colors.gray)
-					term.write("-")
+				if textPoses[1] and textPoses[2] and eldit.buffer[cy] then
+					if cx < textPoses[1] and eldit.buffer[cy][cx] then
+						term.setTextColor(colors.gray)
+						term.write("|")
+					elseif (cx > textPoses[2] and eldit.buffer[cy][cx]) then
+						term.setTextColor(colors.gray)
+						term.write("-")
+					else
+						term.write(getChar(cx, cy) or " ")
+					end
 				else
 					term.write(getChar(cx, cy) or " ")
 				end
@@ -352,7 +361,7 @@ prompt = function(prebuffer)
 					if cx < #eldit.buffer[cy] then
 						xAdjList[cy] = (xAdjList[cy] or 0) + 1
 						table.remove(eldit.buffer[cy], cx)
-					else
+					elseif cy < #eldit.buffer then
 						for i = 1, #eldit.buffer[cy + 1] do
 							table.insert(eldit.buffer[cy], eldit.buffer[cy + 1][i])
 						end
@@ -485,6 +494,12 @@ prompt = function(prebuffer)
 			cur.x = cur.x - ((xAdjusts[cur.y] or {})[cur.x] or 0) + (xAdjList[cur.y] or 0)
 			for i = 1, #text do
 				if isInsert then
+					if cur.x == #eldit.buffer[cur.y] + 1 then
+						for i = 1, #eldit.buffer[cur.y + 1] do
+							table.insert(eldit.buffer[cur.y], eldit.buffer[cur.y + 1][i])
+						end
+						table.remove(eldit.buffer, cur.y + 1)
+					end
 					eldit.buffer[cur.y][cur.x + i - 1] = text:sub(i,i)
 				else
 					table.insert(eldit.buffer[cur.y], cur.x, text:sub(i,i))
@@ -614,6 +629,7 @@ prompt = function(prebuffer)
 			doRender = true
 		elseif evt[1] == "key" then
 			keysDown[evt[2]] = true
+			-- KEYBOARD SHORTCUTS
 			if keysDown[keys.leftCtrl] or keysDown[keys.leftCtrl] then
 
 				if evt[2] == keys.backspace then
@@ -629,6 +645,18 @@ prompt = function(prebuffer)
 
 				elseif evt[2] == keys.s then
 					saveFile()
+
+				elseif evt[2] == keys.a then
+					eldit.selections = {{
+						{
+							x = 1,
+							y = 1
+						},{
+							x = #eldit.buffer[#eldit.buffer],
+							y = #eldit.buffer
+						}
+					}}
+					doRender = true
 
 				elseif evt[2] == keys.left then
 					adjustCursor(-1, 0, true, "word")
