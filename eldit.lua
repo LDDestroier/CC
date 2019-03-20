@@ -329,8 +329,7 @@ prompt = function(prebuffer, precy, _eldit)
 			term.write(barmsg)
 		else
 			for id,cur in pairs(eldit.cursors) do
-				--term.write("(" .. cur.x .. "," .. cur.y .. ") ")
-				term.write(#eldit.selections)
+				term.write("(" .. cur.x .. "," .. cur.y .. ") ")
 			end
 		end
 	end
@@ -734,22 +733,26 @@ prompt = function(prebuffer, precy, _eldit)
 		elseif evt[1] == "paste" then
 			if keysDown[keys.leftShift] then
 				local cb = eldit.clipboards[eldit.selectedClipboard]
+				local cbb = {}
 				if cb then
 					deleteSelections()
 					sortCursors()
-					for i = 1, #cb do
+					for i = 1, math.max(#cb, #eldit.cursors) do
+						cbb[i] = cb[(i % #cb) + 1]
+					end
+					for i = 1, #cbb do
 						if eldit.cursors[i] then
-							for y = 1, #cb[i] do
-								placeText(table.concat(cb[i][y]), {eldit.cursors[i]})
-								if y < #cb[i] then
+							for y = 1, #cbb[i] do
+								placeText(table.concat(cbb[i][y]), {eldit.cursors[i]})
+								if y < #cbb[i] then
 									makeNewLine({eldit.cursors[i]})
 								end
 							end
 						else
 							makeNewLine({eldit.cursors[#eldit.cursors]})
-							for y = 1, #cb[i] do
-								placeText(table.concat(cb[i][y]), {eldit.cursors[#eldit.cursors]})
-								if y < #cb[i] then
+							for y = 1, #cbb[i] do
+								placeText(table.concat(cbb[i][y]), {eldit.cursors[#eldit.cursors]})
+								if y < #cbb[i] then
 									makeNewLine({eldit.cursors[#eldit.cursors]})
 								end
 							end
@@ -757,7 +760,7 @@ prompt = function(prebuffer, precy, _eldit)
 					end
 					barmsg = "Pasted from clipboard " .. eldit.selectedClipboard .. "."
 				else
-					barmsg = "Clipboard is empty."
+					barmsg = "Clipboard " .. eldit.selectedClipboard .. " is empty."
 				end
 				barlife = defaultBarLife
 			else
@@ -770,24 +773,35 @@ prompt = function(prebuffer, precy, _eldit)
 			if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
 
 				if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
-					if evt[2] == keys.c then
-						eldit.clipboards[eldit.selectedClipboard] = {}
-						local cb = eldit.clipboards[eldit.selectedClipboard]
-						sortSelections()
-						local id, selY
-						for y = 1, #eldit.buffer do
-							for x = 1, #eldit.buffer[y] do
-								id = checkIfSelected(x, y)
-								if id then
-									selY = y - eldit.selections[id][1].y + 1
-									cb[id] = cb[id] or {}
-									cb[id][selY] = cb[id][selY] or {}
-									table.insert(cb[id][selY], eldit.buffer[y][x])
+					if evt[2] == keys.c or evt[2] == keys.x then
+						if #eldit.selections == 0 then
+							barmsg = "No selections have been made."
+							barlife = defaultBarLife
+						else
+							eldit.clipboards[eldit.selectedClipboard] = {}
+							local cb = eldit.clipboards[eldit.selectedClipboard]
+							sortSelections()
+							local id, selY
+							for y = 1, #eldit.buffer do
+								for x = 1, #eldit.buffer[y] do
+									id = checkIfSelected(x, y)
+									if id then
+										selY = y - eldit.selections[id][1].y + 1
+										cb[id] = cb[id] or {}
+										cb[id][selY] = cb[id][selY] or {}
+										table.insert(cb[id][selY], eldit.buffer[y][x])
+									end
 								end
 							end
+							if evt[2] == keys.x then
+								deleteSelections()
+								barmsg = "Cut to clipboard " .. eldit.selectedClipboard .. "."
+								barlife = defaultBarLife
+							else
+								barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
+								barlife = defaultBarLife
+							end
 						end
-						barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
-						barlife = defaultBarLife
 					end
 					-- In-editor pasting is done with the "paste" event!
 				else
