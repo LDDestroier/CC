@@ -276,6 +276,7 @@ prompt = function(prebuffer)
 	end
 
 	local scrollToCursor = function()
+		lineNoLen = #tostring(#eldit.buffer)
 		local lowCur, highCur = eldit.cursors[1], eldit.cursors[1]
 		local leftCur, rightCur = eldit.cursors[1], eldit.cursors[1]
 		for id,cur in pairs(eldit.cursors) do
@@ -297,8 +298,8 @@ prompt = function(prebuffer)
 		end
 		if leftCur.x - eldit.scrollX < 1 then
 			eldit.scrollX = rightCur.x - 1
-		elseif rightCur.x - eldit.scrollX > eldit.size.width then
-			eldit.scrollX = leftCur.x - eldit.size.width
+		elseif rightCur.x - eldit.scrollX > eldit.size.width - lineNoLen then
+			eldit.scrollX = leftCur.x - (eldit.size.width - lineNoLen)
 		end
 	end
 
@@ -331,7 +332,7 @@ prompt = function(prebuffer)
 				),
 				math.max(
 					0,
-					getMaximumWidth() - eldit.size.width + 1
+					getMaximumWidth() - eldit.size.width + 1 - lineNoLen
 				)
 			)
 		end
@@ -633,11 +634,19 @@ prompt = function(prebuffer)
 			if keysDown[keys.leftCtrl] or keysDown[keys.leftCtrl] then
 
 				if evt[2] == keys.backspace then
-					deleteText("word", "backward")
+					if #eldit.selections > 0 then
+						deleteSelections()
+					else
+						deleteText("word", "backward")
+					end
 					doRender, isCursorBlink = true, false
 
 				elseif evt[2] == keys.delete then
-					deleteText("word", "forward")
+					if #eldit.selections > 0 then
+						deleteSelections()
+					else
+						deleteText("word", "forward")
+					end
 					doRender, isCursorBlink = true, false
 
 				elseif evt[2] == keys.q then
@@ -678,7 +687,10 @@ prompt = function(prebuffer)
 
 			else
 
-				if evt[2] == keys.insert then
+				if evt[2] == keys.tab then
+					placeText("\9")
+					doRender = true
+				elseif evt[2] == keys.insert then
 					isInsert = not isInsert
 					doRender, isCursorBlink = true, true
 
@@ -713,11 +725,19 @@ prompt = function(prebuffer)
 					doRender = true
 
 				elseif evt[2] == keys.backspace then
-					deleteText("single", "backward")
+					if #eldit.selections > 0 then
+						deleteSelections()
+					else
+						deleteText("single", "backward")
+					end
 					doRender, isCursorBlink = true, false
 
 				elseif evt[2] == keys.delete then
-					deleteText("single", "forward")
+					if #eldit.selections > 0 then
+						deleteSelections()
+					else
+						deleteText("single", "forward")
+					end
 					doRender, isCursorBlink = true, false
 
 				elseif evt[2] == keys.left then
