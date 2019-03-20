@@ -3,23 +3,73 @@
 -- wget https://raw.githubusercontent.com/LDDestroier/CC/master/eldit.lua
 
 local scr_x, scr_y = term.getSize()
-local tArg = {...}
+
+local argData = {
+	["-l"] = "number"
+}
 
 local eldit = {}
-eldit.filename = tArg[1]
-eldit.buffer = {{}}
-eldit.scrollX = 0
-eldit.scrollY = 0
-eldit.cursors = {
-	{x = 1, y = 1, lastX = 1}
-}
+eldit.buffer = {{}}			-- stores all text, organized like eldit.buffer[yPos][xPos]
+eldit.clipboards = {}		-- all clipboard entries
+eldit.selectedClipboard = 1	-- which clipboard to use
+eldit.scrollX = 0			-- horizontal scroll
+eldit.scrollY = 0			-- vertical scroll
 eldit.selections = {}
 eldit.size = {
-	x = 1,
-	y = 1,
-	width = scr_x,
-	height = scr_y
+	x = 1,			-- top left corner X
+	y = 1,			-- top left corner Y
+	width = scr_x,	-- horizontal size
+	height = scr_y	-- vertical size
 }
+
+-- I'm never using regular argument parsing again, this function rules
+local interpretArgs = function(tInput, tArgs)
+	local output = {}
+	local errors = {}
+	local usedEntries = {}
+	for aName, aType in pairs(tArgs) do
+		output[aName] = false
+		for i = 1, #tInput do
+			if not usedEntries[i] then
+				if tInput[i] == aName and not output[aName] then
+					if aType then
+						usedEntries[i] = true
+						if type(tInput[i+1]) == aType or type(tonumber(tInput[i+1])) == aType then
+							usedEntries[i+1] = true
+							if aType == "number" then
+								output[aName] = tonumber(tInput[i+1])
+							else
+								output[aName] = tInput[i+1]
+							end
+						else
+							output[aName] = nil
+							errors[1] = errors[1] and (errors[1] + 1) or 1
+							errors[aName] = "expected " .. aType .. ", got " .. type(tInput[i+1])
+						end
+					else
+						usedEntries[i] = true
+						output[aName] = true
+					end
+				end
+			end
+		end
+	end
+	for i = 1, #tInput do
+		if not usedEntries[i] then
+			output[#output+1] = tInput[i]
+		end
+	end
+	return output, errors
+end
+
+local argList = interpretArgs({...}, argData)
+
+eldit.filename = argList[1]
+eldit.cursors = {{
+	x = 1,
+	y = math.max(1, argList["-l"] or 1),
+	lastX = 1
+}}
 
 local eClearLine = function(y)
 	local cx, cy = term.getCursorPos()
@@ -86,15 +136,16 @@ local writeFile = function(path, contents)
 	end
 end
 
-prompt = function(prebuffer)
-	local keysDown = {}
-	local miceDown = {}
+prompt = function(prebuffer, precy, _eldit)
+	local keysDown = {}					-- list of all keys being pressed
+	local miceDown = {}					-- list of all mouse buttons being pressed
+	eldit = _eldit or eldit				-- you can replace the "eldit" table if you want I guess
 	local defaultBarLife = 10			-- default amount of time bar msg will stay onscreen
 	local barmsg = "Started Eldit."		-- message displayed on bottom screen
 	local barlife = defaultBarLife
 	local lastMouse = {}				-- last place you clicked onscreen
 	local isSelecting = false			-- whether or not you are selecting text
-	if type(prebuffer) == "string" then
+	if type(prebuffer) == "string" then	-- enter a "prebuffer" (string or table) to set the contents
 		for i = 1, #prebuffer do
 			if prebuffer:sub(i,i) == "\n" then
 				eldit.buffer[#eldit.buffer + 1] = {}
@@ -105,9 +156,10 @@ prompt = function(prebuffer)
 	elseif type(prebuffer) == "table" then
 		eldit.buffer = prebuffer
 	end
-	local isCursorBlink = false
-	local isInsert = false
+	local isCursorBlink = false			-- blinks the background color on each cursor
+	local isInsert = false				-- will overwrite characters instead of appending them
 
+	-- list of all characters that will stop a CTRL+Backspace or CTRL+Delete or CTRL+Left/Right
 	local interruptable = {
 		[" "] = true,
 		["["] = true, ["]"] = true,
@@ -124,6 +176,8 @@ prompt = function(prebuffer)
 		[","] = true
 	}
 
+	-- goes over every selection and checks if it is selected
+	-- (x, y) = position on buffer
 	local checkIfSelected = function(x, y)
 		sortSelections()
 		local fin
@@ -157,6 +211,8 @@ prompt = function(prebuffer)
 		return false
 	end
 
+	-- goes over every cursor and checks if they are at (x, y)
+	-- (x,y) = position on buffer
 	local checkIfCursor = function(x, y)
 		for id, cur in pairs(eldit.cursors) do
 			if x == cur.x and y == cur.y then
@@ -166,6 +222,7 @@ prompt = function(prebuffer)
 		return false
 	end
 
+	-- returns character at (x, y) on the buffer
 	local getChar = function(x, y)
 		if eldit.buffer[y] then
 			return eldit.buffer[y][x]
@@ -174,6 +231,7 @@ prompt = function(prebuffer)
 		end
 	end
 
+	-- the big boi function, draws **EVERYTHING**
 	local render = function()
 		local cx, cy
 		local tab = {
@@ -227,6 +285,7 @@ prompt = function(prebuffer)
 			else
 				term.write(" ")
 			end
+			-- actually draw text
 			for x = lineNoLen + 1, eldit.size.width do
 				term.setCursorPos(eldit.size.x + x - 1, eldit.size.y + y - 1)
 				cx = x + eldit.scrollX - lineNoLen
@@ -270,11 +329,13 @@ prompt = function(prebuffer)
 			term.write(barmsg)
 		else
 			for id,cur in pairs(eldit.cursors) do
-				term.write("(" .. cur.x .. "," .. cur.y .. ") ")
+				--term.write("(" .. cur.x .. "," .. cur.y .. ") ")
+				term.write(#eldit.selections)
 			end
 		end
 	end
 
+	-- if all cursors are offscreen, will scroll so that at least one of them is onscreen
 	local scrollToCursor = function()
 		lineNoLen = #tostring(#eldit.buffer)
 		local lowCur, highCur = eldit.cursors[1], eldit.cursors[1]
@@ -303,6 +364,7 @@ prompt = function(prebuffer)
 		end
 	end
 
+	-- gets the widest line length in all the buffer
 	local getMaximumWidth = function()
 		local maxX = 0
 		for y = 1, #eldit.buffer do
@@ -311,7 +373,10 @@ prompt = function(prebuffer)
 		return maxX
 	end
 
+	-- scrolls the screen, and fixes it if it's set to some weird value
 	local adjustScroll = function(modx, mody)
+		modx, mody = modx or 0, mody or 0
+		local lineNoLen = #tostring(#eldit.buffer)
 		if mody then
 			eldit.scrollY = math.min(
 				math.max(
@@ -338,6 +403,7 @@ prompt = function(prebuffer)
 		end
 	end
 
+	-- removes any cursors that share positions
 	local removeRedundantCursors = function()
 		local xes = {}
 		for i = #eldit.cursors, 1, -1 do
@@ -349,6 +415,7 @@ prompt = function(prebuffer)
 		end
 	end
 
+	-- deletes text at every cursor position, either forward or backward or neutral
 	local deleteText = function(mode, direction, _cx, _cy)
 		local xAdjList = {}
 		local yAdj = 0
@@ -442,81 +509,7 @@ prompt = function(prebuffer)
 		return yAdj
 	end
 
-	local deleteSelections = function()
-		sortSelections()
-		if #eldit.selections == 0 then
-			return {}, {}
-		end
-		local xAdjusts = {}
-		local yAdjusts = {}
-		local xAdj = 0
-		local yAdj = 0
-		for y = 1, #eldit.buffer do
-			xAdjusts[y] = {}
-			if checkIfSelected(#eldit.buffer[y] + 1, y) then
-				yAdj = yAdj + 1
-			end
-			yAdjusts[y + 1] = yAdj
-			xAdj = 0
-			for x = 2, #eldit.buffer[y] do
-				xAdjusts[y][x] = xAdj
-				if checkIfSelected(x, y) then
-					xAdj = xAdj + 1
-				end
-			end
-		end
-		for y = #eldit.buffer, 1, -1 do
-			for x = #eldit.buffer[y] + 1, 1, -1 do
-
-				if checkIfSelected(x, y) then
-					if x == #eldit.buffer[y] + 1 then
-						for i = 1, #eldit.buffer[y + 1] do
-							table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
-						end
-						table.remove(eldit.buffer, y + 1)
-					else
-						deleteText("single", nil, x, y)
-					end
-				end
-
-			end
-		end
-		eldit.selections = {}
-		return xAdjusts, yAdjusts
-	end
-
-	local placeText = function(text)
-		local xAdjusts, yAdjusts = deleteSelections()
-		removeRedundantCursors()
-		sortCursors()
-		local xAdjList = {}
-		for id,cur in pairs(eldit.cursors) do
-			cur.y = cur.y - (yAdjusts[cur.y] or 0)
-			cur.x = cur.x - ((xAdjusts[cur.y] or {})[cur.x] or 0) + (xAdjList[cur.y] or 0)
-			for i = 1, #text do
-				if isInsert then
-					if cur.x == #eldit.buffer[cur.y] + 1 then
-						for i = 1, #eldit.buffer[cur.y + 1] do
-							table.insert(eldit.buffer[cur.y], eldit.buffer[cur.y + 1][i])
-						end
-						table.remove(eldit.buffer, cur.y + 1)
-					end
-					eldit.buffer[cur.y][cur.x + i - 1] = text:sub(i,i)
-				else
-					table.insert(eldit.buffer[cur.y], cur.x, text:sub(i,i))
-					if #xAdjusts + #yAdjusts == 0 then
-						xAdjList[cur.y] = (xAdjList[cur.y] or 0) + 1
-					end
-				end
-				cur.x = cur.x + 1
-			end
-			cur.lastX = cur.x
-		end
-		if not isSelecting then
-			scrollToCursor()
-		end
-	end
-
+	-- moves the cursor by (xmod, ymod), and fixes its position if it's set to an invalid one
 	local adjustCursor = function(_xmod, _ymod, setLastX, mode)
 		for id,cur in pairs(eldit.cursors) do
 			if mode == "word" then
@@ -575,8 +568,89 @@ prompt = function(prebuffer)
 		end
 	end
 
-	local makeNewLine = function()
-		for id,cur in pairs(eldit.cursors) do
+	-- deletes the parts of the buffer that are selected, then clears the selection list
+	local deleteSelections = function()
+		sortSelections()
+		if #eldit.selections == 0 then
+			return {}, {}
+		end
+		local xAdjusts = {}
+		local yAdjusts = {}
+		local xAdj = 0
+		local yAdj = 0
+		for y = 1, #eldit.buffer do
+			xAdjusts[y] = {}
+			if checkIfSelected(#eldit.buffer[y] + 1, y) then
+				yAdj = yAdj + 1
+			end
+			yAdjusts[y + 1] = yAdj
+			xAdj = 0
+			for x = 2, #eldit.buffer[y] do
+				xAdjusts[y][x] = xAdj
+				if checkIfSelected(x, y) then
+					xAdj = xAdj + 1
+				end
+			end
+		end
+		for y = #eldit.buffer, 1, -1 do
+			for x = #eldit.buffer[y] + 1, 1, -1 do
+
+				if checkIfSelected(x, y) then
+					if x == #eldit.buffer[y] + 1 then
+						if eldit.buffer[y + 1] then
+							for i = 1, #eldit.buffer[y + 1] do
+								table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
+							end
+							table.remove(eldit.buffer, y + 1)
+						end
+					else
+						deleteText("single", nil, x, y)
+					end
+				end
+
+			end
+		end
+		eldit.selections = {}
+		adjustCursor(0, 0, true)
+		return xAdjusts, yAdjusts
+	end
+
+	-- puts text at every cursor position
+	local placeText = function(text, cursorList)
+		local xAdjusts, yAdjusts = deleteSelections()
+		removeRedundantCursors()
+		sortCursors()
+		local xAdjList = {}
+		for id,cur in pairs(cursorList or eldit.cursors) do
+			cur.y = cur.y - (yAdjusts[cur.y] or 0)
+			cur.x = cur.x - ((xAdjusts[cur.y] or {})[cur.x] or 0) + (xAdjList[cur.y] or 0)
+			for i = 1, #text do
+				if isInsert then
+					if cur.x == #eldit.buffer[cur.y] + 1 then
+						for i = 1, #eldit.buffer[cur.y + 1] do
+							table.insert(eldit.buffer[cur.y], eldit.buffer[cur.y + 1][i])
+						end
+						table.remove(eldit.buffer, cur.y + 1)
+					end
+					eldit.buffer[cur.y][cur.x + i - 1] = text:sub(i,i)
+				else
+					table.insert(eldit.buffer[cur.y], cur.x, text:sub(i,i))
+					if #xAdjusts + #yAdjusts == 0 then
+						xAdjList[cur.y] = (xAdjList[cur.y] or 0) + 1
+					end
+				end
+				cur.x = cur.x + 1
+			end
+			cur.lastX = cur.x
+		end
+		if not isSelecting then
+			scrollToCursor()
+		end
+	end
+
+	-- adds a new line to the buffer at every cursor position
+	local makeNewLine = function(cursorList)
+		for id,cur in pairs(cursorList or eldit.cursors) do
 			table.insert(eldit.buffer, cur.y + 1, {})
 			for i = cur.x, #eldit.buffer[cur.y] do
 				if i > cur.x or not isInsert then
@@ -592,7 +666,8 @@ prompt = function(prebuffer)
 		end
 	end
 
-	saveFile = function()
+	-- saves to file, duhh
+	local saveFile = function()
 		local compiled = ""
 		for y = 1, #eldit.buffer do
 			compiled = compiled .. table.concat(eldit.buffer[y])
@@ -610,6 +685,34 @@ prompt = function(prebuffer)
 	local bartID = os.startTimer(0.1)	-- timer for bar message to go away
 	local doRender = true				-- if true, renders
 
+	-- converts numerical key events to usable numbers
+	local numToKey = {
+		-- number bar
+		[2] = 1,
+		[3] = 2,
+		[4] = 3,
+		[5] = 4,
+		[6] = 5,
+		[7] = 6,
+		[8] = 7,
+		[9] = 8,
+		[10] = 9,
+		[11] = 0,
+		-- number pad
+		[79] = 1,
+		[80] = 2,
+		[81] = 3,
+		[75] = 4,
+		[76] = 5,
+		[77] = 6,
+		[71] = 7,
+		[72] = 8,
+		[73] = 9,
+		[82] = 0,
+	}
+
+	-- here we go my man
+	scrollToCursor()
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "timer" then
@@ -625,64 +728,124 @@ prompt = function(prebuffer)
 				bartID = os.startTimer(0.1)
 				barlife = math.max(0, barlife - 1)
 			end
-		elseif evt[1] == "char" or evt[1] == "paste" then
+		elseif (evt[1] == "char" and not keysDown[keys.leftCtrl]) then
 			placeText(evt[2])
+			doRender = true
+		elseif evt[1] == "paste" then
+			if keysDown[keys.leftShift] then
+				local cb = eldit.clipboards[eldit.selectedClipboard]
+				if cb then
+					deleteSelections()
+					sortCursors()
+					for i = 1, #cb do
+						if eldit.cursors[i] then
+							for y = 1, #cb[i] do
+								placeText(table.concat(cb[i][y]), {eldit.cursors[i]})
+								if y < #cb[i] then
+									makeNewLine({eldit.cursors[i]})
+								end
+							end
+						else
+							makeNewLine({eldit.cursors[#eldit.cursors]})
+							for y = 1, #cb[i] do
+								placeText(table.concat(cb[i][y]), {eldit.cursors[#eldit.cursors]})
+								if y < #cb[i] then
+									makeNewLine({eldit.cursors[#eldit.cursors]})
+								end
+							end
+						end
+					end
+					barmsg = "Pasted from clipboard " .. eldit.selectedClipboard .. "."
+				else
+					barmsg = "Clipboard is empty."
+				end
+				barlife = defaultBarLife
+			else
+				placeText(evt[2])
+			end
 			doRender = true
 		elseif evt[1] == "key" then
 			keysDown[evt[2]] = true
 			-- KEYBOARD SHORTCUTS
-			if keysDown[keys.leftCtrl] or keysDown[keys.leftCtrl] then
+			if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
 
-				if evt[2] == keys.backspace then
-					if #eldit.selections > 0 then
-						deleteSelections()
-					else
-						deleteText("word", "backward")
+				if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
+					if evt[2] == keys.c then
+						eldit.clipboards[eldit.selectedClipboard] = {}
+						local cb = eldit.clipboards[eldit.selectedClipboard]
+						sortSelections()
+						local id, selY
+						for y = 1, #eldit.buffer do
+							for x = 1, #eldit.buffer[y] do
+								id = checkIfSelected(x, y)
+								if id then
+									selY = y - eldit.selections[id][1].y + 1
+									cb[id] = cb[id] or {}
+									cb[id][selY] = cb[id][selY] or {}
+									table.insert(cb[id][selY], eldit.buffer[y][x])
+								end
+							end
+						end
+						barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
+						barlife = defaultBarLife
 					end
-					doRender, isCursorBlink = true, false
+					-- In-editor pasting is done with the "paste" event!
+				else
+					if numToKey[evt[2]] then -- if that's a number then
+						eldit.selectedClipboard = numToKey[evt[2]]
+						barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
+						barlife = defaultBarLife
+					elseif evt[2] == keys.backspace then
+						if #eldit.selections > 0 then
+							deleteSelections()
+						else
+							deleteText("word", "backward")
+						end
+						doRender, isCursorBlink = true, false
 
-				elseif evt[2] == keys.delete then
-					if #eldit.selections > 0 then
-						deleteSelections()
-					else
-						deleteText("word", "forward")
+					elseif evt[2] == keys.delete then
+						if #eldit.selections > 0 then
+							deleteSelections()
+						else
+							deleteText("word", "forward")
+						end
+						doRender, isCursorBlink = true, false
+
+					elseif evt[2] == keys.q then
+						return "exit"
+
+					elseif evt[2] == keys.s then
+						saveFile()
+
+					elseif evt[2] == keys.a then
+						eldit.selections = {{
+							{
+								x = 1,
+								y = 1
+							},{
+								x = #eldit.buffer[#eldit.buffer],
+								y = #eldit.buffer
+							}
+						}}
+						doRender = true
+
+					elseif evt[2] == keys.left then
+						adjustCursor(-1, 0, true, "word")
+						doRender, isCursorBlink = true, true
+
+					elseif evt[2] == keys.right then
+						adjustCursor(1, 0, true, "word")
+						doRender, isCursorBlink = true, true
+
+					elseif evt[2] == keys.up then
+						adjustCursor(0, -1, false, "flip")
+						doRender, isCursorBlink = true, true
+
+					elseif evt[2] == keys.down then
+						adjustCursor(0, 1, false, "flip")
+						doRender, isCursorBlink = true, true
+
 					end
-					doRender, isCursorBlink = true, false
-
-				elseif evt[2] == keys.q then
-					return "exit"
-
-				elseif evt[2] == keys.s then
-					saveFile()
-
-				elseif evt[2] == keys.a then
-					eldit.selections = {{
-						{
-							x = 1,
-							y = 1
-						},{
-							x = #eldit.buffer[#eldit.buffer],
-							y = #eldit.buffer
-						}
-					}}
-					doRender = true
-
-				elseif evt[2] == keys.left then
-					adjustCursor(-1, 0, true, "word")
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.right then
-					adjustCursor(1, 0, true, "word")
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.up then
-					adjustCursor(0, -1, false, "flip")
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.down then
-					adjustCursor(0, 1, false, "flip")
-					doRender, isCursorBlink = true, true
-
 				end
 
 			else
@@ -705,7 +868,7 @@ prompt = function(prebuffer)
 						lastX = 1
 					}}
 					scrollToCursor()
-					doRender = true
+					doRender, isCursorBlink = true, true
 
 				elseif evt[2] == keys["end"] then
 					eldit.cursors = {{
@@ -714,7 +877,7 @@ prompt = function(prebuffer)
 						lastX = #eldit.buffer[eldit.cursors[1].y] + 1
 					}}
 					scrollToCursor()
-					doRender = true
+					doRender, isCursorBlink = true, true
 
 				elseif evt[2] == keys.pageUp then
 					adjustScroll(0, -eldit.size.height)
@@ -796,21 +959,32 @@ prompt = function(prebuffer)
 			if lastMouse.x and lastMouse.y and lastMouse.curID then
 				local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
 				local adjEX, adjEY = evt[3] + eldit.scrollX, evt[4] + eldit.scrollY
-				eldit.selections[#eldit.selections + ((lastMouse.ctrl or not isSelecting) and 1 or 0)] = {
+				local selID
+				if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
+					selID = #eldit.selections + 1
+				else
+					selID = #eldit.selections + 0
+				end
+				eldit.selections[selID] = {
 					{
-						x = math.min(adjMX, #eldit.buffer[adjMY] + lineNoLen) - lineNoLen,
+						x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
 						y = adjMY
 					},
 					{
-						x = math.min(adjEX, #eldit.buffer[adjEY] + lineNoLen) - lineNoLen,
+						x = math.min(adjEX, #(eldit.buffer[adjEY] or "") + lineNoLen) - lineNoLen,
 						y = adjEY
 					}
 				}
+				if isSelecting then
+					--lastMouse.ctrl = false
+				end
+				sortSelections()
 				eldit.cursors[lastMouse.curID] = {
-					x = eldit.selections[#eldit.selections][1].x,
-					y = eldit.selections[#eldit.selections][1].y,
-					lastX = eldit.selections[#eldit.selections][1].x
+					x = eldit.selections[selID][1].x,
+					y = eldit.selections[selID][1].y,
+					lastX = eldit.selections[selID][1].x
 				}
+
 				isSelecting = true
 				adjustCursor(0, 0)
 				doRender = true
