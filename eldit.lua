@@ -89,9 +89,11 @@ end
 prompt = function(prebuffer)
 	local keysDown = {}
 	local miceDown = {}
-	local defaultBarLife = 10
-	local barmsg = "Started Eldit."
+	local defaultBarLife = 10			-- default amount of time bar msg will stay onscreen
+	local barmsg = "Started Eldit."		-- message displayed on bottom screen
 	local barlife = defaultBarLife
+	local lastMouse = {}				-- last place you clicked onscreen
+	local isSelecting = false			-- whether or not you are selecting text
 	if type(prebuffer) == "string" then
 		for i = 1, #prebuffer do
 			if prebuffer:sub(i,i) == "\n" then
@@ -174,10 +176,54 @@ prompt = function(prebuffer)
 
 	local render = function()
 		local cx, cy
+		local tab = {
+			[" "] = true,
+			["\9"] = true
+		}
+		local lineNoLen = #tostring(#eldit.buffer)
+		local textPoses = {math.huge, math.huge}		-- used to identify space characters without text
 		for y = 1, eldit.size.height - 1 do -- minus one because it reserves space for the bar
-			for x = 1, eldit.size.width do
+			cy = y + eldit.scrollY
+			-- find text
+			for x = 1, #eldit.buffer[cy] do
+				if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
+					textPoses[1] = x
+					break
+				end
+			end
+			for x = #eldit.buffer[cy], 1, -1 do
+				if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
+					textPoses[2] = x
+					break
+				end
+			end
+			local isHighlighted = false
+			for id,cur in pairs(eldit.cursors) do
+				if cy == cur.y then
+					isHighlighted = true
+					break
+				end
+			end
+			if not isHighlighted then
+				for id,sel in pairs(eldit.selections) do
+					if cy >= sel[1].y and cy <= sel[2].y then
+						isHighlighted = true
+						break
+					end
+				end
+			end
+			term.setCursorPos(eldit.size.x, eldit.size.y + y - 1)
+			if isHighlighted then
+				term.setBackgroundColor(colors.gray)
+				term.setTextColor(colors.white)
+			else
+				term.setBackgroundColor(colors.black)
+				term.setTextColor(colors.lightGray)
+			end
+			term.write(cy .. (" "):rep(lineNoLen - #tostring(y)))
+			for x = lineNoLen + 1, eldit.size.width do
 				term.setCursorPos(eldit.size.x + x - 1, eldit.size.y + y - 1)
-				cx = x + eldit.scrollX
+				cx = x + eldit.scrollX - lineNoLen
 				cy = y + eldit.scrollY
 
 				if checkIfSelected(cx, cy) then
@@ -197,7 +243,15 @@ prompt = function(prebuffer)
 				else
 					term.setTextColor(colors.white)
 				end
-				term.write(getChar(cx, cy) or " ")
+				if cx < textPoses[1] and eldit.buffer[cy][cx] then
+					term.setTextColor(colors.gray)
+					term.write("|")
+				elseif (cx > textPoses[2] and eldit.buffer[cy][cx]) then
+					term.setTextColor(colors.gray)
+					term.write("-")
+				else
+					term.write(getChar(cx, cy) or " ")
+				end
 			end
 		end
 		term.setCursorPos(eldit.size.x, eldit.size.y + eldit.size.height - 1)
@@ -372,7 +426,9 @@ prompt = function(prebuffer)
 
 		end
 		removeRedundantCursors()
-		scrollToCursor()
+		if not isSelecting then
+			scrollToCursor()
+		end
 		return yAdj
 	end
 
@@ -440,7 +496,9 @@ prompt = function(prebuffer)
 			end
 			cur.lastX = cur.x
 		end
-		scrollToCursor()
+		if not isSelecting then
+			scrollToCursor()
+		end
 	end
 
 	local adjustCursor = function(_xmod, _ymod, setLastX, mode)
@@ -496,7 +554,9 @@ prompt = function(prebuffer)
 			eldit.selections = {}
 			isSelecting = false
 		end
-		scrollToCursor()
+		if not isSelecting then
+			scrollToCursor()
+		end
 	end
 
 	local makeNewLine = function()
@@ -511,7 +571,9 @@ prompt = function(prebuffer)
 			cur.x = 1
 			cur.y = cur.y + 1
 		end
-		scrollToCursor()
+		if not isSelecting then
+			scrollToCursor()
+		end
 	end
 
 	saveFile = function()
@@ -528,8 +590,6 @@ prompt = function(prebuffer)
 	end
 
 	local evt
-	local lastMouse = {}				-- last place you clicked onscreen
-	local isSelecting = false			-- whether or not you are selecting text
 	local tID = os.startTimer(0.5)		-- timer for cursor blinking
 	local bartID = os.startTimer(0.1)	-- timer for bar message to go away
 	local doRender = true				-- if true, renders
@@ -617,11 +677,11 @@ prompt = function(prebuffer)
 					doRender = true
 
 				elseif evt[2] == keys.pageUp then
-					adjustScroll(-eldit.size.height)
+					adjustScroll(0, -eldit.size.height)
 					doRender = true
 
 				elseif evt[2] == keys.pageDown then
-					adjustScroll(eldit.size.height)
+					adjustScroll(0, eldit.size.height)
 					doRender = true
 
 				elseif evt[2] == keys.backspace then
@@ -654,18 +714,19 @@ prompt = function(prebuffer)
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		elseif evt[1] == "mouse_click" then
+			local lineNoLen = #tostring(#eldit.buffer)
 			miceDown[evt[2]] = {x = evt[3], y = evt[4]}
 			if keysDown[keys.leftCtrl] then
 				table.insert(eldit.cursors, {
-					x = evt[3] + eldit.scrollX,
+					x = evt[3] + eldit.scrollX - lineNoLen,
 					y = evt[4] + eldit.scrollY,
-					lastX = evt[3] + eldit.scrollX
+					lastX = evt[3] + eldit.scrollX - lineNoLen
 				})
 			else
 				eldit.cursors = {{
-					x = evt[3] + eldit.scrollX,
+					x = evt[3] + eldit.scrollX - lineNoLen,
 					y = evt[4] + eldit.scrollY,
-					lastX = evt[3] + eldit.scrollX
+					lastX = evt[3] + eldit.scrollX - lineNoLen
 				}}
 				eldit.selections = {}
 			end
@@ -674,6 +735,7 @@ prompt = function(prebuffer)
 				y = evt[4],
 				scrollX = eldit.scrollX,
 				scrollY = eldit.scrollY,
+				lineNoLen = lineNoLen,
 				ctrl = keysDown[keys.leftCtrl],
 				curID = #eldit.cursors,
 			}
@@ -681,44 +743,50 @@ prompt = function(prebuffer)
 			adjustCursor(0, 0, true)
 			doRender = true
 		elseif evt[1] == "mouse_drag" then
+			local lineNoLen = #tostring(#eldit.buffer)
 			miceDown[evt[2]] = {x = evt[3], y = evt[4]}
 			if lastMouse.x and lastMouse.y and lastMouse.curID then
 				local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
 				local adjEX, adjEY = evt[3] + eldit.scrollX, evt[4] + eldit.scrollY
-				eldit.selections[#eldit.selections + ((lastMouse.ctrl and not isSelecting) and 1 or 0)] = {
+				eldit.selections[#eldit.selections + ((lastMouse.ctrl or not isSelecting) and 1 or 0)] = {
 					{
-						x = math.min(adjMX, #eldit.buffer[adjMY]),
+						x = math.min(adjMX, #eldit.buffer[adjMY] + lineNoLen) - lineNoLen,
 						y = adjMY
 					},
 					{
-						x = math.min(adjEX, #eldit.buffer[adjEY]),
+						x = math.min(adjEX, #eldit.buffer[adjEY] + lineNoLen) - lineNoLen,
 						y = adjEY
 					}
 				}
-				sortSelections()
 				eldit.cursors[lastMouse.curID] = {
 					x = eldit.selections[#eldit.selections][1].x,
 					y = eldit.selections[#eldit.selections][1].y,
 					lastX = eldit.selections[#eldit.selections][1].x
 				}
-				adjustCursor(0, 0)
 				isSelecting = true
+				adjustCursor(0, 0)
 				doRender = true
 			end
 		elseif evt[1] == "mouse_up" then
 			miceDown[evt[2]] = nil
 			isSelecting = false
+			sortSelections()
 		elseif evt[1] == "mouse_scroll" then
 			if keysDown[keys.leftAlt] then
 				adjustScroll((keysDown[keys.leftCtrl] and eldit.size.width or 1) * evt[2], 0)
 			else
 				adjustScroll(0, (keysDown[keys.leftCtrl] and eldit.size.height or 1) * evt[2])
 			end
+			if isSelecting then
+				os.queueEvent("mouse_drag", 1, evt[3], evt[4])
+			end
 			doRender = true
 		end
 		if doRender then
-			render()
-			doRender = false
+			if not (evt[1] == "mouse_scroll" and isSelecting) then
+				render()
+				doRender = false
+			end
 		end
 	end
 end
