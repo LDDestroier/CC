@@ -27,8 +27,8 @@ eldit.size = {
 }
 
 config.showLineNumberIndicator = false
-config.showWhitespace = false
-config.showTrailingSpace = false
+config.showWhitespace = true
+config.showTrailingSpace = true
 
 -- minor optimizations, I think
 local concatTable = table.concat
