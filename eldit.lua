@@ -8,7 +8,7 @@ local argData = {
 	["-l"] = "number"
 }
 
-local eldit = {}
+local eldit, config = {}, {}
 eldit.buffer = {{}}			-- stores all text, organized like eldit.buffer[yPos][xPos]
 eldit.undoBuffer = {{{}}}	-- stores buffers for undoing/redoing
 eldit.maxUndo = 16			-- maximum size of the undo buffer
@@ -25,6 +25,14 @@ eldit.size = {
 	width = scr_x,	-- horizontal size
 	height = scr_y	-- vertical size
 }
+
+config.showLineNumberIndicator = false
+config.showWhitespace = false
+config.showTrailingSpace = false
+
+-- minor optimizations, I think
+local concatTable = table.concat
+local sortTable = table.sort
 
 -- I'm never using regular argument parsing again, this function rules
 local interpretArgs = function(tInput, tArgs)
@@ -93,14 +101,14 @@ end
 
 local sortSelections = function()
 	for id,sel in pairs(eldit.selections) do
-		table.sort(sel, function(a,b)
+		sortTable(sel, function(a,b)
 			return (a.y * eldit.size.width) + a.x < (b.y * eldit.size.width) + b.x
 		end)
 	end
 end
 
 local sortCursors = function()
-	table.sort(eldit.cursors, function(a,b)
+	sortTable(eldit.cursors, function(a,b)
 		return (a.y * eldit.size.width) + a.x < (b.y * eldit.size.width) + b.x
 	end)
 end
@@ -151,6 +159,14 @@ deepCopy = function(tbl)
 		end
 	end
 	return output
+end
+
+local getLineNoLen = function()
+	if config.showLineNumberIndicator then
+		return #tostring(#eldit.buffer)
+	else
+		return 0
+	end
 end
 
 prompt = function(prebuffer, precy, _eldit)
@@ -260,12 +276,16 @@ prompt = function(prebuffer, precy, _eldit)
 			[" "] = true,
 			["\9"] = true
 		}
-		local lineNoLen = #tostring(#eldit.buffer)
+		local lineNoLen = getLineNoLen()
 		local textPoses = {math.huge, -math.huge}		-- used to identify space characters without text
+		local screen = {{},{},{}}
 		for y = 1, eldit.size.height - 1 do -- minus one because it reserves space for the bar
+			screen[1][y] = {}
+			screen[2][y] = {}
+			screen[3][y] = {}
 			cy = y + eldit.scrollY
 			-- find text
-			if eldit.buffer[cy] then
+			if eldit.buffer[cy] and (config.showWhitespace or config.showTrailingSpace) then
 				for x = 1, #eldit.buffer[cy] do
 					if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
 						textPoses[1] = x
@@ -295,7 +315,7 @@ prompt = function(prebuffer, precy, _eldit)
 				end
 			end
 			term.setCursorPos(eldit.size.x, eldit.size.y + y - 1)
-			if cy <= #eldit.buffer then
+			if cy <= #eldit.buffer and lineNoLen > 0 then
 				if isHighlighted then
 					term.setBackgroundColor(colors.gray)
 					term.setTextColor(colors.white)
@@ -307,49 +327,64 @@ prompt = function(prebuffer, precy, _eldit)
 			else
 				term.write(" ")
 			end
+
 			-- actually draw text
+
+			local cChar, cTxt, cBg = " ", " ", " "
+			term.setCursorPos(eldit.size.x + lineNoLen + 0, eldit.size.y + y - 1)
 			for x = lineNoLen + 1, eldit.size.width do
-				term.setCursorPos(eldit.size.x + x - 1, eldit.size.y + y - 1)
 				cx = x + eldit.scrollX - lineNoLen
 
 				if checkIfSelected(cx, cy) then
-					term.setBackgroundColor(colors.blue)
+					cBg = "b"
 				else
-					term.setBackgroundColor(colors.black)
+					cBg = "f"
 				end
 
 				if checkIfCursor(cx, cy) and isCursorBlink then
 					if isInsert then
-						term.setTextColor(colors.black)
-						term.setBackgroundColor(colors.white)
+						cTxt, cBg = "0", "f"
 					else
-						term.setTextColor(colors.black)
-						term.setBackgroundColor(colors.lightGray)
+						cTxt, cBg = "f", "8"
 					end
 				else
-					term.setTextColor(colors.white)
+					cTxt = "0"
 				end
-				if textPoses[1] and textPoses[2] and eldit.buffer[cy] then
-					if cx < textPoses[1] and eldit.buffer[cy][cx] then
-						term.setTextColor(colors.gray)
-						term.write("|")
-					elseif (cx > textPoses[2] and eldit.buffer[cy][cx]) then
-						term.setTextColor(colors.gray)
-						term.write("-")
+				if config.showWhitespace or config.showTrailingSpace then
+					if textPoses[1] and textPoses[2] and eldit.buffer[cy] then
+						if cx < textPoses[1] and eldit.buffer[cy][cx] then
+							cTxt = "7"
+							cChar = "|"
+						elseif (cx > textPoses[2] and eldit.buffer[cy][cx]) then
+							cTxt = "7"
+							cChar = "-"
+						else
+							cChar = getChar(cx, cy) or " "
+						end
 					else
-						term.write(getChar(cx, cy) or " ")
+						cChar = getChar(cx, cy) or " "
 					end
 				else
-					term.write(getChar(cx, cy) or " ")
+					cChar = getChar(cx, cy) or " "
 				end
+				screen[1][y][x - lineNoLen] = cChar
+				screen[2][y][x - lineNoLen] = cTxt
+				screen[3][y][x - lineNoLen] = cBg
 			end
+			term.blit(
+				concatTable(screen[1][y]),
+				concatTable(screen[2][y]),
+				concatTable(screen[3][y])
+			)
 		end
 		term.setCursorPos(eldit.size.x, eldit.size.y + eldit.size.height - 1)
 		term.setBackgroundColor(colors.gray)
 		eClearLine()
 		if barlife > 0 then
+			term.setTextColor(colors.yellow)
 			term.write(barmsg)
 		else
+			term.setTextColor(colors.white)
 			for id,cur in pairs(eldit.cursors) do
 				term.write("(" .. cur.x .. "," .. cur.y .. ") ")
 			end
@@ -358,7 +393,7 @@ prompt = function(prebuffer, precy, _eldit)
 
 	-- if all cursors are offscreen, will scroll so that at least one of them is onscreen
 	local scrollToCursor = function()
-		lineNoLen = #tostring(#eldit.buffer)
+		lineNoLen = getLineNoLen()
 		local lowCur, highCur = eldit.cursors[1], eldit.cursors[1]
 		local leftCur, rightCur = eldit.cursors[1], eldit.cursors[1]
 		for id,cur in pairs(eldit.cursors) do
@@ -397,7 +432,7 @@ prompt = function(prebuffer, precy, _eldit)
 	-- scrolls the screen, and fixes it if it's set to some weird value
 	local adjustScroll = function(modx, mody)
 		modx, mody = modx or 0, mody or 0
-		local lineNoLen = #tostring(#eldit.buffer)
+		local lineNoLen = getLineNoLen()
 		if mody then
 			eldit.scrollY = math.min(
 				math.max(
@@ -709,7 +744,7 @@ prompt = function(prebuffer, precy, _eldit)
 	local saveFile = function()
 		local compiled = ""
 		for y = 1, #eldit.buffer do
-			compiled = compiled .. table.concat(eldit.buffer[y])
+			compiled = compiled .. concatTable(eldit.buffer[y])
 			if y < #eldit.buffer then
 				compiled = compiled .. "\n"
 			end
@@ -804,7 +839,7 @@ prompt = function(prebuffer, precy, _eldit)
 					for i = 1, #cbb do
 						if eldit.cursors[i] then
 							for y = 1, #cbb[i] do
-								placeText(table.concat(cbb[i][y]), {eldit.cursors[i]})
+								placeText(concatTable(cbb[i][y]), {eldit.cursors[i]})
 								if y < #cbb[i] then
 									makeNewLine({eldit.cursors[i]})
 								end
@@ -812,7 +847,7 @@ prompt = function(prebuffer, precy, _eldit)
 						else
 							makeNewLine({eldit.cursors[#eldit.cursors]})
 							for y = 1, #cbb[i] do
-								placeText(table.concat(cbb[i][y]), {eldit.cursors[#eldit.cursors]})
+								placeText(concatTable(cbb[i][y]), {eldit.cursors[#eldit.cursors]})
 								if y < #cbb[i] then
 									makeNewLine({eldit.cursors[#eldit.cursors]})
 								end
@@ -1059,7 +1094,7 @@ prompt = function(prebuffer, precy, _eldit)
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		elseif evt[1] == "mouse_click" then
-			local lineNoLen = #tostring(#eldit.buffer)
+			local lineNoLen = getLineNoLen()
 			miceDown[evt[2]] = {x = evt[3], y = evt[4]}
 			if keysDown[keys.leftCtrl] then
 				table.insert(eldit.cursors, {
@@ -1090,7 +1125,7 @@ prompt = function(prebuffer, precy, _eldit)
 			eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 			doRender = true
 		elseif evt[1] == "mouse_drag" then
-			local lineNoLen = #tostring(#eldit.buffer)
+			local lineNoLen = getLineNoLen()
 			miceDown[evt[2]] = {x = evt[3], y = evt[4]}
 			if lastMouse.x and lastMouse.y and lastMouse.curID then
 				local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
