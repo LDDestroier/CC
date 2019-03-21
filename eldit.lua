@@ -566,7 +566,7 @@ prompt = function(prebuffer, precy, _eldit)
 	end
 
 	-- moves the cursor by (xmod, ymod), and fixes its position if it's set to an invalid one
-	local adjustCursor = function(_xmod, _ymod, setLastX, mode)
+	local adjustCursor = function(_xmod, _ymod, setLastX, mode, doNotDelSelections)
 		for id,cur in pairs(eldit.cursors) do
 			if mode == "word" then
 				xmod = (_xmod / math.abs(_xmod))
@@ -615,7 +615,7 @@ prompt = function(prebuffer, precy, _eldit)
 			end
 		end
 		removeRedundantCursors()
-		if (not keysDown[keys.leftCtrl]) and not (xmod == 0 and ymod == 0) then
+		if (not keysDown[keys.leftCtrl]) and not (xmod == 0 and ymod == 0) and not doNotDelSelections then
 			eldit.selections = {}
 			isSelecting = false
 		end
@@ -1008,7 +1008,38 @@ prompt = function(prebuffer, precy, _eldit)
 			else
 
 				if evt[2] == keys.tab then
-					placeText("\9")
+					if #eldit.selections > 0 then
+						sortSelections()
+						local safeY = {}
+						for id,sel in pairs(eldit.selections) do
+							for y = sel[1].y, sel[2].y do
+								if not safeY[y] then
+									if keysDown[keys.leftShift] then
+										if eldit.buffer[y][1] == "\9" or eldit.buffer[y][1] == " " then
+											table.remove(eldit.buffer[y], 1)
+											for idd,cur in pairs(eldit.cursors) do
+												if cur.y == y and cur.x > 1 then
+													cur.x = cur.x - 1
+													cur.lastX = cur.x
+												end
+											end
+										end
+									else
+										table.insert(eldit.buffer[y], 1, "\9")
+										for idd,cur in pairs(eldit.cursors) do
+											if cur.y == y and cur.x < #eldit.buffer[y] then
+												cur.x = cur.x + 1
+												cur.lastX = cur.x
+											end
+										end
+									end
+								end
+								safeY[y] = true
+							end
+						end
+					else
+						placeText("\9")
+					end
 					doRender = true
 					undotID = os.startTimer(eldit.undoDelay)
 
