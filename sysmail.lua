@@ -1,42 +1,433 @@
--- Eldit (still being made)
--- by LDDestroier
--- wget https://raw.githubusercontent.com/LDDestroier/CC/master/eldit.lua
+--[[
+	sysMail
+	 by LDDestroier
+	 
+	Make sure that the server has the keys of all clients!
+	To do:
+		+ update read prompt
+		+ implement auto-update
+--]]
+
+local mainPath = ".sysmail"		-- where everything is based
+local yourID = os.getComputerID()	-- duhhhhh
+local onlyUseWiredModems = false		-- if true, will refuse to use wireless modems
+local defaultTimer = 3			-- will wait this amount of seconds for a server response
+local maximumMailLines = 16		-- will cap all emails to this amount of lines
 
 local scr_x, scr_y = term.getSize()
 
-local argData = {
-	["-l"] = "number"
+local config = {
+	channel = 1024,
+	keyPath = fs.combine(mainPath, "keys"),
+	mailPath = fs.combine(mainPath, "mail"),
+	apiPath = fs.combine(mainPath, "api"),
+	nameFile = fs.combine(mainPath, "names"),
+	attachmentPath = "attachments"
 }
 
-local eldit, config = {}, {}
-eldit.buffer = {{}}			-- stores all text, organized like eldit.buffer[yPos][xPos]
-eldit.undoBuffer = {{{}}}	-- stores buffers for undoing/redoing
-eldit.allowUndo = true		-- whether or not to allow undoing/redoing
-eldit.maxUndo = 16			-- maximum size of the undo buffer
-eldit.undoPos = 1			-- current position in undo buffer
-eldit.undoDelay = 0.5		-- amount of time to wait after typing, before the buffer is put in the undo buffer
-eldit.clipboards = {}		-- all clipboard entries
-eldit.selectedClipboard = 1	-- which clipboard to use
-eldit.scrollX = 0			-- horizontal scroll
-eldit.scrollY = 0			-- vertical scroll
-eldit.selections = {}
-eldit.size = {
-	x = 1,			-- top left corner X
-	y = 1,			-- top left corner Y
-	width = scr_x,	-- horizontal size
-	height = scr_y	-- vertical size
+-- 
+local getTableLength = function(tbl)
+	local output = 0
+	for k,v in pairs(tbl) do
+		output = output + 1
+	end
+	return output
+end
+
+-- used for picking attachments
+
+local lddfm = {scroll = 0, ypaths = {}}
+
+lddfm.scr_x, lddfm.scr_y = term.getSize()
+
+lddfm.setPalate = function(_p)
+	if type(_p) ~= "table" then _p = {} end
+	lddfm.p = { --the DEFAULT color palate
+		bg =        _p.bg or colors.gray,			-- whole background color
+		d_txt =     _p.d_txt or colors.yellow,		-- directory text color
+		d_bg =      _p.d_bg or colors.gray,			-- directory bg color
+		f_txt =     _p.f_txt or colors.white,		-- file text color
+		f_bg =      _p.f_bg or colors.gray,			-- file bg color
+		p_txt =     _p.p_txt or colors.black,		-- path text color
+		p_bg =      _p.p_bg or colors.lightGray,	-- path bg color
+		close_txt = _p.close_txt or colors.gray,	-- close button text color
+		close_bg =  _p.close_bg or colors.lightGray,-- close button bg color
+		scr =       _p.scr or colors.lightGray,		-- scrollbar color
+		scrbar =    _p.scrbar or colors.gray,		-- scroll tab color
+	}
+end
+
+lddfm.setPalate()
+
+lddfm.foldersOnTop = function(floop,path)
+	local output = {}
+	for a = 1, #floop do
+		if fs.isDir(fs.combine(path,floop[a])) then
+			table.insert(output,1,floop[a])
+		else
+			table.insert(output,floop[a])
+		end
+	end
+	return output
+end
+
+lddfm.filterFileFolders = function(list,path,_noFiles,_noFolders,_noCD,_doHidden)
+	local output = {}
+	for a = 1, #list do
+		local entry = fs.combine(path,list[a])
+		if fs.isDir(entry) then
+			if entry == ".." then
+				if not (_noCD or _noFolders) then table.insert(output,list[a]) end
+			else
+				if not ((not _doHidden) and list[a]:sub(1,1) == ".") then
+					if not _noFolders then table.insert(output,list[a]) end
+				end
+			end
+		else
+			if not ((not _doHidden) and list[a]:sub(1,1) == ".") then
+				if not _noFiles then table.insert(output,list[a]) end
+			end
+		end
+	end
+	return output
+end
+
+lddfm.isColor = function(col)
+	for k,v in pairs(colors) do
+		if v == col then
+			return true, k
+		end
+	end
+	return false
+end
+
+lddfm.clearLine = function(x1,x2,_y,_bg,_char)
+	local cbg, bg = term.getBackgroundColor()
+	local x,y = term.getCursorPos()
+	local sx,sy = term.getSize()
+	if type(_char) == "string" then char = _char else char = " " end
+	if type(_bg) == "number" then
+		if lddfm.isColor(_bg) then bg = _bg
+		else bg = cbg end
+	else bg = cbg end
+	term.setCursorPos(x1 or 1, _y or y)
+	term.setBackgroundColor(bg)
+	if x2 then --it pains me to add an if statement to something as simple as this
+		term.write((char or " "):rep(x2-x1))
+	else
+		term.write((char or " "):rep(sx-(x1 or 0)))
+	end
+	term.setBackgroundColor(cbg)
+	term.setCursorPos(x,y)
+end
+
+lddfm.render = function(_x1,_y1,_x2,_y2,_rlist,_path,_rscroll,_canClose,_scrbarY)
+	local px,py = term.getCursorPos()
+	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
+	local rlist = _rlist or {"Invalid directory."}
+	local path = _path or "And that's terrible."
+	ypaths = {}
+	local rscroll = _rscroll or 0
+	for a = y1, y2 do
+		lddfm.clearLine(x1,x2,a,lddfm.p.bg)
+	end
+	term.setCursorPos(x1,y1)
+	term.setTextColor(lddfm.p.p_txt)
+	lddfm.clearLine(x1,x2+1,y1,lddfm.p.p_bg)
+	term.setBackgroundColor(lddfm.p.p_bg)
+	term.write(("/"..path):sub(1,x2-x1))
+	for a = 1,(y2-y1) do
+		if rlist[a+rscroll] then
+			term.setCursorPos(x1,a+(y1))
+			if fs.isDir(fs.combine(path,rlist[a+rscroll])) then
+				lddfm.clearLine(x1,x2,a+(y1),lddfm.p.d_bg)
+				term.setTextColor(lddfm.p.d_txt)
+				term.setBackgroundColor(lddfm.p.d_bg)
+			else
+				lddfm.clearLine(x1,x2,a+(y1),lddfm.p.f_bg)
+				term.setTextColor(lddfm.p.f_txt)
+				term.setBackgroundColor(lddfm.p.f_bg)
+			end
+			term.write(rlist[a+rscroll]:sub(1,x2-x1))
+			ypaths[a+(y1)] = rlist[a+rscroll]
+		else
+			lddfm.clearLine(x1,x2,a+(y1),lddfm.p.bg)
+		end
+	end
+	local scrbarY = _scrbarY or math.ceil( (y1+1)+( (_rscroll/(#_rlist-(y2-(y1+1))))*(y2-(y1+1)) ) )
+	for a = y1+1, y2 do
+		term.setCursorPos(x2,a)
+		if a == scrbarY then
+			term.setBackgroundColor(lddfm.p.scrbar)
+		else
+			term.setBackgroundColor(lddfm.p.scr)
+		end
+		term.write(" ")
+	end
+	if _canClose then
+		term.setCursorPos(x2-4,y1)
+		term.setTextColor(lddfm.p.close_txt)
+		term.setBackgroundColor(lddfm.p.close_bg)
+		term.write("close")
+	end
+	term.setCursorPos(px,py)
+	return scrbarY
+end
+
+lddfm.coolOutro = function(x1,y1,x2,y2,_bg,_txt,char)
+	local cx, cy = term.getCursorPos()
+	local bg, txt = term.getBackgroundColor(), term.getTextColor()
+	term.setTextColor(_txt or colors.white)
+	term.setBackgroundColor(_bg or colors.black)
+	local _uwah = 0
+	for y = y1, y2 do
+		for x = x1, x2 do
+			_uwah = _uwah + 1
+			term.setCursorPos(x,y)
+			term.write(char or " ")
+			if _uwah >= math.ceil((x2-x1)*1.63) then sleep(0) _uwah = 0 end
+		end
+	end
+	term.setTextColor(txt)
+	term.setBackgroundColor(bg)
+	term.setCursorPos(cx,cy)
+end
+
+lddfm.scrollMenu = function(amount,list,y1,y2)
+	if #list >= y2-y1 then
+		lddfm.scroll = lddfm.scroll + amount
+		if lddfm.scroll < 0 then
+			lddfm.scroll = 0
+		end
+		if lddfm.scroll > #list-(y2-y1) then
+			lddfm.scroll = #list-(y2-y1)
+		end
+	end
+end
+
+lddfm.makeMenu = function(_x1,_y1,_x2,_y2,_path,_noFiles,_noFolders,_noCD,_noSelectFolders,_doHidden,_p,_canClose)
+	if _noFiles and _noFolders then
+		return false, "C'mon, man..."
+	end
+	if _x1 == true then
+		return false, "arguments: x1, y1, x2, y2, path, noFiles, noFolders, noCD, noSelectFolders, doHidden, palate, canClose" -- a little help
+	end
+	lddfm.setPalate(_p)
+	local path, list = _path or ""
+	lddfm.scroll = 0
+	local _pbg, _ptxt = term.getBackgroundColor(), term.getTextColor()
+	local x1, x2, y1, y2 = _x1 or 1, _x2 or lddfm.scr_x, _y1 or 1, _y2 or lddfm.scr_y
+	local keysDown = {}
+	local _barrY
+	while true do
+		list = lddfm.foldersOnTop(lddfm.filterFileFolders(fs.list(path),path,_noFiles,_noFolders,_noCD,_doHidden),path)
+		if (fs.getDir(path) ~= "..") and not (_noCD or _noFolders) then
+			table.insert(list,1,"..")
+		end
+		_res, _barrY = pcall( function() return lddfm.render(x1,y1,x2,y2,list,path,lddfm.scroll,_canClose) end)
+		if not _res then
+			error(_barrY)
+		end
+		local evt = {os.pullEvent()}
+		if evt[1] == "mouse_scroll" then
+			lddfm.scrollMenu(evt[2],list,y1,y2)
+		elseif evt[1] == "mouse_click" then
+			local butt,mx,my = evt[2],evt[3],evt[4]
+			if (butt == 1 and my == y1 and mx <= x2 and mx >= x2-4) and _canClose then
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return false
+			elseif ypaths[my] and (mx >= x1 and mx < x2) then --x2 is reserved for the scrollbar, breh
+				if fs.isDir(fs.combine(path,ypaths[my])) then
+					if _noCD or butt == 3 then
+						if not _noSelectFolders or _noFolders then
+							--lddfm.coolOutro(x1,y1,x2,y2)
+							term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+							return fs.combine(path,ypaths[my])
+						end
+					else
+						path = fs.combine(path,ypaths[my])
+						lddfm.scroll = 0
+					end
+				else
+					term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+					return fs.combine(path,ypaths[my])
+				end
+			end
+		elseif evt[1] == "key" then
+			keysDown[evt[2]] = true
+			if evt[2] == keys.enter and not (_noFolders or _noCD or _noSelectFolders) then --the logic for _noCD being you'd normally need to go back a directory to select the current directory.
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return path
+			end
+			if evt[2] == keys.up then
+				lddfm.scrollMenu(-1,list,y1,y2)
+			elseif evt[2] == keys.down then
+				lddfm.scrollMenu(1,list,y1,y2)
+			end
+			if evt[2] == keys.pageUp then
+				lddfm.scrollMenu(y1-y2,list,y1,y2)
+			elseif evt[2] == keys.pageDown then
+				lddfm.scrollMenu(y2-y1,list,y1,y2)
+			end
+			if evt[2] == keys.home then
+				lddfm.scroll = 0
+			elseif evt[2] == keys["end"] then
+				if #list > (y2-y1) then
+					lddfm.scroll = #list-(y2-y1)
+				end
+			end
+			if evt[2] == keys.h then
+				if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
+					_doHidden = not _doHidden
+				end
+			elseif _canClose and (evt[2] == keys.x or evt[2] == keys.q or evt[2] == keys.leftCtrl) then
+				--lddfm.coolOutro(x1,y1,x2,y2)
+				term.setTextColor(_ptxt) term.setBackgroundColor(_pbg)
+				return false
+			end
+		elseif evt[1] == "key_up" then
+			keysDown[evt[2]] = false
+		end
+	end
+end
+
+local alphasort = function(tbl)
+	table.sort(tbl, function(a,b)
+		if type(a) == "table" then
+			return string.lower(a.time) > string.lower(b.time)
+		else
+			return string.lower(a) > string.lower(b)
+		end
+	end)
+	return tbl
+end
+
+local readFile = function(path)
+	if fs.exists(path) then
+		local file = fs.open(path, "r")
+		local contents = file.readAll()
+		file.close()
+		return contents
+	else
+		return nil
+	end
+end
+
+local writeFile = function(path, contents)
+	if fs.isReadOnly(path) then
+		return false
+	else
+		local file = fs.open(path, "w")
+		file.write(contents)
+		file.close()
+		return true
+	end
+end
+
+local cwrite = function(text, y)
+	local cx, cy = term.getCursorPos()
+	term.setCursorPos(math.floor(scr_x / 2 - #text / 2 + 1), y or cy)
+	term.write(text)
+end
+
+local dialogueBox = function(msg, timeout)
+	local height = 7
+	local baseY = scr_y / 2 - height / 2
+	term.setTextColor(colors.white)
+	term.setBackgroundColor(colors.gray)
+	for y = 1, height do
+		term.setCursorPos(1, (scr_y / 2) - (baseY / 2) + (y - 1))
+		term.clearLine()
+	end
+	cwrite(("="):rep(scr_x), baseY)
+	cwrite(msg, baseY + height / 2)
+	cwrite(("="):rep(scr_x), baseY + height - 1)
+	local evt
+	local tID = os.startTimer(timeout or 2)
+	repeat
+		evt = {os.pullEvent()}
+	until (evt[1] == "key") or (evt[1] == "timer" and evt[2] == tID)
+	term.setBackgroundColor(colors.black)
+end
+
+local keyList, names = {}, {}
+
+local makeKey = function(ID, key)
+	return writeFile(fs.combine(config.keyPath, ID), key)
+end
+
+local getKey = function(ID)
+	return readFile(fs.combine(config.keyPath, ID))
+end
+
+local readNames = function()
+	return textutils.unserialize(readFile(config.nameFile) or "{}") or {}
+end
+
+local writeNames = function(_names)
+	return writeFile(config.nameFile, textutils.serialize(_names or names))
+end
+
+-- keyList[id] = key
+-- names[id] = name
+
+-- get personal key file
+keyList[yourID] = ""
+if fs.exists(fs.combine(config.keyPath, tostring(yourID))) then
+	keyList[yourID] = readFile(fs.combine(config.keyPath, tostring(yourID)))
+else
+	for i = 1, 64 do
+		keyList[yourID] = keyList[yourID] .. string.char(math.random(11, 255))
+	end
+	writeFile(fs.combine(config.keyPath, tostring(yourID)), keyList[yourID])
+end
+
+local getAllKeys = function()
+	local list = fs.list(config.keyPath)
+	local output = {}
+	for i = 1, #list do
+		if tonumber(list[i]) then
+			output[tonumber(list[i])] = getKey(list[i])
+		end
+	end
+	return output
+end
+
+names = readNames()
+keyList = getAllKeys()
+
+local apiData = {
+	["aeslua"] = {
+		path = "aeslua.lua",
+		url = "https://raw.githubusercontent.com/LDDestroier/CC/master/API/aeslua.lua",	-- thanks SquidDev
+		useLoadAPI = true,
+	}
 }
 
-config.showLineNumberIndicator = false
-config.showWhitespace = true
-config.showTrailingSpace = true
+for name, data in pairs(apiData) do
+	data.path = fs.combine(config.apiPath, data.path)
+	if not fs.exists(data.path) then
+		local net = http.get(data.url)
+		if net then
+			local file = fs.open(data.path, "w")
+			file.write(net.readAll())
+			file.close()
+			net.close()
+		else
+			error("Could not download " .. name)
+		end
+	end
+	if data.useLoadAPI then
+		local res = os.loadAPI(data.path)
+		--error(res)
+	else
+		_ENV[name] = dofile(data.path)
+	end
+end
 
--- minor optimizations, I think
-local concatTable = table.concat
-local sortTable = table.sort
-
--- I'm never using regular argument parsing again, this function rules
-local interpretArgs = function(tInput, tArgs)
+local function interpretArgs(tInput, tArgs)
 	local output = {}
 	local errors = {}
 	local usedEntries = {}
@@ -75,1162 +466,1063 @@ local interpretArgs = function(tInput, tArgs)
 	return output, errors
 end
 
-local argList = interpretArgs({...}, argData)
+local argList = {
+	["--server"] = false
+}
 
-eldit.filename = argList[1]
-eldit.cursors = {{
-	x = 1,
-	y = math.max(1, argList["-l"] or 1),
-	lastX = 1
-}}
+local argData, argErrors = interpretArgs({...}, argList)
+local isServer = argData["--server"]
+local serverName = argData[1] or "server"
 
-local eClearLine = function(y)
-	local cx, cy = term.getCursorPos()
-	term.setCursorPos(eldit.size.x, y or cy)
-	term.write((" "):rep(eldit.size.width))
-	term.setCursorPos(cx, cy)
+if ccemux and (not peripheral.find("modem")) then
+	ccemux.attach("top", "wireless_modem")
 end
 
-local eClear = function()
-	local cx, cy = term.getCursorPos()
-	for y = eldit.size.y, eldit.size.y + eldit.size.height - 1 do
-		term.setCursorPos(eldit.size.x, y)
-		term.write((" "):rep(eldit.size.width))
+local modem
+local getModem = function(doNotPickWireless)
+	local output, periphList
+	if not peripheral.find("modem") and ccemux then
+		ccemux.attach("top", "wireless_modem")
 	end
-	term.setCursorPos(cx, cy)
+	for try = 1, 40 do
+		periphList = peripheral.getNames()
+		for i = 1, #periphList do
+			if peripheral.getType(periphList[i]) == "modem" then
+				output = peripheral.wrap(periphList[i])
+				if not (doNotPickWireless and output.isWireless()) then
+					output.open(config.channel)
+					return output
+				end
+			end
+		end
+		if try == 1 then
+			write("Looking for modem...")
+		else
+			write(".")
+		end
+		sleep(0.15)
+	end
+	error("No modems were found after 40 tries. That's as many as four tens. And that's terrible.")
 end
 
-local sortSelections = function()
-	for id,sel in pairs(eldit.selections) do
-		sortTable(sel, function(a,b)
-			return (a.y * eldit.size.width) + a.x < (b.y * eldit.size.width) + b.x
-		end)
+-- allowed IDs
+local userIDs = {}
+
+-- all data recorded
+local DATA = {}
+
+local transmit = function(msg, msgID)
+	modem = getModem(onlyUseWiredModems)
+	modem.transmit(config.channel, config.channel, {
+		msg = msg,
+		encrypted = false,
+		msgID = msgID
+	})
+end
+
+local encTransmit = function(msg, msgID, recipient, encID)
+	modem = getModem(onlyUseWiredModems)
+	local key = keyList[encID or recipient]
+	if not key then
+		error("You do not possess the key of the recipient.")
+	else
+		modem.transmit(config.channel, config.channel, {
+			msg = aeslua.encrypt(key, textutils.serialize(msg)),
+			encrypted = true,
+			msgID = msgID,
+			recipient = recipient
+		})
 	end
 end
 
-local sortCursors = function()
-	sortTable(eldit.cursors, function(a,b)
-		return (a.y * eldit.size.width) + a.x < (b.y * eldit.size.width) + b.x
-	end)
+local receive = function(msgID, specifyCommand, encID, timer)
+	local evt, msg, tID
+	if timer then
+		tID = os.startTimer(timer)
+	end
+	modem = getModem()
+	while true do
+		evt = {os.pullEvent()}
+		if evt[1] == "modem_message" then
+			if type(evt[5]) == "table" then
+				if evt[5].encrypted then
+					if true then
+						if encID then
+							msg = aeslua.decrypt(keyList[encID], evt[5].msg)
+						else
+							for id, key in pairs(keyList) do
+								if msg then break end
+								if id ~= encID then
+									msg = aeslua.decrypt(key, evt[5].msg)
+								end
+							end
+						end
+						if msg then
+							msg = textutils.unserialize(msg)
+						end
+					end
+				else
+					msg = evt[5].msg
+				end
+				if (not msgID) or (evt[5].msgID == msgID) then
+					if (not specifyCommand) or (msg.command == specifyCommand) then
+						return msg, evt[5].encrypted, evt[5].msgID
+					end
+				end
+			end
+		elseif evt[1] == "timer" and evt[2] == tID then
+			return nil, nil, nil
+		end
+	end
 end
 
-local explode = function(div, str, replstr, includeDiv)
-	if (div == '') then
+local getNameID = function(name)
+	for k,v in pairs(names) do
+		if v == name then
+			return k
+		end
+	end
+	return nil
+end
+
+local client = {}	-- all client-specific commands
+local server = {}	-- all server-specific commands
+
+----                       ----
+----    CLIENT COMMANDS    ----
+----                       ----
+
+-- if you want a super duper secure network, manually enter the server ID into this
+client.findServer = function(srv)
+	local msgID = math.random(1, 2^30)
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(tonumber(srv) or (not srv), "invalid server")
+	transmit({
+		id = yourID,
+		command = "find_server"
+	}, msgID)
+	local reply, isEncrypted = receive(msgID, "find_server_respond", srv, defaultTimer)
+	if type(reply) == "table" then
+		if reply.server then
+			return reply.server
+		end
+	end
+	return nil
+end
+
+-- Registers your ID to a name.
+client.register = function(srv, username)
+	local msgID = math.random(1, 2^30)
+	assert(srv, "register( server, username )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	encTransmit({
+		id = yourID,
+		command = "register",
+		name = username
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "register_respond", yourID, defaultTimer)
+	if reply then
+		return reply.result
+	else
 		return false
 	end
-	local pos, arr = 0, {}
-	for st, sp in function() return string.find(str, div, pos, false) end do
-		table.insert(arr, string.sub(replstr or str, pos, st - 1 + (includeDiv and #div or 0)))
-		pos = sp + 1
-	end
-	table.insert(arr, string.sub(replstr or str, pos))
-	return arr
 end
 
-local readFile = function(path)
-	if fs.exists(path) then
-		local file = fs.open(path, "r")
-		local contents = file.readAll()
-		file.close()
-		return contents
+-- Gets a list of all registered ID names
+client.getNames = function(srv)
+	local msgID = math.random(1, 2^30)
+	assert(srv, "getNames( server )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	encTransmit({
+		id = yourID,
+		command = "get_names"
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "get_names_respond", yourID, defaultTimer)
+	if type(reply) == "table" then
+		return reply.names
 	else
 		return nil
 	end
 end
 
-local writeFile = function(path, contents)
-	if fs.isReadOnly(path) or fs.isDir(path) then
-		return false
+-- Sends an email to a recipient ID.
+client.sendMail = function(srv, recipient, subject, message, attachments)
+	assert(srv, "sendMail( server, recipient, subject, message, attachments )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	assert(type(subject) == "string", "invalid subject")
+	assert(type(message) == "string", "invalid message")
+	local msgID = math.random(1, 2^30)
+	if type(recipient) == "string" then
+		recipient = getNameID(recipient)
+	end
+	assert(recipient, "invalid recipient")
+	encTransmit({
+		command = "send_mail",
+		id = yourID,
+		recipient = recipient,
+		subject = subject,
+		message = message,
+		attachments = attachments
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "send_mail_respond", yourID, defaultTimer)
+	if (isEncrypted and type(reply) == "table") then
+		return reply.result
 	else
-		local file = fs.open(path, "w")
-		file.write(contents)
-		file.close()
-		return true
+		return false
 	end
 end
 
-local deepCopy
-deepCopy = function(tbl)
-	local output = {}
-	for k,v in pairs(tbl) do
-		if type(v) == "table" then
-			output[k] = deepCopy(v)
-		else
-			output[k] = v
+client.getMail = function(srv)
+	local msgID = math.random(1, 2^30)
+	assert(srv, "getMail( server )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	encTransmit({
+		command = "get_mail",
+		id = yourID,
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "get_mail_respond", yourID, defaultTimer)
+	if (isEncrypted and type(reply) == "table") then
+		if reply.mail then
+			return alphasort(reply.mail)
+		end
+	end
+end
+
+client.deleteMail = function(srv, mail)
+	local msgID = math.random(1, 2^30)
+	assert(srv, "deleteMail( server, mailEntryNumber )")
+	srv = type(srv) == "number" and srv or getNameID(srv)
+	assert(srv, "invalid server")
+	assert(type(mail) == "number", "invalid mail entry")
+	encTransmit({
+		command = "delete_mail",
+		id = yourID,
+		mail = mail,
+	}, msgID, srv, yourID)
+	local reply, isEncrypted = receive(msgID, "delete_mail_respond", yourID, defaultTimer)
+	if (isEncrypted and type(reply) == "table") then
+		return reply.result
+	else
+		return false
+	end
+end
+
+----                       ----
+----    SERVER COMMANDS    ----
+----                       ----
+
+-- check whether or not a name is valid to be used
+server.checkValidName = function(name)
+	if type(name) == "string" then
+		if #name >= 3 or #name <= 24 then
+			return true
+		end
+	end
+	return false
+end
+
+-- check whether or not an ID is registered
+server.checkRegister = function(id)
+	-- I make the code this stupid looking in case I add other stipulations
+	if names[id] or getNameID(names[id]) then
+		return true
+	else
+		return false
+	end
+end
+
+server.registerID = function(id, name)
+	local path = fs.combine(config.mailPath, tostring(id))
+	if ((not server.checkRegister(name)) or getNameID(name) == id) then
+		fs.makeDir(path)
+		names[id] = name
+		writeNames()
+		return true, names[id]
+	else
+		return false, "name already exists"
+	end
+end
+
+-- records a full email to file
+server.recordMail = function(sender, _recipient, subject, message, attachments)
+	local time = os.epoch("utc")
+	local recipient
+
+	if _recipient == "*" then
+		recipient = fs.list(config.mailPath)
+	elseif type(_recipient) ~= "table" then
+		recipient = {tostring(_recipient)}
+	end
+
+	local msg = textutils.serialize({
+		sender = sender,
+		time = time,
+		read = false,
+		subject = subject,
+		message = message,
+		attachments = attachments
+	})
+
+	local requiredSpace = #msg + 2
+	if fs.getFreeSpace(config.mailPath) < requiredSpace then
+		return false, "Cannot write mail, not enough space!"
+	end
+
+	local path, file
+	for i = 1, #recipient do
+		server.registerID(recipient[i])
+		path = fs.combine(config.mailPath, recipient[i])
+		file = fs.open(fs.combine(path, tostring(time)), "w")
+		file.write(msg)
+		file.close()
+	end
+	return true
+end
+
+-- returns every email in an ID's inbox
+server.getMail = function(id)
+	local output, list = {}, {}
+	local mails = fs.list(fs.combine(config.mailPath, tostring(id)))
+	local file
+	for k,v in pairs(mails) do
+		list[v] = k
+	end
+	for k,v in pairs(list) do
+		file = fs.open(fs.combine(config.mailPath, "/" .. id .. "/" .. k), "r")
+		if file then
+			output[#output + 1] = textutils.unserialize(file.readAll())
+			file.close()
 		end
 	end
 	return output
 end
 
-local getLineNoLen = function()
-	if config.showLineNumberIndicator then
-		return #tostring(#eldit.buffer)
+server.deleteMail = function(id, del)
+	local mails = alphasort( fs.list(fs.combine(config.mailPath, tostring(id))) )
+	if mails[del] then
+		fs.delete(fs.combine(config.mailPath, tostring(id) .. "/" .. mails[del]))
+		return true
 	else
-		return 0
+		return false
 	end
 end
 
-prompt = function(prebuffer, precy, maxY, _eldit)
-	term.setCursorBlink(false)
-	local keysDown = {}					-- list of all keys being pressed
-	local miceDown = {}					-- list of all mouse buttons being pressed
-	eldit = _eldit or eldit				-- you can replace the "eldit" table if you want I guess
-	maxY = maxY or math.huge			-- limits amount of lines
-	local defaultBarLife = 10			-- default amount of time bar msg will stay onscreen
-	local barmsg = "Started Eldit."		-- message displayed on bottom screen
-	local barlife = defaultBarLife
-	local lastMouse = {}				-- last place you clicked onscreen
-	local isSelecting = false			-- whether or not you are selecting text
-	if type(prebuffer) == "string" then	-- enter a "prebuffer" (string or table) to set the contents
-		for i = 1, #prebuffer do
-			if prebuffer:sub(i,i) == "\n" then
-				eldit.buffer[#eldit.buffer + 1] = {}
-			else
-				eldit.buffer[#eldit.buffer][#eldit.buffer[#eldit.buffer] + 1] = prebuffer:sub(i,i)
-			end
-		end
-	elseif type(prebuffer) == "table" then
-		eldit.buffer = prebuffer
+server.setName = function(newName)
+	if server.checkValidName(newName) then
+		names[yourID] = newName
 	end
-	eldit.undoBuffer[1] = {
-		buffer = deepCopy(eldit.buffer),
-		cursors = deepCopy(eldit.cursors),
-		selections = deepCopy(eldit.selections)
-	}
-	local isCursorBlink = false			-- blinks the background color on each cursor
-	local isInsert = false				-- will overwrite characters instead of appending them
+end
 
-	-- list of all characters that will stop a CTRL+Backspace or CTRL+Delete or CTRL+Left/Right
-	local interruptable = {
-		[" "] = true,
-		["["] = true, ["]"] = true,
-		["{"] = true, ["}"] = true,
-		["("] = true, [")"] = true,
-		["|"] = true,
-		["/"] = true,
-		["\\"] = true,
-		["+"] = true,
-		["-"] = true,
-		["*"] = true,
-		["="] = true,
-		["."] = true,
-		[","] = true
-	}
+-- receives messages and sends the appropriate response
+server.makeServer = function(verbose)
+	local msg, isEncrypted, msgID
 
-	-- goes over every selection and checks if it is selected
-	-- (x, y) = position on buffer
-	local checkIfSelected = function(x, y)
-		sortSelections()
-		local fin
-		if y >= 1 and y <= #eldit.buffer then
-			if x >= 1 and x <= #eldit.buffer[y] + 1 then
-				for id, sel in pairs(eldit.selections) do
-
-					if y == sel[1].y then
-						if sel[2].y == sel[1].y then
-							fin = x >= sel[1].x and x <= sel[2].x
-						else
-							fin = x >= sel[1].x
-						end
-					elseif y == sel[2].y then
-						if sel[2].y == sel[1].y then
-							fin = x >= sel[1].x and x <= sel[2].x
-						else
-							fin = x <= sel[2].x
-						end
-					elseif y > sel[1].y and y < sel[2].y then
-						fin = true
-					end
-
-					if fin then
-						return id
-					end
-
-				end
-			end
+	local say = function(text, id)
+		if verbose then
+			return print(text .. (id and (" (" .. id .. ")") or ""))
 		end
-		return false
 	end
 
-	-- goes over every cursor and checks if they are at (x, y)
-	-- (x,y) = position on buffer
-	local checkIfCursor = function(x, y)
-		for id, cur in pairs(eldit.cursors) do
-			if x == cur.x and y == cur.y then
-				return id
-			end
-		end
-		return false
+	if verbose then
+		term.clear()
+		term.setCursorPos(1,1)
+		print("Make sure client keys are copied to key folder!")
 	end
 
-	-- returns character at (x, y) on the buffer
-	local getChar = function(x, y)
-		if eldit.buffer[y] then
-			return eldit.buffer[y][x]
+	say("SysMail server started.")
+
+	while true do
+
+		msg, isEncrypted, msgID = receive(nil, nil, nil, 5)
+
+		if not msg then
+			keyList = getAllKeys()
 		else
-			return nil
+			if not isEncrypted then
+				if msg.command == "find_server" then
+					transmit({
+						command = msg.command .. "_respond",
+						server = yourID,
+					}, msgID, msg.id, yourID)
+					say("find_server")
+				end
+			elseif type(msg.id) == "number" and type(msg.command) == "string" then
+				if msg.command == "register" then
+					if (
+						type(msg.id) == "number" and
+						type(msg.name) == "string"
+					) then
+						local reply
+						local result, name = server.registerID(msg.id, msg.name)
+						if result then
+							reply = {
+								command = msg.command .. "_respond",
+								result = result,
+								name = name,
+							}
+							say("user " .. tostring(msg.id) .. " registered as " .. name)
+						else
+							reply = {
+								command = msg.command .. "_respond",
+								result = result,
+							}
+							say("user " .. tostring(msg.id) .. " failed to register as " .. tostring(msg.name) .. ": " .. name)
+						end
+						encTransmit(reply, msgID, msg.id, msg.id)
+					end
+				elseif not server.checkRegister(msg.id) then
+					encTransmit({
+						command = msg.command .. "_respond",
+						result = false,
+						errorMsg = "not registered"
+					}, msgID, msg.id, msg.id)
+					say("unregistered user attempt to use")
+				else
+
+					-- all the real nice stuff
+
+					if msg.command == "find_server" then
+						encTransmit({
+							command = msg.command .. "_respond",
+							server = yourID,
+							result = true
+						}, msgID, msg.id, msg.id)
+						say("find_server (aes)")
+					elseif msg.command == "get_names" then
+						encTransmit({
+							command = msg.command .. "_respond",
+							names = names,
+							result = true,
+						}, msgID, msg.id, msg.id)
+						say("get_names", msg.id)
+					elseif msg.command == "send_mail" then
+						if (
+							msg.recipient and
+							type(msg.subject) == "string" and
+							type(msg.message) == "string"
+						) then
+							local reply = {
+								command = msg.command .. "_respond",
+								result = server.recordMail(msg.id, msg.recipient, msg.subject, msg.message, msg.attachments)
+							}
+							encTransmit(reply, msgID, msg.id, msg.id)
+							say("send_mail", msg.id)
+						end
+					elseif msg.command == "get_mail" then
+						local mail = server.getMail(msg.id)
+						local reply = {
+							command = msg.command .. "_respond",
+							result = true,
+							mail = mail,
+						}
+						encTransmit(reply, msgID, msg.id, msg.id)
+						say("get_mail", msg.id)
+					elseif msg.command == "delete_mail" then
+						local result = false
+						if type(msg.mail) == "number" then
+							result = server.deleteMail(msg.id, msg.mail, yourID)
+						end
+						encTransmit({
+							command = msg.command .. "_respond",
+							result = result,
+						}, msgID, msg.id, msg.id)
+						say("delete_mail", msg.id)
+					end
+
+				end
+			end
 		end
+
+	end
+end
+
+local clientInterface = function(srv)
+	local scr_x, scr_y = term.getSize()
+	local inbox = {}
+	local refresh = function()
+		dialogueBox("Refreshing...", 0)
+		inbox = client.getMail(srv)
+	end
+	local explode = function(div, str, replstr, includeDiv)
+		if div == '' then
+			return false
+		end
+		local pos, arr = 0, {}
+		for st, sp in function() return string.find(str, div, pos, false) end do
+			table.insert(arr, string.sub(replstr or str, pos, st - 1 + (includeDiv and #div or 0)))
+			pos = sp + 1
+		end
+		table.insert(arr, string.sub(replstr or str, pos))
+		return arr
+	end
+	srv = srv or tonumber( client.findServer(argData[1]) )
+	if not srv then
+		error("No server was found!")
 	end
 
-	-- the big boi function, draws **EVERYTHING**
-	local render = function()
-		local cx, cy
-		local tab = {
-			[" "] = true,
-			["\9"] = true
-		}
-		local lineNoLen = getLineNoLen()
-		local isHighlighted = false
-		local textPoses = {math.huge, -math.huge}		-- used to identify space characters without text
-		local screen = {{},{},{}}
-		for y = 1, eldit.size.height - 1 do -- minus one because it reserves space for the bar
-			screen[1][y] = {}
-			screen[2][y] = {}
-			screen[3][y] = {}
-			cy = y + eldit.scrollY
-			-- find text
-			if eldit.buffer[cy] and (config.showWhitespace or config.showTrailingSpace) then
-				textPoses = {
-					#(concatTable(eldit.buffer[cy]):match("^ +") or "") + 1,
-					#eldit.buffer[cy] - #(concatTable(eldit.buffer[y]):match(" +$") or "")
-				}
+	if not names[yourID] then
+		term.setBackgroundColor(colors.black)
+		term.setTextColor(colors.white)
+		term.clear()
+		local attempt
+		cwrite("Enter your name:", 3)
+		while true do
+			term.setCursorPos(2, 5)
+			term.write(":")
+			attempt = read()
+			if server.checkValidName(attempt) then
+				names[yourID] = attempt
+				writeNames()
+				break
+			else
+				term.clear()
+				cwrite("Bad name! Enter your name:", 3)
 			end
-			if cy <= #eldit.buffer and lineNoLen > 0 then
-				isHighlighted = false
-				for id,cur in pairs(eldit.cursors) do
-					if cy == cur.y then
-						isHighlighted = true
-						break
-					end
+		end
+	end
+	client.register(srv, names[yourID])
+
+	for k,v in pairs(client.getNames(srv) or {}) do
+		names[k] = v
+	end
+	
+	term.clear()
+	refresh()
+
+	local keyWrite = function(text, pos)
+		local txcol = term.getTextColor()
+		term.write(text:sub(1, pos - 1))
+		term.setTextColor(colors.yellow)
+		term.write(text:sub(pos, pos))
+		term.setTextColor(txcol)
+		term.write(text:sub(pos + 1))
+	end
+
+	local writeHeader = function(left, right, y)
+		if y then
+			term.setCursorPos(1, y)
+		end
+		term.setTextColor(colors.lightGray)
+		term.write(left)
+		term.setTextColor(colors.white)
+		term.write(" " .. right)
+	end
+
+	local area_inbox = function()
+		local scroll = 0
+		local render = function(scroll)
+			local y = 1
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			for i = 1 + scroll, scroll + scr_y - 1 do
+				if inbox[i] then
+					term.setCursorPos(1, y)
+					term.setTextColor(colors.white)
+					term.write(names[inbox[i].sender]:sub(1, 10))
+
+					term.setCursorPos(11, y)
+					term.setTextColor(colors.white)
+					term.write(inbox[i].subject:sub(1, 18))
+
+					term.setCursorPos(30, y)
+					term.setTextColor(colors.gray)
+					term.write(inbox[i].message:sub(1, scr_x - 30))
 				end
-				if not isHighlighted then
-					for id,sel in pairs(eldit.selections) do
-						if cy >= sel[1].y and cy <= sel[2].y then
-							isHighlighted = true
+				y = y + 1
+			end
+			term.setCursorPos(1, scr_y)
+			term.setBackgroundColor(colors.gray)
+			term.clearLine()
+			term.setTextColor(colors.white)
+			--term.write(names[yourID] .. ": ")
+			keyWrite("Quit ", 1)
+			keyWrite("New ", 1)
+			keyWrite("Refresh ", 1)
+			term.setCursorPos(scr_x - #names[yourID], scr_y)
+			term.setTextColor(colors.lightGray)
+			term.write(names[yourID])
+		end
+
+		-- logic(k)
+		local barCommands = {
+			[keys.q] = {1, scr_y, 4},
+			[keys.n] = {6, scr_y, 3},
+			[keys.r] = {10, scr_y, 7},
+		}
+		local evt, key, mx, my
+		local adjY	-- mouse Y adjusted for scroll
+		while true do
+			render(scroll)
+			inbox = alphasort(inbox)
+			evt, key, mx, my = os.pullEvent()
+			if evt == "mouse_click" then
+				adjY = my + scroll
+				if inbox[adjY] then
+					return "view_mail", {adjY}
+				else
+					for key, data in pairs(barCommands) do
+						if my == data[2] and mx >= data[1] and mx <= data[1] + data[3] - 1 then
+							os.queueEvent("key", key)
 							break
 						end
 					end
 				end
-				if isHighlighted then
-					term.setBackgroundColor(colors.gray)
-					term.setTextColor(colors.white)
-				else
-					term.setBackgroundColor(colors.black)
-					term.setTextColor(colors.lightGray)
+			elseif evt == "mouse_scroll" then
+				scroll = math.min(math.max(0, scroll + key), math.max(0, #inbox - (scr_y - 1)))
+			elseif evt == "key" then
+				if key == keys.n then
+					return "new_mail"
+				elseif key == keys.r then
+					return "refresh"
+				elseif key == keys.q then
+					return "exit"
 				end
-				term.setCursorPos(eldit.size.x, eldit.size.y + y - 1)
-				term.write(cy .. (" "):rep(lineNoLen - #tostring(y)))
 			end
+		end
+	end
 
-			-- actually draw text
-
-			local cChar, cTxt, cBg = " ", " ", " "
-			term.setCursorPos(eldit.size.x + lineNoLen, eldit.size.y + y - 1)
-			for x = lineNoLen + 1, eldit.size.width do
-				cx = x + eldit.scrollX - lineNoLen
-
-				if checkIfSelected(cx, cy) then
-					cBg = "b"
+	local niftyRead = function(prebuffer, startX, startY, startCursorMX, startCursorMY, allowEnter, maxLines, maxLength, history)
+		local cx, cy = term.getCursorPos()
+		local histPos = 0
+		startX, startY = startX or cx, startY or cy
+		local scroll = 0
+		local buffer = {{}}
+		local unassemble = function(pBuffer)
+			local output = {{""}}
+			local y = 1
+			local x = 1
+			for i = 1, #pBuffer do
+				if pBuffer:sub(i,i) == "\n" then
+					x = 1
+					y = y + 1
+					output[y] = {""}
 				else
-					cBg = "f"
+					output[y][x] = pBuffer:sub(i,i)
+					x = x + 1
 				end
-
-				if checkIfCursor(cx, cy) and isCursorBlink then
-					if isInsert then
-						cTxt, cBg = "0", "f"
-					else
-						cTxt, cBg = "f", "8"
+			end
+			return output
+		end
+		if prebuffer then
+			buffer = unassemble(prebuffer)
+		end
+		local curY = startCursorMY and math.max(1, math.min(startCursorMY - (startY - 1), #buffer)) or 1
+		local curX = startCursorMX and math.max(1, math.min(startCursorMX - (startX - 1), #buffer[curY])) or 1
+		local biggestHeight = math.max(1, #buffer)
+		local getLength = function()
+			local output = 0
+			for ln = 1, #buffer do
+				output = output + #buffer[ln]
+				if ln ~= #buffer then	-- account for newline chars
+					output = output + 1
+				end
+			end
+			return output
+		end
+		local render = function()
+			for y = startY, startY + (biggestHeight - 1) do
+				term.setCursorPos(startX, y)
+				term.write((" "):rep(maxLength))
+			end
+			term.setCursorPos(startX, startY)
+			local x, y, words = startX, startY
+			for ln = scroll + 1, #buffer + scroll do
+				if buffer[ln] then
+					words = explode(" ", table.concat(buffer[ln]), nil, true)
+					for i = 1, #words do
+						if x + #words[i] > scr_x and y < maxLines then
+							x = startX
+							y = y + 1
+						end
+						term.setCursorPos(x, y)
+						term.write(words[i])
+						x = x + #words[i]
 					end
-				else
-					cTxt = "0"
+					term.write(" ")
+					if ln ~= #buffer then
+						y = y + 1
+						x = startX
+					end
 				end
-				if config.showWhitespace or config.showTrailingSpace then
-					if textPoses[1] and textPoses[2] and eldit.buffer[cy] then
-						if cx < textPoses[1] and eldit.buffer[cy][cx] then
-							cTxt = "7"
-							cChar = "|"
-						elseif (cx > textPoses[2] and eldit.buffer[cy][cx]) then
-							cTxt = "7"
-							cChar = "-"
-						else
-							cChar = getChar(cx, cy) or " "
+			end
+			term.setCursorPos(curX + startX - 1, curY + startY - 1)
+			biggestHeight = math.max(#buffer, biggestHeight)
+		end
+
+		local assemble = function(buffer)
+			local output = ""
+			for ln = 1, #buffer do
+				output = output .. table.concat(buffer[ln])
+				if ln ~= #buffer then
+					output = output .. "\n"
+				end
+			end
+			return output
+		end
+
+		if history then
+			history[0] = assemble(buffer)
+		end
+
+		local evt, key, mx, my
+		local keysDown = {}
+		term.setCursorBlink(true)
+		while true do
+			render()
+			evt, key, mx, my = os.pullEvent()
+			if evt == "char" then
+				if getLength() < maxLength then
+					table.insert(buffer[curY], curX, key)
+					curX = curX + 1
+					if histPos == 0 and history then
+						history[histPos] = assemble(buffer)
+					end
+				end
+			elseif evt == "key_up" then
+				keysDown[key] = nil
+			elseif evt == "mouse_click" then
+				if key == 1 then
+					if my - (startY - 1) > maxLines or my < startY then
+						term.setCursorBlink(false)
+						return assemble(buffer), "mouse_click", mx, my
+					else
+						curY = math.max(1, math.min(my - (startY - 1), #buffer))
+						curX = math.max(1, math.min(mx - (startX - 0), #buffer[curY]))
+					end
+				end
+			elseif evt == "key" then
+				keysDown[key] = true
+				if key == keys.left then
+					if curX == 1 then
+						if curY > 1 then
+							curY = curY - 1
+							curX = #buffer[curY] + 1
+						end
+					elseif curX > 1 then
+						curX = curX - 1
+					end
+				elseif key == keys.right then
+					if curX == #buffer[curY] + 1 then
+						if curY < #buffer then
+							curY = curY + 1
+							curX = 1
+						end
+					elseif curX < #buffer[curY] then
+						curX = curX + 1
+					end
+				elseif key == keys.up then
+					if history then
+						if histPos < #history then
+							histPos = histPos + 1
+							buffer = unassemble(history[histPos])
+							curY = #buffer
+							curX = #buffer[curY] + 1
 						end
 					else
-						cChar = getChar(cx, cy) or " "
+						if curY > 1 then
+							curY = curY - 1
+							curX = math.min(curX, #buffer[curY] + 1)
+						else
+							curX = 1
+						end
 					end
-				else
-					cChar = getChar(cx, cy) or " "
+				elseif key == keys.down then
+					if history then
+						if histPos > 0 then
+							histPos = histPos - 1
+							buffer = unassemble(history[histPos])
+							curY = #buffer
+							curX = #buffer[curY] + 1
+						end
+					else
+						if curY < #buffer then
+							curY = curY + 1
+							curX = math.min(curX, #buffer[curY] + 1)
+						else
+							curX = #buffer[curY] + 1
+						end
+					end
+				elseif key == keys.enter then
+					if allowEnter and not (keysDown[keys.leftAlt] or keysDown[keys.rightAlt]) and #buffer < maxLines then
+						curY = curY + 1
+						table.insert(buffer, curY, {})
+						for i = curX, #buffer[curY - 1] do
+							buffer[curY][#buffer[curY] + 1] = buffer[curY - 1][i]
+							buffer[curY - 1][i] = nil
+						end
+						curX = 1
+					elseif not allowEnter then
+						term.setCursorBlink(false)
+						return assemble(buffer), "key", keys.enter
+					end
+				elseif key == keys.tab or (key == keys.q and (keysDown[keys.leftAlt] or keysDown[keys.rightAlt])) then
+					term.setCursorBlink(false)
+					return assemble(buffer), "key", key
+				elseif key == keys.backspace then
+					if curX > 1 then
+						table.remove(buffer[curY], curX - 1)
+						curX = curX - 1
+					elseif curY > 1 then
+						curX = #buffer[curY - 1] + 1
+						for i = 1, #buffer[curY] do
+							buffer[curY - 1][#buffer[curY - 1] + 1] = buffer[curY][i]
+						end
+						table.remove(buffer, curY)
+						curY = curY - 1
+					end
+				elseif key == keys.delete then
+					if buffer[curY][curX] then
+						table.remove(buffer[curY], curX)
+					end
 				end
-				screen[1][y][x - lineNoLen] = cChar
-				screen[2][y][x - lineNoLen] = cTxt
-				screen[3][y][x - lineNoLen] = cBg
 			end
-			term.blit(
-				concatTable(screen[1][y]),
-				concatTable(screen[2][y]),
-				concatTable(screen[3][y])
-			)
 		end
-		term.setCursorPos(eldit.size.x, eldit.size.y + eldit.size.height - 1)
-		term.setBackgroundColor(colors.gray)
-		eClearLine()
-		if barlife > 0 then
-			term.setTextColor(colors.yellow)
-			term.write(barmsg)
-		else
+	end
+
+	local area_new_mail = function(recipient, subject, message)
+		recipient = recipient or ""
+		subject = subject or ""
+		message = message or ""
+		local attachments = {}
+		sleep(0.05)
+		local mode = "recipient"
+		render = function()
 			term.setTextColor(colors.white)
-			for id,cur in pairs(eldit.cursors) do
-				term.write("(" .. cur.x .. "," .. cur.y .. ") ")
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			writeHeader("To:", recipient, 1)
+			writeHeader("Subject:", subject, 2)
+			writeHeader("Attachments:", "", 3)
+			for name, contents in pairs(attachments) do
+				term.write(name .. " ")
+			end
+			term.setCursorPos(1, 4)
+			term.setBackgroundColor(colors.gray)
+			term.setTextColor(colors.lightGray)
+			term.clearLine()
+			cwrite("(Alt+Enter = SEND, Alt+Q = QUIT)")
+			term.setTextColor(colors.white)
+			term.setBackgroundColor(colors.black)
+			if mode ~= "message" then
+				term.setCursorPos(1, 5)
+				write(message)
 			end
 		end
-	end
-
-	-- if all cursors are offscreen, will scroll so that at least one of them is onscreen
-	local scrollToCursor = function()
-		lineNoLen = getLineNoLen()
-		local lowCur, highCur = eldit.cursors[1], eldit.cursors[1]
-		local leftCur, rightCur = eldit.cursors[1], eldit.cursors[1]
-		for id,cur in pairs(eldit.cursors) do
-			if cur.y < lowCur.y then
-				lowCur = cur
-			elseif cur.y > highCur.y then
-				highCur = cur
+		local mx, my, evt = 1, 1
+		local _mx, _my, userList
+		while true do
+			render()
+			if mode == "message" then
+				message, evt, _mx, _my = niftyRead(message, 1, 5, mx, my, true, maximumMailLines, 512)
+			elseif mode == "subject" then
+				subject, evt, _mx, _my = niftyRead(subject, 10, 2, mx, 1, false, 1, 64)
+			elseif mode == "recipient" then
+				names = client.getNames(srv) or names
+				userList = {}
+				for k,v in pairs(names) do
+					userList[#userList + 1] = v
+				end
+				recipient, evt, _mx, _my = niftyRead(recipient, 5, 1, mx, 1, false, 1, 24, userList)
 			end
-			if cur.x < leftCur.x then
-				leftCur = cur
-			elseif cur.y > rightCur.x then
-				rightCur = cur
-			end
-		end
-		if lowCur.y - eldit.scrollY < 1 then
-			eldit.scrollY = highCur.y - 1
-		elseif highCur.y - eldit.scrollY > eldit.size.height - 1 then
-			eldit.scrollY = lowCur.y - eldit.size.height + 1
-		end
-		if leftCur.x - eldit.scrollX < 1 then
-			eldit.scrollX = rightCur.x - 1
-		elseif rightCur.x - eldit.scrollX > eldit.size.width - lineNoLen then
-			eldit.scrollX = leftCur.x - (eldit.size.width - lineNoLen)
-		end
-	end
-
-	-- gets the widest line length in all the buffer
-	local getMaximumWidth = function()
-		local maxX = 0
-		for y = 1, #eldit.buffer do
-			maxX = math.max(maxX, #eldit.buffer[y])
-		end
-		return maxX
-	end
-
-	-- scrolls the screen, and fixes it if it's set to some weird value
-	local adjustScroll = function(modx, mody)
-		modx, mody = modx or 0, mody or 0
-		local lineNoLen = getLineNoLen()
-		if mody then
-			eldit.scrollY = math.min(
-				math.max(
-					0,
-					eldit.scrollY + mody
-				),
-				math.max(
-					0,
-					#eldit.buffer - eldit.size.height + 1
-				)
-			)
-		end
-		if modx then
-			eldit.scrollX = math.min(
-				math.max(
-					0,
-					eldit.scrollX + modx
-				),
-				math.max(
-					0,
-					getMaximumWidth() - eldit.size.width + 1 - lineNoLen
-				)
-			)
-		end
-	end
-
-	-- removes any cursors that share positions
-	local removeRedundantCursors = function()
-		local xes = {}
-		for i = #eldit.cursors, 1, -1 do
-			if xes[eldit.cursors[i].x] == eldit.cursors[i].y then
-				table.remove(eldit.cursors, i)
-			else
-				xes[eldit.cursors[i].x] = eldit.cursors[i].y
-			end
-		end
-	end
-
-	-- deletes text at every cursor position, either forward or backward or neutral
-	local deleteText = function(mode, direction, _cx, _cy)
-		local xAdjList = {}
-		local yAdj = 0
-		sortCursors()
-		for id,cur in pairs(eldit.cursors) do
-			cx = _cx or cur.x - (xAdjList[_cy or cur.y] or 0)
-			cy = _cy or cur.y - yAdj
-
-			if mode == "single" or (direction == "forward" and cx == #eldit.buffer[cy] or (direction == "backward" and cx == 1)) then
-				if direction == "forward" then
-					if cx < #eldit.buffer[cy] then
-						xAdjList[cy] = (xAdjList[cy] or 0) + 1
-						table.remove(eldit.buffer[cy], cx)
-					elseif cy < #eldit.buffer then
-						for i = 1, #eldit.buffer[cy + 1] do
-							table.insert(eldit.buffer[cy], eldit.buffer[cy + 1][i])
+			if evt == "mouse_click" then
+				mx, my = _mx, _my
+				if my == 1 then
+					mode = "recipient"
+				elseif my == 2 then
+					mode = "subject"
+				elseif my == 3 then
+					local newAttachment = lddfm.makeMenu(1, 4, scr_x, scr_y, "", false, false, false, true, false, nil, true)
+					if newAttachment then
+						local name = fs.getName(newAttachment)
+						if attachments[name] then
+							attachments[name] = nil
+						else
+							attachments[name] = readFile(newAttachment)
 						end
-						table.remove(eldit.buffer, cy + 1)
-						yAdj = yAdj + 1
 					end
-				elseif direction == "backward" then
-					if cx > 1 then
-						cx = cx - 1
-						xAdjList[cy] = (xAdjList[cy] or 0) + 1
-						table.remove(eldit.buffer[cy], cx)
-					elseif cy > 1 then
-						cx = #eldit.buffer[cy - 1] + 1
-						for i = 1, #eldit.buffer[cy] do
-							table.insert(eldit.buffer[cy - 1], eldit.buffer[cy][i])
-						end
-						table.remove(eldit.buffer, cy)
-						yAdj = yAdj + 1
-						cy = cy - 1
-					end
-				else
-					if cx >= 1 and cx <= #eldit.buffer[cy] then
-						table.remove(eldit.buffer[cy], cx)
-					elseif cx == #eldit.buffer[cy] + 1 and cy < #eldit.buffer then
-						for i = 1, #eldit.buffer[cy + 1] do
-							table.insert(eldit.buffer[cy], eldit.buffer[cy + 1][i])
-						end
-						table.remove(eldit.buffer, cy + 1)
-						yAdj = yAdj + 1
-					end
+				elseif my >= 5 then
+					mode = "message"
 				end
-			elseif mode == "word" then
-				local pos = cx
-				if direction == "forward" then
-					repeat
-						pos = pos + 1
-					until interruptable[eldit.buffer[cy][pos]] or pos >= #eldit.buffer[cy]
-					for i = pos, cx, -1 do
-						xAdjList[cy] = (xAdjList[cy] or 0) + 1
-						table.remove(eldit.buffer[cy], i)
-					end
-				else
-					repeat
-						pos = pos - 1
-					until interruptable[eldit.buffer[cy][pos]] or pos <= 1
-					pos = math.max(1, pos)
-					for i = cx - 1, pos, -1 do
-						table.remove(eldit.buffer[cy], i)
-					end
-					cx = pos
-				end
-			elseif mode == "line" then -- like word but is only interrupted by newline
-				if direction == "forward" then
-					for i = cx, #eldit.buffer[cy] do
-						eldit.buffer[cy][i] = nil
-					end
-				else
-					for i = cx, 1, -1 do
-						table.remove(eldit.buffer[cy], i)
-					end
-				end
-			end
-
-			if _cx then
-				return yAdj
-			else
-				cur.x = cx
-				cur.y = cy
-				cur.lastX = cx
-			end
-
-		end
-		removeRedundantCursors()
-		if not isSelecting then
-			scrollToCursor()
-		end
-		return yAdj
-	end
-
-	-- moves the cursor by (xmod, ymod), and fixes its position if it's set to an invalid one
-	local adjustCursor = function(_xmod, _ymod, setLastX, mode, doNotDelSelections)
-		for id,cur in pairs(eldit.cursors) do
-			if mode == "word" then
-				xmod = (_xmod / math.abs(_xmod))
-				ymod = 0
-				repeat
-					xmod = xmod + (_xmod / math.abs(_xmod))
-				until interruptable[eldit.buffer[cur.y][cur.x + xmod]] or cur.x + xmod >= #eldit.buffer[cur.y] or cur.x + xmod <= 1
-				xmod = xmod - math.min(0, math.max(xmod, -1))
-			else
-				xmod = _xmod
-				ymod = _ymod
-			end
-			if mode == "flip" then
-				if eldit.buffer[cur.y + ymod] then
-					eldit.buffer[cur.y], eldit.buffer[cur.y + ymod] = eldit.buffer[cur.y + ymod], eldit.buffer[cur.y]
-				end
-			end
-			cur.x = cur.x + xmod
-			cur.y = math.max(1, math.min(cur.y + ymod, #eldit.buffer))
-			if xmod ~= 0 then
-				repeat
-				if cur.x < 1 and cur.y > 1 then
-						cur.y = cur.y - 1
-						cur.x = cur.x + #eldit.buffer[cur.y] + 1
-					elseif cur.x > #eldit.buffer[cur.y] + 1 and cur.y < #eldit.buffer then
-						cur.x = cur.x - #eldit.buffer[cur.y] - 1
-						cur.y = cur.y + 1
-					end
-				until (cur.x >= 1 and cur.x <= #eldit.buffer[cur.y] + 1) or ((cur.y == 1 and xmod < 0) or (cur.y == #eldit.buffer and xmod > 0))
-			end
-			cur.lastX = setLastX and cur.x or cur.lastX
-			if cur.y < 1 then
-				cur.y = math.max(1, math.min(cur.y, #eldit.buffer))
-				cur.x = 1
-			elseif cur.y > #eldit.buffer then
-				cur.y = math.max(1, math.min(cur.y, #eldit.buffer))
-				cur.x = #eldit.buffer[cur.y] + 1
-			else
-				cur.y = math.max(1, math.min(cur.y, #eldit.buffer))
-				cur.x = math.max(1, math.min(cur.x, #eldit.buffer[cur.y] + 1))
-			end
-		end
-		removeRedundantCursors()
-		if (not keysDown[keys.leftCtrl]) and not (xmod == 0 and ymod == 0) and not doNotDelSelections then
-			eldit.selections = {}
-			isSelecting = false
-		end
-		if not isSelecting then
-			scrollToCursor()
-		end
-	end
-
-	-- deletes the parts of the buffer that are selected, then clears the selection list
-	local deleteSelections = function()
-		sortSelections()
-		if #eldit.selections == 0 then
-			return {}, {}
-		end
-		local xAdjusts = {}
-		local yAdjusts = {}
-		local xAdj = 0
-		local yAdj = 0
-		for y = 1, #eldit.buffer do
-			xAdjusts[y] = {}
-			if checkIfSelected(#eldit.buffer[y] + 1, y) then
-				yAdj = yAdj + 1
-			end
-			yAdjusts[y + 1] = yAdj
-			xAdj = 0
-			for x = 2, #eldit.buffer[y] do
-				xAdjusts[y][x] = xAdj
-				if checkIfSelected(x, y) then
-					xAdj = xAdj + 1
-				end
-			end
-		end
-		for y = #eldit.buffer, 1, -1 do
-			for x = #eldit.buffer[y] + 1, 1, -1 do
-
-				if checkIfSelected(x, y) then
-					if x == #eldit.buffer[y] + 1 then
-						if eldit.buffer[y + 1] then
-							for i = 1, #eldit.buffer[y + 1] do
-								table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
+			elseif evt == "key" then
+				if _mx == keys.enter or _mx == keys.tab then
+					if mode == "recipient" then
+						mode = "subject"
+					elseif mode == "subject" then
+						mode = "message"
+					elseif mode == "message" and _mx == keys.enter then
+						local recip
+						names = client.getNames(srv) or names
+						if tonumber(recipient) then
+							recip = tonumber(recipient)
+							if not names[recip] then
+								recip = nil
 							end
-							table.remove(eldit.buffer, y + 1)
+						else
+							recip = getNameID(recipient)
 						end
-					else
-						deleteText("single", nil, x, y)
-					end
-				end
-
-			end
-		end
-		eldit.selections = {}
-		adjustCursor(0, 0, true)
-		return xAdjusts, yAdjusts
-	end
-
-	-- puts text at every cursor position
-	local placeText = function(text, cursorList)
-		local xAdjusts, yAdjusts = deleteSelections()
-		removeRedundantCursors()
-		sortCursors()
-		local xAdjList = {}
-		for id,cur in pairs(cursorList or eldit.cursors) do
-			cur.y = cur.y - (yAdjusts[cur.y] or 0)
-			cur.x = cur.x - ((xAdjusts[cur.y] or {})[cur.x] or 0) + (xAdjList[cur.y] or 0)
-			for i = 1, #text do
-				if isInsert then
-					if cur.x == #eldit.buffer[cur.y] + 1 then
-						for i = 1, #eldit.buffer[cur.y + 1] do
-							table.insert(eldit.buffer[cur.y], eldit.buffer[cur.y + 1][i])
+						if recip then
+							client.sendMail(srv, recip, subject, message, attachments)
+							dialogueBox("Message sent!", 2)
+							refresh()
+							return
+						else
+							dialogueBox("There's no such recipient.", 2)
 						end
-						table.remove(eldit.buffer, cur.y + 1)
 					end
-					eldit.buffer[cur.y][cur.x + i - 1] = text:sub(i,i)
-				else
-					table.insert(eldit.buffer[cur.y], cur.x, text:sub(i,i))
-					if #xAdjusts + #yAdjusts == 0 then
-						xAdjList[cur.y] = (xAdjList[cur.y] or 0) + 1
-					end
+				elseif _mx == keys.q then
+					return
 				end
-				cur.x = cur.x + 1
 			end
-			cur.lastX = cur.x
 		end
-		if not isSelecting then
-			scrollToCursor()
-		end
+		niftyRead(nil, 1, 1, nil, true)
 	end
 
-	-- adds a new line to the buffer at every cursor position
-	local makeNewLine = function(cursorList)
-		for id,cur in pairs(cursorList or eldit.cursors) do
-			table.insert(eldit.buffer, cur.y + 1, {})
-			for i = cur.x, #eldit.buffer[cur.y] do
-				if i > cur.x or not isInsert then
-					table.insert(eldit.buffer[cur.y + 1], eldit.buffer[cur.y][i])
+	local area_view_mail = function(mailEntry)
+		local scroll = 0
+		local mail = inbox[mailEntry]
+		local render = function(scroll)
+			term.setBackgroundColor(colors.black)
+			term.setTextColor(colors.lightGray)
+			term.clear()
+			local y
+			writeHeader("From:", names[mail.sender], 1)
+			writeHeader("Subject:", mail.subject, 2)
+			if getTableLength(mail.attachments) > 0 then
+				writeHeader("Attachments:","",3)
+				for name, contents in pairs(mail.attachments) do
+					term.write(name .. " ")
 				end
-				eldit.buffer[cur.y][i] = nil
-			end
-			cur.x = 1
-			cur.y = cur.y + 1
-		end
-		if not isSelecting then
-			scrollToCursor()
-		end
-	end
-
-	local compareBuffers
-	compareBuffers = function(left, right)
-		for k,v in pairs(left) do
-			if type(v) == "table" then
-				if not compareBuffers(v, right[k]) then
-					return false
-				end
-			elseif right then
-				if left[k] ~= right[k] then
-					return false
-				end
+				y = 5
 			else
-				return false
+				y = 4
+			end
+			term.setTextColor(colors.gray)
+			term.setCursorPos(1, y - 1)
+			term.write(("="):rep(scr_x))
+			term.setTextColor(colors.white)
+			local words = {}
+			local lines = explode("\n", mail.message, nil, true)
+			for i = 1, #lines do
+				local inWords = explode(" ", lines[i], nil, true)
+				for ii = 1, #inWords do
+					words[#words+1] = inWords[ii]
+				end
+				if i ~= #lines then
+					words[#words+1] = "\n"
+				end
+			end
+			local buffer = {""}
+			for i = 1, #words do
+				if words[i] == "\n" then
+					buffer[#buffer+1] = ""
+				elseif #buffer[#buffer] + #words[i] > scr_x then
+					buffer[#buffer+1] = words[i]
+				else
+					buffer[#buffer] = buffer[#buffer] .. words[i]
+				end
+			end
+			for i = scroll + 1, scroll + scr_y - y do
+				if buffer[i] then
+					term.setCursorPos(1, y)
+					term.write(buffer[i])
+				end
+				y = y + 1
+			end
+			term.setCursorPos(1, scr_y)
+			term.setBackgroundColor(colors.gray)
+			term.setTextColor(colors.white)
+			term.clearLine()
+			keyWrite("Quit ", 1)
+			keyWrite("Reply ", 1)
+			if getTableLength(mail.attachments) > 0 then
+				keyWrite("DL.Attachments ", 4)
+			end
+			keyWrite("Delete ", 1)
+			return #buffer
+		end
+
+		local downloadAttachments = function()
+			local path = fs.combine(config.attachmentPath, names[mail.sender])
+			for name, contents in pairs(mail.attachments) do
+				writeFile(fs.combine(path, name), contents)
+			end
+			return path
+		end
+
+		local barCommands = {
+			[keys.q] = {1, scr_y, 4},
+			[keys.r] = {6, scr_y, 5},
+		}
+		if getTableLength(mail.attachments) > 0 then
+			barCommands[keys.a] = {12, scr_y, 14}
+			barCommands[keys.d] = {27, scr_y, 6}
+		else
+			barCommands[keys.d] = {12, scr_y, 6}
+		end
+		local evt, key, mx, my, msgHeight
+		while true do
+			msgHeight = render(scroll)
+			evt, key, mx, my = os.pullEvent()
+			if evt == "key" then
+				if key == keys.r then
+					area_new_mail(names[mail.sender], "Re: " .. mail.subject, "\n\n~~~\nAt UTC epoch " .. mail.time .. ", " .. names[mail.sender] .. " wrote:\n\n" .. mail.message)
+				elseif key == keys.d then
+					client.deleteMail(srv, mailEntry)
+					refresh()
+					return
+				elseif key == keys.a and getTableLength(mail.attachments) > 0 then
+					local path = downloadAttachments()
+					dialogueBox("DL'd to '" .. path .. "/'")
+				elseif key == keys.q then
+					return "exit"
+				end
+			elseif evt == "mouse_click" then
+				if my == 3 and getTableLength(mail.attachments) > 0 then
+					local path = downloadAttachments()
+					dialogueBox("DL'd to '" .. path .. "/'")
+				else
+					for key, data in pairs(barCommands) do
+						if my == data[2] and mx >= data[1] and mx <= data[1] + data[3] - 1 then
+							os.queueEvent("key", key)
+							break
+						end
+					end
+				end
+			elseif evt == "mouse_scroll" then
+				scroll = math.min(math.max(0, scroll + key), math.max(0, msgHeight - (scr_y - 5)))
 			end
 		end
-		return true
 	end
 
-	-- saves to file, duhh
-	local saveFile = function()
-		local compiled = ""
-		for y = 1, #eldit.buffer do
-			compiled = compiled .. concatTable(eldit.buffer[y])
-			if y < #eldit.buffer then
-				compiled = compiled .. "\n"
-			end
-		end
-		if not eldit.filename then
-			local cx, cy
-			repeat
-				render()
-				term.setCursorPos(eldit.size.y, eldit.size.y + eldit.size.height - 1)
-				eClearLine()
-				term.setTextColor(colors.yellow)
-				term.write("Save as: ")
-				term.setTextColor(colors.white)
-				cx, cy = term.getCursorPos()
-				term.setCursorPos(cx, cy)
-				eldit.filename = read()
-			until (
-				(not fs.isDir(eldit.filename)) and
-				#eldit.filename:gsub(" ", "") > 0
-			)
-		end
-		writeFile(eldit.filename, compiled)
-		barmsg = "Saved to '" .. eldit.filename .. "'."
-		barlife = defaultBarLife
-		keysDown, miceDown = {}, {}
-	end
-
-	local evt
-	local tID = os.startTimer(0.5)		-- timer for cursor blinking
-	local bartID = os.startTimer(0.1)	-- timer for bar message to go away
-	local undotID						-- timer for when the buffer is put in the undo buffer
-	local doRender = true				-- if true, renders
-
-	-- converts numerical key events to usable numbers
-	local numToKey = {
-		-- number bar
-		[2] = 1,
-		[3] = 2,
-		[4] = 3,
-		[5] = 4,
-		[6] = 5,
-		[7] = 6,
-		[8] = 7,
-		[9] = 8,
-		[10] = 9,
-		[11] = 0,
-		-- number pad
-		[79] = 1,
-		[80] = 2,
-		[81] = 3,
-		[75] = 4,
-		[76] = 5,
-		[77] = 6,
-		[71] = 7,
-		[72] = 8,
-		[73] = 9,
-		[82] = 0,
-	}
-
-	-- here we go my man
-	scrollToCursor()
+	local res, output
 	while true do
-		evt = {os.pullEvent()}
-		repeat
-			if evt[1] == "timer" then
-				if evt[2] == tID then
-					if isCursorBlink then
-						tID = os.startTimer(0.4)
-					else
-						tID = os.startTimer(0.3)
-					end
-					isCursorBlink = not isCursorBlink
-					doRender = true
-				elseif evt[2] == bartID then
-					bartID = os.startTimer(0.1)
-					barlife = math.max(0, barlife - 1)
-				elseif evt[2] == undotID then
-					if not compareBuffers(eldit.buffer, eldit.undoBuffer[#eldit.undoBuffer].buffer or {}) then
-						if #eldit.undoBuffer >= eldit.maxUndo then
-							repeat
-								table.remove(eldit.undoBuffer, 1)
-							until #eldit.undoBuffer < eldit.maxUndo
-						end
-						if eldit.undoPos < #eldit.undoBuffer then
-							repeat
-								table.remove(eldit.undoBuffer, 0)
-							until eldit.undoPos == #eldit.undoBuffer
-						end
-						eldit.undoPos = math.min(eldit.undoPos + 1, eldit.maxUndo)
-						table.insert(eldit.undoBuffer, {
-							buffer = deepCopy(eldit.buffer),
-							cursors = deepCopy(eldit.cursors),
-							selections = deepCopy(eldit.selections),
-						})
-					end
-				end
-			elseif (evt[1] == "char" and not keysDown[keys.leftCtrl]) then
-				placeText(evt[2])
-				if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-				doRender = true
-			elseif evt[1] == "paste" then
-				if keysDown[keys.leftShift] then
-					local cb = eldit.clipboards[eldit.selectedClipboard]
-					local cbb = {}
-					if cb then
-						deleteSelections()
-						sortCursors()
-						for i = 1, math.max(#cb, #eldit.cursors) do
-							cbb[i] = cb[(i % #cb) + 1]
-						end
-						for i = 1, #cbb do
-							if eldit.cursors[i] then
-								for y = 1, #cbb[i] do
-									placeText(concatTable(cbb[i][y]), {eldit.cursors[i]})
-									if y < #cbb[i] then
-										makeNewLine({eldit.cursors[i]})
-									end
-								end
-							else
-								makeNewLine({eldit.cursors[#eldit.cursors]})
-								for y = 1, #cbb[i] do
-									placeText(concatTable(cbb[i][y]), {eldit.cursors[#eldit.cursors]})
-									if y < #cbb[i] then
-										makeNewLine({eldit.cursors[#eldit.cursors]})
-									end
-								end
-							end
-						end
-						barmsg = "Pasted from clipboard " .. eldit.selectedClipboard .. "."
-						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-					else
-						barmsg = "Clipboard " .. eldit.selectedClipboard .. " is empty."
-					end
-					barlife = defaultBarLife
-				else
-					placeText(evt[2])
-					if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-				end
-				doRender = true
-			elseif evt[1] == "key" then
-				keysDown[evt[2]] = true
-				-- KEYBOARD SHORTCUTS
-				if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
-
-					if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
-						if evt[2] == keys.c or evt[2] == keys.x then
-							if #eldit.selections == 0 then
-								barmsg = "No selections have been made."
-								barlife = defaultBarLife
-							else
-								eldit.clipboards[eldit.selectedClipboard] = {}
-								local cb = eldit.clipboards[eldit.selectedClipboard]
-								sortSelections()
-								local id, selY
-								for y = 1, #eldit.buffer do
-									for x = 1, #eldit.buffer[y] do
-										id = checkIfSelected(x, y)
-										if id then
-											selY = y - eldit.selections[id][1].y + 1
-											cb[id] = cb[id] or {}
-											cb[id][selY] = cb[id][selY] or {}
-											table.insert(cb[id][selY], eldit.buffer[y][x])
-										end
-									end
-								end
-								if evt[2] == keys.x then
-									deleteSelections()
-									barmsg = "Cut to clipboard " .. eldit.selectedClipboard .. "."
-									barlife = defaultBarLife
-									if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-								else
-									barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
-									barlife = defaultBarLife
-								end
-							end
-
-						elseif evt[2] == keys.z then
-							if eldit.undoPos < #eldit.undoBuffer then
-								eldit.undoPos = math.min(#eldit.undoBuffer, eldit.maxUndo, eldit.undoPos + 1)
-								eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
-								eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
-								eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
-								adjustCursor(0, 0, true)
-								barmsg = "Redone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
-								barlife = defaultBarLife
-							else
-								barmsg = "Reached top of undo buffer. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
-								barlife = defaultBarLife
-							end
-							doRender = true
-						end
-						-- In-editor pasting is done with the "paste" event!
-					else
-						if numToKey[evt[2]] then -- if that's a number then
-							eldit.selectedClipboard = numToKey[evt[2]]
-							barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
-							barlife = defaultBarLife
-
-						elseif evt[2] == keys.backspace then
-							if #eldit.selections > 0 then
-								deleteSelections()
-							else
-								deleteText("word", "backward")
-							end
-							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-							doRender, isCursorBlink = true, false
-
-						elseif evt[2] == keys.delete then
-							if #eldit.selections > 0 then
-								deleteSelections()
-							else
-								deleteText("word", "forward")
-							end
-							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-							doRender, isCursorBlink = true, false
-
-						elseif evt[2] == keys.q then
-							return "exit"
-
-						elseif evt[2] == keys.s then
-							saveFile()
-							tID = os.startTimer(0.4)
-							bartID = os.startTimer(0.1)
-							doRender = true
-
-						elseif evt[2] == keys.a then
-							eldit.selections = {{
-								{
-									x = 1,
-									y = 1
-								},{
-									x = #eldit.buffer[#eldit.buffer],
-									y = #eldit.buffer
-								}
-							}}
-							doRender = true
-
-						elseif evt[2] == keys.z then
-
-							if eldit.undoPos > 1 then
-								eldit.undoPos = math.max(1, eldit.undoPos - 1)
-								eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
-								eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
-								eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
-								adjustCursor(0, 0, true)
-								barmsg = "Undone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
-								barlife = defaultBarLife
-							else
-								barmsg = "Reached back of undo buffer."
-								barlife = defaultBarLife
-							end
-							doRender = true
-
-						elseif evt[2] == keys.left then
-							adjustCursor(-1, 0, true, "word")
-							doRender, isCursorBlink = true, true
-							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-
-						elseif evt[2] == keys.right then
-							adjustCursor(1, 0, true, "word")
-							doRender, isCursorBlink = true, true
-							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-
-						elseif evt[2] == keys.up then
-							adjustCursor(0, -1, false, "flip")
-							doRender, isCursorBlink = true, true
-							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-
-						elseif evt[2] == keys.down then
-							adjustCursor(0, 1, false, "flip")
-							doRender, isCursorBlink = true, true
-							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-
-						end
-					end
-
-				else
-
-					if evt[2] == keys.tab then
-						if #eldit.selections > 0 then
-							sortSelections()
-							local safeY = {}
-							for id,sel in pairs(eldit.selections) do
-								for y = sel[1].y, sel[2].y do
-									if not safeY[y] then
-										if keysDown[keys.leftShift] then
-											if eldit.buffer[y][1] == "\9" or eldit.buffer[y][1] == " " then
-												table.remove(eldit.buffer[y], 1)
-												for idd,cur in pairs(eldit.cursors) do
-													if cur.y == y and cur.x > 1 then
-														cur.x = cur.x - 1
-														cur.lastX = cur.x
-													end
-												end
-											end
-										else
-											table.insert(eldit.buffer[y], 1, "\9")
-											for idd,cur in pairs(eldit.cursors) do
-												if cur.y == y and cur.x < #eldit.buffer[y] then
-													cur.x = cur.x + 1
-													cur.lastX = cur.x
-												end
-											end
-										end
-									end
-									safeY[y] = true
-								end
-							end
-						else
-							placeText("\9")
-						end
-						doRender = true
-						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-
-					elseif evt[2] == keys.insert then
-						isInsert = not isInsert
-						doRender, isCursorBlink = true, true
-
-					elseif evt[2] == keys.enter then
-						makeNewLine()
-						doRender, isCursorBlink = true, false
-						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-
-					elseif evt[2] == keys.home then
-						eldit.cursors = {{
-							x = 1,
-							y = eldit.cursors[1].y,
-							lastX = 1
-						}}
-						scrollToCursor()
-						doRender, isCursorBlink = true, true
-
-					elseif evt[2] == keys["end"] then
-						eldit.cursors = {{
-							x = #eldit.buffer[eldit.cursors[1].y] + 1,
-							y = eldit.cursors[1].y,
-							lastX = #eldit.buffer[eldit.cursors[1].y] + 1
-						}}
-						scrollToCursor()
-						doRender, isCursorBlink = true, true
-
-					elseif evt[2] == keys.pageUp then
-						adjustScroll(0, -eldit.size.height)
-						doRender = true
-
-					elseif evt[2] == keys.pageDown then
-						adjustScroll(0, eldit.size.height)
-						doRender = true
-
-					elseif evt[2] == keys.backspace then
-						if #eldit.selections > 0 then
-							deleteSelections()
-						else
-							deleteText("single", "backward")
-						end
-						doRender, isCursorBlink = true, false
-						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-
-					elseif evt[2] == keys.delete then
-						if #eldit.selections > 0 then
-							deleteSelections()
-						else
-							deleteText("single", "forward")
-						end
-						doRender, isCursorBlink = true, false
-						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
-
-					elseif evt[2] == keys.left then
-						adjustCursor(-1, 0, true)
-						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-						doRender, isCursorBlink = true, true
-
-					elseif evt[2] == keys.right then
-						adjustCursor(1, 0, true)
-						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-						doRender, isCursorBlink = true, true
-
-					elseif evt[2] == keys.up then
-						adjustCursor(0, -1, false)
-						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-						doRender, isCursorBlink = true, true
-
-					elseif evt[2] == keys.down then
-						adjustCursor(0, 1, false)
-						doRender, isCursorBlink = true, true
-						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-					end
-
-				end
-			elseif evt[1] == "key_up" then
-				keysDown[evt[2]] = nil
-			elseif evt[1] == "mouse_click" then
-				local lineNoLen = getLineNoLen()
-				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
-				if keysDown[keys.leftCtrl] then
-					table.insert(eldit.cursors, {
-						x = evt[3] + eldit.scrollX - lineNoLen,
-						y = evt[4] + eldit.scrollY,
-						lastX = evt[3] + eldit.scrollX - lineNoLen
-					})
-				else
-					eldit.cursors = {{
-						x = evt[3] + eldit.scrollX - lineNoLen,
-						y = evt[4] + eldit.scrollY,
-						lastX = evt[3] + eldit.scrollX - lineNoLen
-					}}
-					eldit.selections = {}
-				end
-				lastMouse = {
-					x = evt[3],
-					y = evt[4],
-					scrollX = eldit.scrollX,
-					scrollY = eldit.scrollY,
-					lineNoLen = lineNoLen,
-					ctrl = keysDown[keys.leftCtrl],
-					curID = #eldit.cursors,
-				}
-				sortSelections()
-				adjustCursor(0, 0, true)
-				eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-				eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-				doRender = true
-			elseif evt[1] == "mouse_drag" then
-				local lineNoLen = getLineNoLen()
-				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
-				if lastMouse.x and lastMouse.y and lastMouse.curID then
-					local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
-					local adjEX, adjEY = evt[3] + eldit.scrollX, evt[4] + eldit.scrollY
-					local selID
-					if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
-						selID = #eldit.selections + 1
-					else
-						selID = #eldit.selections + 0
-					end
-					eldit.selections[selID] = {
-						{
-							x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
-							y = adjMY
-						},
-						{
-							x = math.min(adjEX, #(eldit.buffer[adjEY] or "") + lineNoLen) - lineNoLen,
-							y = adjEY
-						}
-					}
-					sortSelections()
-					eldit.cursors[lastMouse.curID] = {
-						x = eldit.selections[selID][1].x,
-						y = eldit.selections[selID][1].y,
-						lastX = eldit.selections[selID][1].x
-					}
-
-					isSelecting = true
-					adjustCursor(0, 0)
-					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-					doRender = true
-				end
-			elseif evt[1] == "mouse_up" then
-				miceDown[evt[2]] = nil
-				isSelecting = false
-				sortSelections()
-			elseif evt[1] == "mouse_scroll" then
-				if keysDown[keys.leftAlt] then
-					adjustScroll((keysDown[keys.leftCtrl] and eldit.size.width or 1) * evt[2], 0)
-				else
-					adjustScroll(0, (keysDown[keys.leftCtrl] and eldit.size.height or 1) * evt[2])
-				end
-				if isSelecting then
-					os.queueEvent("mouse_drag", 1, evt[3], evt[4])
-				end
-				doRender = true
-			end
-			if doRender then
-				if not (evt[1] == "mouse_scroll" and isSelecting) then
-					render()
-					doRender = false
-				end
-			end
-		until true
+		res, output = area_inbox()
+		if res == "exit" then
+			term.setCursorPos(1, scr_y)
+			term.setBackgroundColor(colors.black)
+			term.clearLine()
+			sleep(0.05)
+			return
+		elseif res == "refresh" then
+			refresh()
+		elseif res == "view_mail" then
+			area_view_mail(table.unpack(output or {}))
+		elseif res == "new_mail" then
+			area_new_mail(table.unpack(output or {}))
+		end
 	end
 end
 
-local contents = eldit.filename and readFile(eldit.filename) or nil
-
-local result = {prompt(contents)}
-if result[1] == "exit" then
-	term.setBackgroundColor(colors.black)
-	term.scroll(1)
-	term.setCursorPos(1, scr_y)
+if isServer then
+	names[yourID] = names[yourID] or serverName
+	writeNames()
+	server.makeServer(true)
+elseif shell then
+	clientInterface()
 end
+
+return {client = client, server = server}
