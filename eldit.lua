@@ -14,12 +14,12 @@ eldit.undoBuffer = {{{}}}	-- stores buffers for undoing/redoing
 eldit.allowUndo = true		-- whether or not to allow undoing/redoing
 eldit.maxUndo = 16			-- maximum size of the undo buffer
 eldit.undoPos = 1			-- current position in undo buffer
-eldit.undoDelay = 0.5		-- amount of time to wait after typing, before the buffer is put in the undo buffer
+eldit.undoDelay = 0.3		-- amount of time to wait after typing, before the buffer is put in the undo buffer
 eldit.clipboards = {}		-- all clipboard entries
 eldit.selectedClipboard = 1	-- which clipboard to use
 eldit.scrollX = 0			-- horizontal scroll
 eldit.scrollY = 0			-- vertical scroll
-eldit.selections = {}
+eldit.selections = {}		-- all selected areas
 eldit.size = {
 	x = 1,			-- top left corner X
 	y = 1,			-- top left corner Y
@@ -100,6 +100,7 @@ local eClear = function()
 	term.setCursorPos(cx, cy)
 end
 
+-- sorts all selections based on each of their (x,y) positions (top left first)
 local sortSelections = function()
 	for id,sel in pairs(eldit.selections) do
 		sortTable(sel, function(a,b)
@@ -108,6 +109,7 @@ local sortSelections = function()
 	end
 end
 
+-- sorts all cursors based on (x,y) position (top left first)
 local sortCursors = function()
 	sortTable(eldit.cursors, function(a,b)
 		return (a.y * eldit.size.width) + a.x < (b.y * eldit.size.width) + b.x
@@ -160,6 +162,23 @@ deepCopy = function(tbl)
 		end
 	end
 	return output
+end
+
+local choice = function(input, breakKeys, returnNumber)
+	local fpos = 0
+	repeat
+		event, key = os.pullEvent("char")
+		key = key or ""
+		if type(breakKeys) == "table" then
+			for a = 1, #breakKeys do
+				if key == breakKeys[a] then
+					return ""
+				end
+			end
+		end
+		fpos = string.find(input, key)
+	until fpos
+	return returnNumber and fpos or key
 end
 
 prompt = function(prebuffer, precy, maxY, _eldit)
@@ -218,6 +237,27 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		[","] = true
 	}
 
+	-- checks if (checkX, checkY) is between (x1, y1) and (x2, y2) in terms of selection (it's not a rectangular check)
+	local checkWithinArea = function(checkX, checkY, x1, y1, x2, y2)
+		if checkY == y1 then
+			if y1 == y2 then
+				return checkX >= x1 and checkX <= x2
+			else
+				return checkX >= x1
+			end
+		elseif checkY == y2 then
+			if y1 == y2 then
+				return checkX >= x1 and checkX <= x2
+			else
+				return checkX <= x2 and checkX >= 1
+			end
+		elseif checkY > y1 and checkY < y2 then
+			return true
+		else
+			return false
+		end
+	end
+
 	-- goes over every selection and checks if it is selected
 	-- (x, y) = position on buffer
 	local checkIfSelected = function(x, y)
@@ -227,23 +267,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 			if x >= 1 and x <= #eldit.buffer[y] + 1 then
 				for id, sel in pairs(eldit.selections) do
 
-					if y == sel[1].y then
-						if sel[2].y == sel[1].y then
-							fin = x >= sel[1].x and x <= sel[2].x
-						else
-							fin = x >= sel[1].x
-						end
-					elseif y == sel[2].y then
-						if sel[2].y == sel[1].y then
-							fin = x >= sel[1].x and x <= sel[2].x
-						else
-							fin = x <= sel[2].x
-						end
-					elseif y > sel[1].y and y < sel[2].y then
-						fin = true
-					end
-
-					if fin then
+					if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
 						return id
 					end
 
@@ -561,6 +585,62 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		return yAdj
 	end
 
+	local indentLines = function(goBackward)
+		sortSelections()
+		local safeY = {}
+		for id,sel in pairs(eldit.selections) do
+			for y = sel[1].y, sel[2].y do
+				if not safeY[y] then
+					if goBackward then
+						if eldit.buffer[y][1] == "\9" or eldit.buffer[y][1] == " " then
+							table.remove(eldit.buffer[y], 1)
+							if y == sel[1].y then
+								sel[1].x = math.max(1, -1 + sel[1].x)
+							elseif y == sel[2].y then
+								sel[2].x = math.max(1, -1 + sel[2].x)
+							end
+							for idd,cur in pairs(eldit.cursors) do
+								if cur.y == y and cur.x > 1 then
+									cur.x = -1 + cur.x
+									cur.lastX = cur.x
+								end
+							end
+						end
+					elseif eldit.buffer[y] then
+						table.insert(eldit.buffer[y], 1, "\9")
+						if y == sel[1].y then
+							sel[1].x = 1 + sel[1].x
+						elseif y == sel[2].y then
+							sel[2].x = 1 + sel[2].x
+						end
+						for idd,cur in pairs(eldit.cursors) do
+							if cur.y == y and cur.x < #eldit.buffer[y] then
+								cur.x = 1 + cur.x
+								cur.lastX = cur.x
+							end
+						end
+					end
+				end
+				safeY[y] = true
+			end
+		end
+		for id,cur in pairs(eldit.cursors) do
+			if not safeY[cur.y] then
+				if goBackward then
+					if eldit.buffer[cur.y][1] == "\9" or eldit.buffer[cur.y][1] == " " then
+						table.remove(eldit.buffer[cur.y], 1)
+						cur.x = -1 + cur.x
+						cur.lastX = cur.x
+					end
+				else
+					table.insert(eldit.buffer[cur.y], 1, "\9")
+					cur.x = 1 + cur.x
+					cur.lastX = cur.x
+				end
+			end
+		end
+	end
+
 	-- moves the cursor by (xmod, ymod), and fixes its position if it's set to an invalid one
 	local adjustCursor = function(_xmod, _ymod, setLastX, mode, doNotDelSelections)
 		for id,cur in pairs(eldit.cursors) do
@@ -625,36 +705,37 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		local yAdjusts = {}
 		local xAdj = 0
 		local yAdj = 0
-		for y = 1, #eldit.buffer do
-			xAdjusts[y] = {}
-			if checkIfSelected(#eldit.buffer[y] + 1, y) then
-				yAdj = yAdj + 1
-			end
-			yAdjusts[y + 1] = yAdj
-			xAdj = 0
-			for x = 2, #eldit.buffer[y] do
-				xAdjusts[y][x] = xAdj
-				if checkIfSelected(x, y) then
-					xAdj = xAdj + 1
+		for id,sel in pairs(eldit.selections) do
+			for y = sel[1].y, sel[2].y do
+				xAdjusts[y] = xAdjusts[y] or {}
+				if checkWithinArea(#eldit.buffer[y] + 1, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
+					yAdj = yAdj + 1
+				end
+				yAdjusts[y + 1] = math.min(yAdjusts[y + 1] or math.huge, yAdj)
+				for x = 2, #eldit.buffer[y] do
+					xAdjusts[y][x] = math.min(xAdjusts[y][x] or math.huge, xAdj)
+					if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
+						xAdj = xAdj + 1
+					end
 				end
 			end
 		end
-		for y = #eldit.buffer, 1, -1 do
-			for x = #eldit.buffer[y] + 1, 1, -1 do
-
-				if checkIfSelected(x, y) then
-					if x == #eldit.buffer[y] + 1 then
-						if eldit.buffer[y + 1] then
-							for i = 1, #eldit.buffer[y + 1] do
-								table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
+		for id,sel in pairs(eldit.selections) do
+			for y = sel[2].y, sel[1].y, -1 do
+				for x = #eldit.buffer[y] + 1, 1, -1 do
+					if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
+						if x == #eldit.buffer[y] + 1 then
+							if eldit.buffer[y + 1] then
+								for i = 1, #eldit.buffer[y + 1] do
+									table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
+								end
+								table.remove(eldit.buffer, y + 1)
 							end
-							table.remove(eldit.buffer, y + 1)
+						else
+							deleteText("single", nil, x, y)
 						end
-					else
-						deleteText("single", nil, x, y)
 					end
 				end
-
 			end
 		end
 		eldit.selections = {}
@@ -731,8 +812,17 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		return true
 	end
 
+	-- simulate key inputs, for pre-entering text into read()
+	local simType = function(text)
+		for i = 1, #text do
+			os.queueEvent("key", keys[text:sub(i,i)])
+			os.queueEvent("char", text:sub(i,i))
+		end
+	end
+
 	-- saves to file, duhh
-	local saveFile = function()
+	local saveFile = function(preSaveAs)
+		keysDown, miceDown = {}, {}
 		local compiled = ""
 		for y = 1, #eldit.buffer do
 			compiled = compiled .. concatTable(eldit.buffer[y])
@@ -740,8 +830,11 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				compiled = compiled .. "\n"
 			end
 		end
-		if not eldit.filename then
-			local cx, cy
+		if preSaveAs or (not eldit.filename) then
+			local newName, cx, cy = ""
+			if type(preSaveAs) == "string" then
+				simType(preSaveAs)
+			end
 			repeat
 				render()
 				term.setCursorPos(eldit.size.y, eldit.size.y + eldit.size.height - 1)
@@ -751,16 +844,46 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				term.setTextColor(colors.white)
 				cx, cy = term.getCursorPos()
 				term.setCursorPos(cx, cy)
-				eldit.filename = read()
+				newName = read()
+				if tab[newName:sub(-1,-1)] then
+					render()
+					term.setCursorPos(eldit.size.y, eldit.size.y + eldit.size.height - 1)
+					term.write("Path cannot have trailing space!")
+					sleep(0.5)
+					simType(newName)
+				elseif fs.exists(newName) and newName ~= "" then
+					render()
+					term.setCursorPos(eldit.size.y, eldit.size.y + eldit.size.height - 1)
+					eClearLine()
+					if fs.isDir(newName) then
+						term.write("Cannot overwrite a directory!")
+						sleep(0.5)
+						simType(newName)
+					else
+						term.write("Overwrite? (Y/N)")
+						if choice("yn", nil, false) == "n" then
+							barmsg = "Cancelled save."
+							barlife = defaultBarLife
+							return
+						end
+					end
+				end
 			until (
-				(not fs.isDir(eldit.filename)) and
-				#eldit.filename:gsub(" ", "") > 0
+				(not fs.isDir(newName) or newName == "") and
+				(#newName:gsub(" ", "") > 0 or newName == "") and
+				not tab[newName:sub(-1,-1)]
 			)
+			if newName == "" then
+				barmsg = "Cancelled save."
+				barlife = defaultBarLife
+				return
+			else
+				eldit.filename = newName
+			end
 		end
 		writeFile(eldit.filename, compiled)
 		barmsg = "Saved to '" .. eldit.filename .. "'."
 		barlife = defaultBarLife
-		keysDown, miceDown = {}, {}
 	end
 
 	local evt
@@ -926,6 +1049,13 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 								barlife = defaultBarLife
 							end
 							doRender = true
+							
+						elseif evt[2] == keys.s then
+							saveFile(eldit.filename)
+							tID = os.startTimer(0.4)
+							bartID = os.startTimer(0.1)
+							doRender = true
+
 						end
 						-- In-editor pasting is done with the "paste" event!
 					else
@@ -933,7 +1063,16 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 							eldit.selectedClipboard = numToKey[evt[2]]
 							barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
 							barlife = defaultBarLife
+							doRender = true
 
+						elseif evt[2] == keys.rightBracket then
+							indentLines(false)
+							doRender, isCursorBlink = true, true
+							
+						elseif evt[2] == keys.leftBracket then
+							indentLines(true)
+							doRender, isCursorBlink = true, true
+							
 						elseif evt[2] == keys.backspace then
 							if #eldit.selections > 0 then
 								deleteSelections()
@@ -956,7 +1095,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 							return "exit"
 
 						elseif evt[2] == keys.s then
-							saveFile()
+							saveFile(false)
 							tID = os.startTimer(0.4)
 							bartID = os.startTimer(0.1)
 							doRender = true
@@ -1021,35 +1160,10 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				else
 
 					if evt[2] == keys.tab then
-						if #eldit.selections > 0 then
-							sortSelections()
-							local safeY = {}
-							for id,sel in pairs(eldit.selections) do
-								for y = sel[1].y, sel[2].y do
-									if not safeY[y] then
-										if keysDown[keys.leftShift] then
-											if eldit.buffer[y][1] == "\9" or eldit.buffer[y][1] == " " then
-												table.remove(eldit.buffer[y], 1)
-												for idd,cur in pairs(eldit.cursors) do
-													if cur.y == y and cur.x > 1 then
-														cur.x = cur.x - 1
-														cur.lastX = cur.x
-													end
-												end
-											end
-										elseif eldit.buffer[y] then
-											table.insert(eldit.buffer[y], 1, "\9")
-											for idd,cur in pairs(eldit.cursors) do
-												if cur.y == y and cur.x < #eldit.buffer[y] then
-													cur.x = cur.x + 1
-													cur.lastX = cur.x
-												end
-											end
-										end
-									end
-									safeY[y] = true
-								end
-							end
+						if keysDown[keys.leftShift] then
+							indentLines(true)
+						elseif #eldit.selections > 0 then
+							indentLines(false)
 						else
 							placeText("\9")
 						end
@@ -1063,7 +1177,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 					elseif evt[2] == keys.enter then
 						deleteSelections()
 						makeNewLine()
-						doRender, isCursorBlink = true, false
+						doRender, isCursorBlink = true, true
 						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
 
 					elseif evt[2] == keys.home then
@@ -1141,67 +1255,96 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 			elseif evt[1] == "mouse_click" then
 				local lineNoLen = getLineNoLen()
 				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
-				if keysDown[keys.leftCtrl] then
-					table.insert(eldit.cursors, {
-						x = evt[3] + eldit.scrollX - lineNoLen,
-						y = evt[4] + eldit.scrollY,
-						lastX = evt[3] + eldit.scrollX - lineNoLen
-					})
+				if evt[4] == -1 + eldit.size.y + eldit.size.height then
+					
 				else
-					eldit.cursors = {{
-						x = evt[3] + eldit.scrollX - lineNoLen,
-						y = evt[4] + eldit.scrollY,
-						lastX = evt[3] + eldit.scrollX - lineNoLen
-					}}
-					eldit.selections = {}
-				end
-				lastMouse = {
-					x = evt[3],
-					y = evt[4],
-					scrollX = eldit.scrollX,
-					scrollY = eldit.scrollY,
-					lineNoLen = lineNoLen,
-					ctrl = keysDown[keys.leftCtrl],
-					curID = #eldit.cursors,
-				}
-				sortSelections()
-				adjustCursor(0, 0, true)
-				eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-				eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-				doRender = true
-			elseif evt[1] == "mouse_drag" then
-				local lineNoLen = getLineNoLen()
-				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
-				if lastMouse.x and lastMouse.y and lastMouse.curID then
-					local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
-					local adjEX, adjEY = evt[3] + eldit.scrollX, evt[4] + eldit.scrollY
-					local selID
-					if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
-						selID = 1 + #eldit.selections
+					if keysDown[keys.leftCtrl] then
+						table.insert(eldit.cursors, {
+							x = evt[3] + eldit.scrollX - lineNoLen,
+							y = evt[4] + eldit.scrollY,
+							lastX = evt[3] + eldit.scrollX - lineNoLen
+						})
 					else
-						selID = #eldit.selections
+						eldit.cursors = {{
+							x = evt[3] + eldit.scrollX - lineNoLen,
+							y = evt[4] + eldit.scrollY,
+							lastX = evt[3] + eldit.scrollX - lineNoLen
+						}}
+						eldit.selections = {}
 					end
-					eldit.selections[selID] = {
-						{
-							x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
-							y = adjMY
-						},
-						{
-							x = math.min(adjEX, #(eldit.buffer[adjEY] or "") + lineNoLen) - lineNoLen,
-							y = adjEY
-						}
+					lastMouse = {
+						x = evt[3],
+						y = evt[4],
+						scrollX = eldit.scrollX,
+						scrollY = eldit.scrollY,
+						lineNoLen = lineNoLen,
+						ctrl = keysDown[keys.leftCtrl],
+						curID = #eldit.cursors,
 					}
 					sortSelections()
-					eldit.cursors[lastMouse.curID] = {
-						x = eldit.selections[selID][1].x,
-						y = eldit.selections[selID][1].y,
-						lastX = eldit.selections[selID][1].x
-					}
-
-					isSelecting = true
-					adjustCursor(0, 0)
+					adjustCursor(0, 0, true)
 					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+				end
+				doRender = true
+			elseif evt[1] == "mouse_drag" then
+				if evt[4] == -1 + eldit.size.y + eldit.size.height then
+					
+				else
+					local lineNoLen = getLineNoLen()
+					local lastMX, lastMY
+					if miceDown[evt[2]] then
+						lastMX, lastMY = miceDown[evt[2]].x, miceDown[evt[2]].y
+					else
+						lastMX, lastMY = evt[3], evt[4]
+					end
+					miceDown[evt[2]] = {x = evt[3], y = evt[4]}
+					if lastMouse.x and lastMouse.y and lastMouse.curID then
+						local adjMY = lastMouse.y + lastMouse.scrollY
+						local adjMX = math.min(lastMouse.x + lastMouse.scrollX, #eldit.buffer[adjMY] + 1)
+						local adjEY = evt[4] + eldit.scrollY
+						local adjEX = math.min(evt[3] + eldit.scrollX, #eldit.buffer[adjEY] + 1)
+						local selID
+						local cSelID = checkIfSelected(adjMX, adjMY)
+						if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
+							selID = cSelID or (1 + #eldit.selections)
+						else
+							selID = #eldit.selections
+						end
+						if cSelID and not (eldit.selections[cSelID][1].x == adjMX and eldit.selections[cSelID][1].y == adjMY) then
+							for id,cur in pairs(eldit.cursors) do
+								if cur.x == eldit.selections[cSelID][1].x and cur.y == eldit.selections[cSelID][1].y then
+									table.remove(eldit.cursors, id)
+									break
+								end
+							end
+							eldit.selections[cSelID][1] = {
+								x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
+								y = adjMY
+							}
+						end
+						eldit.selections[selID] = {
+							{
+								x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
+								y = adjMY
+							},
+							{
+								x = math.min(adjEX, #(eldit.buffer[adjEY] or "") + lineNoLen) - lineNoLen,
+								y = adjEY
+							}
+						}
+						sortSelections()
+						eldit.cursors[lastMouse.curID] = {
+							x = eldit.selections[selID][1].x,
+							y = eldit.selections[selID][1].y,
+							lastX = eldit.selections[selID][1].x
+						}
+
+						isSelecting = true
+						adjustCursor(0, 0)
+						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+					end
 					doRender = true
 				end
 			elseif evt[1] == "mouse_up" then
