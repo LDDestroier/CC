@@ -11,6 +11,7 @@ local argData = {
 local eldit, config = {}, {}
 eldit.buffer = {{}}			-- stores all text, organized like eldit.buffer[yPos][xPos]
 eldit.undoBuffer = {{{}}}	-- stores buffers for undoing/redoing
+eldit.allowUndo = true		-- whether or not to allow undoing/redoing
 eldit.maxUndo = 16			-- maximum size of the undo buffer
 eldit.undoPos = 1			-- current position in undo buffer
 eldit.undoDelay = 0.5		-- amount of time to wait after typing, before the buffer is put in the undo buffer
@@ -161,18 +162,12 @@ deepCopy = function(tbl)
 	return output
 end
 
-local getLineNoLen = function()
-	if config.showLineNumberIndicator then
-		return #tostring(#eldit.buffer)
-	else
-		return 0
-	end
-end
-
-prompt = function(prebuffer, precy, _eldit)
+prompt = function(prebuffer, precy, maxY, _eldit)
+	term.setCursorBlink(false)
 	local keysDown = {}					-- list of all keys being pressed
 	local miceDown = {}					-- list of all mouse buttons being pressed
 	eldit = _eldit or eldit				-- you can replace the "eldit" table if you want I guess
+	maxY = maxY or math.huge			-- limits amount of lines
 	local defaultBarLife = 10			-- default amount of time bar msg will stay onscreen
 	local barmsg = "Started Eldit."		-- message displayed on bottom screen
 	local barlife = defaultBarLife
@@ -196,6 +191,15 @@ prompt = function(prebuffer, precy, _eldit)
 	}
 	local isCursorBlink = false			-- blinks the background color on each cursor
 	local isInsert = false				-- will overwrite characters instead of appending them
+
+	-- gets length of left line numbers, if enabled at all
+	local getLineNoLen = function()
+		if config.showLineNumberIndicator then
+			return #tostring(#eldit.buffer)
+		else
+			return 0
+		end
+	end
 
 	-- list of all characters that will stop a CTRL+Backspace or CTRL+Delete or CTRL+Left/Right
 	local interruptable = {
@@ -269,14 +273,17 @@ prompt = function(prebuffer, precy, _eldit)
 		end
 	end
 
+	-- all characters that count as whitespace
+	local tab = {
+		[" "] = true,
+		["\9"] = true
+	}
+	
 	-- the big boi function, draws **EVERYTHING**
 	local render = function()
 		local cx, cy
-		local tab = {
-			[" "] = true,
-			["\9"] = true
-		}
 		local lineNoLen = getLineNoLen()
+		local isHighlighted = false
 		local textPoses = {math.huge, -math.huge}		-- used to identify space characters without text
 		local screen = {{},{},{}}
 		for y = 1, eldit.size.height - 1 do -- minus one because it reserves space for the bar
@@ -286,36 +293,27 @@ prompt = function(prebuffer, precy, _eldit)
 			cy = y + eldit.scrollY
 			-- find text
 			if eldit.buffer[cy] and (config.showWhitespace or config.showTrailingSpace) then
-				for x = 1, #eldit.buffer[cy] do
-					if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
-						textPoses[1] = x
-						break
-					end
-				end
-				for x = #eldit.buffer[cy], 1, -1 do
-					if (not tab[eldit.buffer[cy][x]]) and eldit.buffer[cy][x] then
-						textPoses[2] = x
-						break
-					end
-				end
+				textPoses = {
+					#(concatTable(eldit.buffer[cy]):match("^ +") or "") + 1,
+					#eldit.buffer[cy] - #(concatTable(eldit.buffer[y]):match(" +$") or "")
+				}
 			end
-			local isHighlighted = false
-			for id,cur in pairs(eldit.cursors) do
-				if cy == cur.y then
-					isHighlighted = true
-					break
-				end
-			end
-			if not isHighlighted then
-				for id,sel in pairs(eldit.selections) do
-					if cy >= sel[1].y and cy <= sel[2].y then
+			if cy <= #eldit.buffer and lineNoLen > 0 then
+				isHighlighted = false
+				for id,cur in pairs(eldit.cursors) do
+					if cy == cur.y then
 						isHighlighted = true
 						break
 					end
 				end
-			end
-			term.setCursorPos(eldit.size.x, eldit.size.y + y - 1)
-			if cy <= #eldit.buffer and lineNoLen > 0 then
+				if not isHighlighted then
+					for id,sel in pairs(eldit.selections) do
+						if cy >= sel[1].y and cy <= sel[2].y then
+							isHighlighted = true
+							break
+						end
+					end
+				end
 				if isHighlighted then
 					term.setBackgroundColor(colors.gray)
 					term.setTextColor(colors.white)
@@ -323,23 +321,16 @@ prompt = function(prebuffer, precy, _eldit)
 					term.setBackgroundColor(colors.black)
 					term.setTextColor(colors.lightGray)
 				end
+				term.setCursorPos(eldit.size.x, eldit.size.y + y - 1)
 				term.write(cy .. (" "):rep(lineNoLen - #tostring(y)))
-			else
-				term.write(" ")
 			end
 
 			-- actually draw text
 
 			local cChar, cTxt, cBg = " ", " ", " "
-			term.setCursorPos(eldit.size.x + lineNoLen + 0, eldit.size.y + y - 1)
+			term.setCursorPos(eldit.size.x + lineNoLen, eldit.size.y + y - 1)
 			for x = lineNoLen + 1, eldit.size.width do
 				cx = x + eldit.scrollX - lineNoLen
-
-				if checkIfSelected(cx, cy) then
-					cBg = "b"
-				else
-					cBg = "f"
-				end
 
 				if checkIfCursor(cx, cy) and isCursorBlink then
 					if isInsert then
@@ -348,6 +339,11 @@ prompt = function(prebuffer, precy, _eldit)
 						cTxt, cBg = "f", "8"
 					end
 				else
+					if checkIfSelected(cx, cy) then
+						cBg = "b"
+					else
+						cBg = "f"
+					end
 					cTxt = "0"
 				end
 				if config.showWhitespace or config.showTrailingSpace then
@@ -378,13 +374,13 @@ prompt = function(prebuffer, precy, _eldit)
 			)
 		end
 		term.setCursorPos(eldit.size.x, eldit.size.y + eldit.size.height - 1)
-		term.setBackgroundColor(colors.gray)
+		term.setBackgroundColor(colors.black)
 		eClearLine()
 		if barlife > 0 then
 			term.setTextColor(colors.yellow)
 			term.write(barmsg)
 		else
-			term.setTextColor(colors.white)
+			term.setTextColor(colors.yellow)
 			for id,cur in pairs(eldit.cursors) do
 				term.write("(" .. cur.x .. "," .. cur.y .. ") ")
 			end
@@ -409,12 +405,12 @@ prompt = function(prebuffer, precy, _eldit)
 			end
 		end
 		if lowCur.y - eldit.scrollY < 1 then
-			eldit.scrollY = highCur.y - 1
-		elseif highCur.y - eldit.scrollY > eldit.size.height - 1 then
-			eldit.scrollY = lowCur.y - eldit.size.height + 1
+			eldit.scrollY = -1 + highCur.y
+		elseif highCur.y - eldit.scrollY > -1 + eldit.size.height then
+			eldit.scrollY = 1 + lowCur.y - eldit.size.height
 		end
 		if leftCur.x - eldit.scrollX < 1 then
-			eldit.scrollX = rightCur.x - 1
+			eldit.scrollX = -1 + rightCur.x
 		elseif rightCur.x - eldit.scrollX > eldit.size.width - lineNoLen then
 			eldit.scrollX = leftCur.x - (eldit.size.width - lineNoLen)
 		end
@@ -441,7 +437,7 @@ prompt = function(prebuffer, precy, _eldit)
 				),
 				math.max(
 					0,
-					#eldit.buffer - eldit.size.height + 1
+					1 + #eldit.buffer - eldit.size.height
 				)
 			)
 		end
@@ -453,7 +449,7 @@ prompt = function(prebuffer, precy, _eldit)
 				),
 				math.max(
 					0,
-					getMaximumWidth() - eldit.size.width + 1 - lineNoLen
+					1 + getMaximumWidth() - eldit.size.width - lineNoLen
 				)
 			)
 		end
@@ -585,8 +581,7 @@ prompt = function(prebuffer, precy, _eldit)
 				end
 			end
 			cur.x = cur.x + xmod
-			cur.y = cur.y + ymod
-			cur.y = math.max(1, math.min(cur.y, #eldit.buffer))
+			cur.y = math.max(1, math.min(cur.y + ymod, #eldit.buffer))
 			if xmod ~= 0 then
 				repeat
 				if cur.x < 1 and cur.y > 1 then
@@ -598,11 +593,7 @@ prompt = function(prebuffer, precy, _eldit)
 					end
 				until (cur.x >= 1 and cur.x <= #eldit.buffer[cur.y] + 1) or ((cur.y == 1 and xmod < 0) or (cur.y == #eldit.buffer and xmod > 0))
 			end
-			if setLastX then
-				cur.lastX = cur.x
-			else
-				cur.x = cur.lastX
-			end
+			cur.lastX = setLastX and cur.x or cur.lastX
 			if cur.y < 1 then
 				cur.y = math.max(1, math.min(cur.y, #eldit.buffer))
 				cur.x = 1
@@ -749,9 +740,27 @@ prompt = function(prebuffer, precy, _eldit)
 				compiled = compiled .. "\n"
 			end
 		end
+		if not eldit.filename then
+			local cx, cy
+			repeat
+				render()
+				term.setCursorPos(eldit.size.y, eldit.size.y + eldit.size.height - 1)
+				eClearLine()
+				term.setTextColor(colors.yellow)
+				term.write("Save as: ")
+				term.setTextColor(colors.white)
+				cx, cy = term.getCursorPos()
+				term.setCursorPos(cx, cy)
+				eldit.filename = read()
+			until (
+				(not fs.isDir(eldit.filename)) and
+				#eldit.filename:gsub(" ", "") > 0
+			)
+		end
 		writeFile(eldit.filename, compiled)
 		barmsg = "Saved to '" .. eldit.filename .. "'."
 		barlife = defaultBarLife
+		keysDown, miceDown = {}, {}
 	end
 
 	local evt
@@ -790,436 +799,437 @@ prompt = function(prebuffer, precy, _eldit)
 	scrollToCursor()
 	while true do
 		evt = {os.pullEvent()}
-		if evt[1] == "timer" then
-			if evt[2] == tID then
-				if isCursorBlink then
-					tID = os.startTimer(0.4)
-				else
-					tID = os.startTimer(0.3)
-				end
-				isCursorBlink = not isCursorBlink
-				doRender = true
-			elseif evt[2] == bartID then
-				bartID = os.startTimer(0.1)
-				barlife = math.max(0, barlife - 1)
-			elseif evt[2] == undotID then
-				if not compareBuffers(eldit.buffer, eldit.undoBuffer[#eldit.undoBuffer].buffer or {}) then
-					if #eldit.undoBuffer >= eldit.maxUndo then
-						repeat
-							table.remove(eldit.undoBuffer, 1)
-						until #eldit.undoBuffer < eldit.maxUndo
+		repeat
+			if evt[1] == "timer" then
+				if evt[2] == tID then
+					if isCursorBlink then
+						tID = os.startTimer(0.4)
+					else
+						tID = os.startTimer(0.3)
 					end
-					if eldit.undoPos < #eldit.undoBuffer then
-						repeat
-							table.remove(eldit.undoBuffer, 0)
-						until eldit.undoPos == #eldit.undoBuffer
-					end
-					eldit.undoPos = math.min(eldit.undoPos + 1, eldit.maxUndo)
-					table.insert(eldit.undoBuffer, {
-						buffer = deepCopy(eldit.buffer),
-						cursors = deepCopy(eldit.cursors),
-						selections = deepCopy(eldit.selections),
-					})
-				end
-			end
-		elseif (evt[1] == "char" and not keysDown[keys.leftCtrl]) then
-			placeText(evt[2])
-			undotID = os.startTimer(eldit.undoDelay)
-			doRender = true
-		elseif evt[1] == "paste" then
-			if keysDown[keys.leftShift] then
-				local cb = eldit.clipboards[eldit.selectedClipboard]
-				local cbb = {}
-				if cb then
-					deleteSelections()
-					sortCursors()
-					for i = 1, math.max(#cb, #eldit.cursors) do
-						cbb[i] = cb[(i % #cb) + 1]
-					end
-					for i = 1, #cbb do
-						if eldit.cursors[i] then
-							for y = 1, #cbb[i] do
-								placeText(concatTable(cbb[i][y]), {eldit.cursors[i]})
-								if y < #cbb[i] then
-									makeNewLine({eldit.cursors[i]})
-								end
-							end
-						else
-							makeNewLine({eldit.cursors[#eldit.cursors]})
-							for y = 1, #cbb[i] do
-								placeText(concatTable(cbb[i][y]), {eldit.cursors[#eldit.cursors]})
-								if y < #cbb[i] then
-									makeNewLine({eldit.cursors[#eldit.cursors]})
-								end
-							end
+					isCursorBlink = not isCursorBlink
+					doRender = true
+				elseif evt[2] == bartID then
+					bartID = os.startTimer(0.1)
+					barlife = math.max(0, barlife - 1)
+				elseif evt[2] == undotID then
+					if not compareBuffers(eldit.buffer, eldit.undoBuffer[#eldit.undoBuffer].buffer or {}) then
+						if #eldit.undoBuffer >= eldit.maxUndo then
+							repeat
+								table.remove(eldit.undoBuffer, 1)
+							until #eldit.undoBuffer < eldit.maxUndo
 						end
+						if eldit.undoPos < #eldit.undoBuffer then
+							repeat
+								table.remove(eldit.undoBuffer, 0)
+							until eldit.undoPos == #eldit.undoBuffer
+						end
+						eldit.undoPos = math.min(eldit.undoPos + 1, eldit.maxUndo)
+						table.insert(eldit.undoBuffer, {
+							buffer = deepCopy(eldit.buffer),
+							cursors = deepCopy(eldit.cursors),
+							selections = deepCopy(eldit.selections),
+						})
 					end
-					barmsg = "Pasted from clipboard " .. eldit.selectedClipboard .. "."
-					undotID = os.startTimer(eldit.undoDelay)
-				else
-					barmsg = "Clipboard " .. eldit.selectedClipboard .. " is empty."
 				end
-				barlife = defaultBarLife
-			else
+			elseif (evt[1] == "char" and not keysDown[keys.leftCtrl]) then
 				placeText(evt[2])
-				undotID = os.startTimer(eldit.undoDelay)
-			end
-			doRender = true
-		elseif evt[1] == "key" then
-			keysDown[evt[2]] = true
-			-- KEYBOARD SHORTCUTS
-			if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
-
-				if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
-					if evt[2] == keys.c or evt[2] == keys.x then
-						if #eldit.selections == 0 then
-							barmsg = "No selections have been made."
-							barlife = defaultBarLife
-						else
-							eldit.clipboards[eldit.selectedClipboard] = {}
-							local cb = eldit.clipboards[eldit.selectedClipboard]
-							sortSelections()
-							local id, selY
-							for y = 1, #eldit.buffer do
-								for x = 1, #eldit.buffer[y] do
-									id = checkIfSelected(x, y)
-									if id then
-										selY = y - eldit.selections[id][1].y + 1
-										cb[id] = cb[id] or {}
-										cb[id][selY] = cb[id][selY] or {}
-										table.insert(cb[id][selY], eldit.buffer[y][x])
+				if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+				doRender = true
+			elseif evt[1] == "paste" then
+				if keysDown[keys.leftShift] then
+					local cb = eldit.clipboards[eldit.selectedClipboard]
+					local cbb = {}
+					if cb then
+						deleteSelections()
+						sortCursors()
+						for i = 1, math.max(#cb, #eldit.cursors) do
+							cbb[i] = cb[(i % #cb) + 1]
+						end
+						for i = 1, #cbb do
+							if eldit.cursors[i] then
+								for y = 1, #cbb[i] do
+									placeText(concatTable(cbb[i][y]), {eldit.cursors[i]})
+									if y < #cbb[i] then
+										makeNewLine({eldit.cursors[i]})
+									end
+								end
+							else
+								makeNewLine({eldit.cursors[#eldit.cursors]})
+								for y = 1, #cbb[i] do
+									placeText(concatTable(cbb[i][y]), {eldit.cursors[#eldit.cursors]})
+									if y < #cbb[i] then
+										makeNewLine({eldit.cursors[#eldit.cursors]})
 									end
 								end
 							end
-							if evt[2] == keys.x then
-								deleteSelections()
-								barmsg = "Cut to clipboard " .. eldit.selectedClipboard .. "."
+						end
+						barmsg = "Pasted from clipboard " .. eldit.selectedClipboard .. "."
+						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+					else
+						barmsg = "Clipboard " .. eldit.selectedClipboard .. " is empty."
+					end
+					barlife = defaultBarLife
+				else
+					placeText(evt[2])
+					if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+				end
+				doRender = true
+			elseif evt[1] == "key" then
+				keysDown[evt[2]] = true
+				-- KEYBOARD SHORTCUTS
+				if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
+
+					if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
+						if evt[2] == keys.c or evt[2] == keys.x then
+							if #eldit.selections == 0 then
+								barmsg = "No selections have been made."
 								barlife = defaultBarLife
-								undotID = os.startTimer(eldit.undoDelay)
 							else
-								barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
+								eldit.clipboards[eldit.selectedClipboard] = {}
+								local cb = eldit.clipboards[eldit.selectedClipboard]
+								sortSelections()
+								local id, selY
+								for y = 1, #eldit.buffer do
+									for x = 1, #eldit.buffer[y] do
+										id = checkIfSelected(x, y)
+										if id then
+											selY = y - eldit.selections[id][1].y + 1
+											cb[id] = cb[id] or {}
+											cb[id][selY] = cb[id][selY] or {}
+											table.insert(cb[id][selY], eldit.buffer[y][x])
+										end
+									end
+								end
+								if evt[2] == keys.x then
+									deleteSelections()
+									barmsg = "Cut to clipboard " .. eldit.selectedClipboard .. "."
+									barlife = defaultBarLife
+									if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+								else
+									barmsg = "Copied to clipboard " .. eldit.selectedClipboard .. "."
+									barlife = defaultBarLife
+								end
+							end
+
+						elseif evt[2] == keys.z then
+							if eldit.undoPos < #eldit.undoBuffer then
+								eldit.undoPos = math.min(#eldit.undoBuffer, eldit.maxUndo, eldit.undoPos + 1)
+								eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
+								eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
+								eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
+								adjustCursor(0, 0, true)
+								barmsg = "Redone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
+								barlife = defaultBarLife
+							else
+								barmsg = "Reached top of undo buffer. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
 								barlife = defaultBarLife
 							end
+							doRender = true
 						end
+						-- In-editor pasting is done with the "paste" event!
+					else
+						if numToKey[evt[2]] then -- if that's a number then
+							eldit.selectedClipboard = numToKey[evt[2]]
+							barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
+							barlife = defaultBarLife
 
-					elseif evt[2] == keys.z then
-						if eldit.undoPos < #eldit.undoBuffer then
-							eldit.undoPos = math.min(#eldit.undoBuffer, eldit.maxUndo, eldit.undoPos + 1)
-							eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
-							eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
-							eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
-							adjustCursor(0, 0, true)
-							barmsg = "Redone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
-							barlife = defaultBarLife
+						elseif evt[2] == keys.backspace then
+							if #eldit.selections > 0 then
+								deleteSelections()
+							else
+								deleteText("word", "backward")
+							end
+							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+							doRender, isCursorBlink = true, false
+
+						elseif evt[2] == keys.delete then
+							if #eldit.selections > 0 then
+								deleteSelections()
+							else
+								deleteText("word", "forward")
+							end
+							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+							doRender, isCursorBlink = true, false
+
+						elseif evt[2] == keys.q then
+							return "exit"
+
+						elseif evt[2] == keys.s then
+							saveFile()
+							tID = os.startTimer(0.4)
+							bartID = os.startTimer(0.1)
+							doRender = true
+
+						elseif evt[2] == keys.a then
+							eldit.selections = {{
+								{
+									x = 1,
+									y = 1
+								},{
+									x = #eldit.buffer[#eldit.buffer],
+									y = #eldit.buffer
+								}
+							}}
+							doRender = true
+
+						elseif evt[2] == keys.z then
+
+							if eldit.undoPos > 1 then
+								eldit.undoPos = math.max(1, eldit.undoPos - 1)
+								eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
+								eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
+								eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
+								adjustCursor(0, 0, true)
+								barmsg = "Undone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
+								barlife = defaultBarLife
+							else
+								barmsg = "Reached back of undo buffer."
+								barlife = defaultBarLife
+							end
+							doRender = true
+
+						elseif evt[2] == keys.left then
+							adjustCursor(-1, 0, true, "word")
+							doRender, isCursorBlink = true, true
+							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+
+						elseif evt[2] == keys.right then
+							adjustCursor(1, 0, true, "word")
+							doRender, isCursorBlink = true, true
+							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+
+						elseif evt[2] == keys.up then
+							adjustCursor(0, -1, false, "flip")
+							doRender, isCursorBlink = true, true
+							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+
+						elseif evt[2] == keys.down then
+							adjustCursor(0, 1, false, "flip")
+							doRender, isCursorBlink = true, true
+							if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+
+						end
+					end
+
+				else
+
+					if evt[2] == keys.tab then
+						if #eldit.selections > 0 then
+							sortSelections()
+							local safeY = {}
+							for id,sel in pairs(eldit.selections) do
+								for y = sel[1].y, sel[2].y do
+									if not safeY[y] then
+										if keysDown[keys.leftShift] then
+											if eldit.buffer[y][1] == "\9" or eldit.buffer[y][1] == " " then
+												table.remove(eldit.buffer[y], 1)
+												for idd,cur in pairs(eldit.cursors) do
+													if cur.y == y and cur.x > 1 then
+														cur.x = cur.x - 1
+														cur.lastX = cur.x
+													end
+												end
+											end
+										elseif eldit.buffer[y] then
+											table.insert(eldit.buffer[y], 1, "\9")
+											for idd,cur in pairs(eldit.cursors) do
+												if cur.y == y and cur.x < #eldit.buffer[y] then
+													cur.x = cur.x + 1
+													cur.lastX = cur.x
+												end
+											end
+										end
+									end
+									safeY[y] = true
+								end
+							end
 						else
-							barmsg = "Reached top of undo buffer. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
-							barlife = defaultBarLife
+							placeText("\9")
 						end
 						doRender = true
-					end
-					-- In-editor pasting is done with the "paste" event!
-				else
-					if numToKey[evt[2]] then -- if that's a number then
-						eldit.selectedClipboard = numToKey[evt[2]]
-						barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
-						barlife = defaultBarLife
+						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+
+					elseif evt[2] == keys.insert then
+						isInsert = not isInsert
+						doRender, isCursorBlink = true, true
+
+					elseif evt[2] == keys.enter then
+						deleteSelections()
+						makeNewLine()
+						doRender, isCursorBlink = true, false
+						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
+
+					elseif evt[2] == keys.home then
+						eldit.cursors = {{
+							x = 1,
+							y = eldit.cursors[1].y,
+							lastX = 1
+						}}
+						scrollToCursor()
+						doRender, isCursorBlink = true, true
+
+					elseif evt[2] == keys["end"] then
+						eldit.cursors = {{
+							x = 1 + #eldit.buffer[eldit.cursors[1].y],
+							y = eldit.cursors[1].y,
+							lastX = 1 + #eldit.buffer[eldit.cursors[1].y]
+						}}
+						scrollToCursor()
+						doRender, isCursorBlink = true, true
+
+					elseif evt[2] == keys.pageUp then
+						adjustScroll(0, -eldit.size.height)
+						doRender = true
+
+					elseif evt[2] == keys.pageDown then
+						adjustScroll(0, eldit.size.height)
+						doRender = true
 
 					elseif evt[2] == keys.backspace then
 						if #eldit.selections > 0 then
 							deleteSelections()
 						else
-							deleteText("word", "backward")
+							deleteText("single", "backward")
 						end
-						undotID = os.startTimer(eldit.undoDelay)
 						doRender, isCursorBlink = true, false
+						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
 
 					elseif evt[2] == keys.delete then
 						if #eldit.selections > 0 then
 							deleteSelections()
 						else
-							deleteText("word", "forward")
+							deleteText("single", "forward")
 						end
-						undotID = os.startTimer(eldit.undoDelay)
 						doRender, isCursorBlink = true, false
-
-					elseif evt[2] == keys.q then
-						return "exit"
-
-					elseif evt[2] == keys.s then
-						saveFile()
-
-					elseif evt[2] == keys.a then
-						eldit.selections = {{
-							{
-								x = 1,
-								y = 1
-							},{
-								x = #eldit.buffer[#eldit.buffer],
-								y = #eldit.buffer
-							}
-						}}
-						doRender = true
-
-					elseif evt[2] == keys.z then
-
-						if eldit.undoPos > 1 then
-							eldit.undoPos = math.max(1, eldit.undoPos - 1)
-							eldit.selections = deepCopy(eldit.undoBuffer[eldit.undoPos].selections)
-							eldit.cursors = deepCopy(eldit.undoBuffer[eldit.undoPos].cursors)
-							eldit.buffer = deepCopy(eldit.undoBuffer[eldit.undoPos].buffer)
-							adjustCursor(0, 0, true)
-							barmsg = "Undone. (" .. eldit.undoPos .. "/" .. #eldit.undoBuffer .. ")"
-							barlife = defaultBarLife
-						else
-							barmsg = "Reached back of undo buffer."
-							barlife = defaultBarLife
-						end
-						doRender = true
+						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
 
 					elseif evt[2] == keys.left then
-						adjustCursor(-1, 0, true, "word")
-						doRender, isCursorBlink = true, true
+						adjustCursor(-1, 0, true)
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+						doRender, isCursorBlink = true, true
 
 					elseif evt[2] == keys.right then
-						adjustCursor(1, 0, true, "word")
-						doRender, isCursorBlink = true, true
+						adjustCursor(1, 0, true)
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+						doRender, isCursorBlink = true, true
 
 					elseif evt[2] == keys.up then
-						adjustCursor(0, -1, false, "flip")
-						doRender, isCursorBlink = true, true
-						undotID = os.startTimer(eldit.undoDelay)
+						adjustCursor(0, -1, false)
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+						doRender, isCursorBlink = true, true
 
 					elseif evt[2] == keys.down then
-						adjustCursor(0, 1, false, "flip")
+						adjustCursor(0, 1, false)
 						doRender, isCursorBlink = true, true
-						undotID = os.startTimer(eldit.undoDelay)
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-
 					end
+
 				end
-
-			else
-
-				if evt[2] == keys.tab then
-					if #eldit.selections > 0 then
-						sortSelections()
-						local safeY = {}
-						for id,sel in pairs(eldit.selections) do
-							for y = sel[1].y, sel[2].y do
-								if not safeY[y] then
-									if keysDown[keys.leftShift] then
-										if eldit.buffer[y][1] == "\9" or eldit.buffer[y][1] == " " then
-											table.remove(eldit.buffer[y], 1)
-											for idd,cur in pairs(eldit.cursors) do
-												if cur.y == y and cur.x > 1 then
-													cur.x = cur.x - 1
-													cur.lastX = cur.x
-												end
-											end
-										end
-									else
-										table.insert(eldit.buffer[y], 1, "\9")
-										for idd,cur in pairs(eldit.cursors) do
-											if cur.y == y and cur.x < #eldit.buffer[y] then
-												cur.x = cur.x + 1
-												cur.lastX = cur.x
-											end
-										end
-									end
-								end
-								safeY[y] = true
-							end
-						end
-					else
-						placeText("\9")
-					end
-					doRender = true
-					undotID = os.startTimer(eldit.undoDelay)
-
-				elseif evt[2] == keys.insert then
-					isInsert = not isInsert
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.enter then
-					makeNewLine()
-					doRender, isCursorBlink = true, false
-					undotID = os.startTimer(eldit.undoDelay)
-
-				elseif evt[2] == keys.home then
-					eldit.cursors = {{
-						x = 1,
-						y = eldit.cursors[1].y,
-						lastX = 1
-					}}
-					scrollToCursor()
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys["end"] then
-					eldit.cursors = {{
-						x = #eldit.buffer[eldit.cursors[1].y] + 1,
-						y = eldit.cursors[1].y,
-						lastX = #eldit.buffer[eldit.cursors[1].y] + 1
-					}}
-					scrollToCursor()
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.pageUp then
-					adjustScroll(0, -eldit.size.height)
-					doRender = true
-
-				elseif evt[2] == keys.pageDown then
-					adjustScroll(0, eldit.size.height)
-					doRender = true
-
-				elseif evt[2] == keys.backspace then
-					if #eldit.selections > 0 then
-						deleteSelections()
-					else
-						deleteText("single", "backward")
-					end
-					doRender, isCursorBlink = true, false
-					undotID = os.startTimer(eldit.undoDelay)
-
-				elseif evt[2] == keys.delete then
-					if #eldit.selections > 0 then
-						deleteSelections()
-					else
-						deleteText("single", "forward")
-					end
-					doRender, isCursorBlink = true, false
-					undotID = os.startTimer(eldit.undoDelay)
-
-				elseif evt[2] == keys.left then
-					adjustCursor(-1, 0, true)
-					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.right then
-					adjustCursor(1, 0, true)
-					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.up then
-					adjustCursor(0, -1, false)
-					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-					doRender, isCursorBlink = true, true
-
-				elseif evt[2] == keys.down then
-					adjustCursor(0, 1, false)
-					doRender, isCursorBlink = true, true
-					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-				end
-
-			end
-		elseif evt[1] == "key_up" then
-			keysDown[evt[2]] = nil
-		elseif evt[1] == "mouse_click" then
-			local lineNoLen = getLineNoLen()
-			miceDown[evt[2]] = {x = evt[3], y = evt[4]}
-			if keysDown[keys.leftCtrl] then
-				table.insert(eldit.cursors, {
-					x = evt[3] + eldit.scrollX - lineNoLen,
-					y = evt[4] + eldit.scrollY,
-					lastX = evt[3] + eldit.scrollX - lineNoLen
-				})
-			else
-				eldit.cursors = {{
-					x = evt[3] + eldit.scrollX - lineNoLen,
-					y = evt[4] + eldit.scrollY,
-					lastX = evt[3] + eldit.scrollX - lineNoLen
-				}}
-				eldit.selections = {}
-			end
-			lastMouse = {
-				x = evt[3],
-				y = evt[4],
-				scrollX = eldit.scrollX,
-				scrollY = eldit.scrollY,
-				lineNoLen = lineNoLen,
-				ctrl = keysDown[keys.leftCtrl],
-				curID = #eldit.cursors,
-			}
-			sortSelections()
-			adjustCursor(0, 0, true)
-			eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
-			eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
-			doRender = true
-		elseif evt[1] == "mouse_drag" then
-			local lineNoLen = getLineNoLen()
-			miceDown[evt[2]] = {x = evt[3], y = evt[4]}
-			if lastMouse.x and lastMouse.y and lastMouse.curID then
-				local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
-				local adjEX, adjEY = evt[3] + eldit.scrollX, evt[4] + eldit.scrollY
-				local selID
-				if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
-					selID = #eldit.selections + 1
+			elseif evt[1] == "key_up" then
+				keysDown[evt[2]] = nil
+			elseif evt[1] == "mouse_click" then
+				local lineNoLen = getLineNoLen()
+				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
+				if keysDown[keys.leftCtrl] then
+					table.insert(eldit.cursors, {
+						x = evt[3] + eldit.scrollX - lineNoLen,
+						y = evt[4] + eldit.scrollY,
+						lastX = evt[3] + eldit.scrollX - lineNoLen
+					})
 				else
-					selID = #eldit.selections + 0
+					eldit.cursors = {{
+						x = evt[3] + eldit.scrollX - lineNoLen,
+						y = evt[4] + eldit.scrollY,
+						lastX = evt[3] + eldit.scrollX - lineNoLen
+					}}
+					eldit.selections = {}
 				end
-				eldit.selections[selID] = {
-					{
-						x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
-						y = adjMY
-					},
-					{
-						x = math.min(adjEX, #(eldit.buffer[adjEY] or "") + lineNoLen) - lineNoLen,
-						y = adjEY
-					}
+				lastMouse = {
+					x = evt[3],
+					y = evt[4],
+					scrollX = eldit.scrollX,
+					scrollY = eldit.scrollY,
+					lineNoLen = lineNoLen,
+					ctrl = keysDown[keys.leftCtrl],
+					curID = #eldit.cursors,
 				}
 				sortSelections()
-				eldit.cursors[lastMouse.curID] = {
-					x = eldit.selections[selID][1].x,
-					y = eldit.selections[selID][1].y,
-					lastX = eldit.selections[selID][1].x
-				}
-
-				isSelecting = true
-				adjustCursor(0, 0)
+				adjustCursor(0, 0, true)
 				eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 				eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 				doRender = true
+			elseif evt[1] == "mouse_drag" then
+				local lineNoLen = getLineNoLen()
+				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
+				if lastMouse.x and lastMouse.y and lastMouse.curID then
+					local adjMX, adjMY = lastMouse.x + lastMouse.scrollX, lastMouse.y + lastMouse.scrollY
+					local adjEX, adjEY = evt[3] + eldit.scrollX, evt[4] + eldit.scrollY
+					local selID
+					if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
+						selID = 1 + #eldit.selections
+					else
+						selID = #eldit.selections
+					end
+					eldit.selections[selID] = {
+						{
+							x = math.min(adjMX, #(eldit.buffer[adjMY] or "") + lineNoLen) - lineNoLen,
+							y = adjMY
+						},
+						{
+							x = math.min(adjEX, #(eldit.buffer[adjEY] or "") + lineNoLen) - lineNoLen,
+							y = adjEY
+						}
+					}
+					sortSelections()
+					eldit.cursors[lastMouse.curID] = {
+						x = eldit.selections[selID][1].x,
+						y = eldit.selections[selID][1].y,
+						lastX = eldit.selections[selID][1].x
+					}
+
+					isSelecting = true
+					adjustCursor(0, 0)
+					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
+					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
+					doRender = true
+				end
+			elseif evt[1] == "mouse_up" then
+				miceDown[evt[2]] = nil
+				isSelecting = false
+				sortSelections()
+			elseif evt[1] == "mouse_scroll" then
+				if keysDown[keys.leftAlt] then
+					adjustScroll((keysDown[keys.leftCtrl] and eldit.size.width or 1) * evt[2], 0)
+				else
+					adjustScroll(0, (keysDown[keys.leftCtrl] and eldit.size.height or 1) * evt[2])
+				end
+				if isSelecting then
+					os.queueEvent("mouse_drag", 1, evt[3], evt[4])
+				end
+				doRender = true
 			end
-		elseif evt[1] == "mouse_up" then
-			miceDown[evt[2]] = nil
-			isSelecting = false
-			sortSelections()
-		elseif evt[1] == "mouse_scroll" then
-			if keysDown[keys.leftAlt] then
-				adjustScroll((keysDown[keys.leftCtrl] and eldit.size.width or 1) * evt[2], 0)
-			else
-				adjustScroll(0, (keysDown[keys.leftCtrl] and eldit.size.height or 1) * evt[2])
+			if doRender then
+				if not (evt[1] == "mouse_scroll" and isSelecting) then
+					render()
+					doRender = false
+				end
 			end
-			if isSelecting then
-				os.queueEvent("mouse_drag", 1, evt[3], evt[4])
-			end
-			doRender = true
-		end
-		if doRender then
-			if not (evt[1] == "mouse_scroll" and isSelecting) then
-				render()
-				doRender = false
-			end
-		end
+		until true
 	end
 end
 
-if not eldit.filename then
-	print("eldit [filename]")
-	return
-end
-
-local contents = readFile(eldit.filename)
+local contents = eldit.filename and readFile(eldit.filename) or nil
 
 local result = {prompt(contents)}
 if result[1] == "exit" then
