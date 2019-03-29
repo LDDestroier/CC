@@ -316,6 +316,10 @@ if gridList[argList["--gridID"]] then
 end
 local argumentName = argList[1]
 
+if useSkynet and (not http.websocket) then
+	error("Skynet is not supported on this version of ComputerCraft.")
+end
+
 local skynetPath = "skynet"
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
