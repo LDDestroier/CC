@@ -1015,7 +1015,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 								sortSelections()
 								local id, selY
 								for y = 1, #eldit.buffer do
-									for x = 1, #eldit.buffer[y] do
+									for x = 1, #eldit.buffer[y] + 1 do
 										id = checkIfSelected(x, y)
 										if id then
 											selY = y - eldit.selections[id][1].y + 1
