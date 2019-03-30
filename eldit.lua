@@ -1005,6 +1005,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 
 					if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
 						if evt[2] == keys.c or evt[2] == keys.x then
+							doRender = true
 							if #eldit.selections == 0 then
 								barmsg = "No selections have been made."
 								barlife = defaultBarLife
@@ -1301,9 +1302,9 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 					miceDown[evt[2]] = {x = evt[3], y = evt[4]}
 					if lastMouse.x and lastMouse.y and lastMouse.curID then
 						local adjMY = lastMouse.y + lastMouse.scrollY
-						local adjMX = math.min(lastMouse.x + lastMouse.scrollX, #eldit.buffer[adjMY] + 1)
+						local adjMX = math.min(lastMouse.x + lastMouse.scrollX, #(eldit.buffer[adjMY] or "") + 1)
 						local adjEY = evt[4] + eldit.scrollY
-						local adjEX = math.min(evt[3] + eldit.scrollX, #eldit.buffer[adjEY] + 1)
+						local adjEX = math.min(evt[3] + eldit.scrollX, #(eldit.buffer[adjEY] or "") + 1)
 						local selID
 						local cSelID = checkIfSelected(adjMX, adjMY)
 						if (lastMouse.ctrl and not isSelecting) or #eldit.selections == 0 then
