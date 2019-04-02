@@ -6,7 +6,7 @@ local keysDown = {}
 local miceDown = {}
 
 -- debug renderer is slower, but the normal one isn't functional yet
-local useDebugRenderer = true
+local useDebugRenderer = false
 
 local canvas = {
 	{{},{},{}}
@@ -19,6 +19,9 @@ local pain = {
 	screenHeight = scr_y,
 	scrollX = 0,
 	scrollY = 0,
+	barmsg = "Started PAIN.",
+	barlife = 12,
+	showBar = true,
 	doRender = true,
 	dots = {
 		[0] = {
@@ -40,15 +43,61 @@ local pain = {
 	tool = "pencil"
 }
 
+local setBarMsg = function(message)
+	pain.barmsg = message
+	pain.barlife = 16
+	pain.doRender = true
+end
+
 local control = {
-	scrollUp = keys.up,			-- decrease scrollY
-	scrollDown = keys.down,		-- increase scrollY
-	scrollLeft = keys.left,		-- decrease scrollX
-	scrollRight = keys.right,	-- increase scrollX
-	moveMod = keys.leftShift,	-- hold to move image instead of scrolling
-	creepMod = keys.leftAlt,	-- hold to only scroll/move one dot at a time
-	toolSelect = keys.leftShift	-- hold and push specific buttons to quick select tool
+	scrollUp = { -- decrease scrollY
+		key = keys.up,
+		modifiers = {},
+	},
+	scrollDown = {
+		key = keys.down,
+		modifiers = {},
+	},
+	scrollLeft = {
+		key = keys.left,
+		modifiers = {},
+	},
+	scrollRight = {
+		key = keys.right,
+		modifiers = {},
+	},
+	resetScroll = {
+		key = keys.a,
+		modifiers = {},
+	},
+	switchNextFrame = {
+		key = keys.plus,
+		modifiers = {},
+	},
+	moveMod = {
+		key = keys.leftShift,
+		modifiers = {},
+	},
+	creepMod = {
+		key = keys.leftAlt,
+		modifiers = {},
+	},
+	toolSelect = {
+		key = keys.leftShift,
+		modifiers = {},
+	}
 }
+
+local checkControl = function(name)
+	if keysDown[control[name].key] then
+		for i = 1, #control[name].modifiers do
+			if not keysDown[control[name].modifiers[i]] then
+				return false
+			end
+		end
+		return true
+	end
+end
 
 -- converts hex colors to colors api, and back
 local to_colors, to_blit = {
@@ -122,6 +171,17 @@ local getDotsInLine = function( startX, startY, endX, endY )
     return out
 end
 
+-- deletes a dot on the canvas, fool
+local deleteDot = function(x, y, frame)
+	if canvas[frame][1][y] then
+		if canvas[frame][1][y][x] then
+			canvas[frame][1][y][x] = nil
+			canvas[frame][2][y][x] = nil
+			canvas[frame][3][y][x] = nil
+		end
+	end
+end
+
 -- places a dot on the canvas, predictably enough
 local placeDot = function(x, y, frame, dot)
 	if not canvas[frame][1][y] then
@@ -137,49 +197,29 @@ end
 -- used for tools that involve dragging
 local dragPos = {}
 
--- every tool at your disposal
-local tools = {
-	pencil = function(arg)
-		if arg.event == "mouse_click" then
-			if arg.button == 1 then
-				placeDot(arg.sx, arg.sy, frame, arg.dot)
-			elseif arg.button == 2 then
-				placeDot(arg.sx, arg.sy, frame, {" "," "," "})
-			end
-			dragPos = {arg.sx, arg.sy}
-		else
-			if #dragPos == 0 then
-				dragPos = {arg.sx, arg.sy}
-			end
-			local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
-			for i = 1, #poses do
-				if arg.button == 1 then
-					placeDot(poses[i].x, poses[i].y, frame, arg.dot)
-				elseif arg.button == 2 then
-					placeDot(poses[i].x, poses[i].y, frame, {" "," "," "})
-				end
-			end
-			dragPos = {arg.sx, arg.sy}
-		end
-	end,
-	text = function(arg)
-		term.setCursorPos(arg.x, arg.y)
-		term.setTextColor(to_colors[arg.dot[2]])
-		term.setBackgroundColor(to_colors[arg.dot[3]])
-		local text = read()
-		-- re-render every keypress, requires custom read function
-		for i = 1, #text do
-			placeDot(arg.sx + i - 1, arg.sy, frame, {text:sub(i,i), dot[2], dot[3]})
-		end
+local getGridAtPos = function(x, y)
+	local grid = {
+		{"%","%",".","."},
+		{"%","%",".","."},
+		{"%","%",".","."},
+		{".",".","%","%"},
+		{".",".","%","%"},
+		{".",".","%","%"},
+	}
+	if x < 1 or y < 1 then
+		return "/", "7", "f"
+	else
+		return grid[1 + (2 + y) % #grid][1 + (1 + x) % #grid[1]], "7", "f"
 	end
-}
+end
 
+-- shows everything on screen
 local render = function(x, y, width, height)
 	local buffer = {{},{},{}}
 	local cx, cy
 	-- see, it wouldn't do if I just individually set the cursor position for every dot
 	if useDebugRenderer then
-		
+
 		term.clear()
 		local cx, cy
 		for yy, line in pairs(canvas[frame][1]) do
@@ -199,27 +239,90 @@ local render = function(x, y, width, height)
 
 	else
 
+		local gChar, gText, gBack
 		for yy = y, height do
 			buffer[1][yy] = ""
 			buffer[2][yy] = ""
 			buffer[3][yy] = ""
-			for xx = x, width do
-				cx = xx - pain.scrollX
-				cy = yy - pain.scrollY
-				for c = 1, 3 do
-					buffer[c][yy] = buffer[c][yy] .. canvas[frame][c][cy]:sub(cx,cx)
+			if pain.showBar and yy == height then
+				buffer[2][yy] = ("f"):rep(width)
+				buffer[3][yy] = ("8"):rep(width)
+				buffer[1][yy] = ("["..pain.scrollX..","..pain.scrollY.."] "..pain.barmsg..(" "):rep(width)):sub(1, width)
+			else
+				for xx = x, width do
+					cx = xx + pain.scrollX
+					cy = yy + pain.scrollY
+					if canvas[frame][1][cy] then
+						if canvas[frame][1][cy][cx] then
+							for c = 1, 3 do
+								buffer[c][yy] = buffer[c][yy] .. canvas[frame][c][cy][cx]
+							end
+						else
+							gChar, gText, gBack = getGridAtPos(cx, cy)
+							buffer[1][yy] = buffer[1][yy] .. gChar
+							buffer[2][yy] = buffer[2][yy] .. gText
+							buffer[3][yy] = buffer[3][yy] .. gBack
+						end
+					else
+						gChar, gText, gBack = getGridAtPos(cx, cy)
+						buffer[1][yy] = buffer[1][yy] .. gChar
+						buffer[2][yy] = buffer[2][yy] .. gText
+						buffer[3][yy] = buffer[3][yy] .. gBack
+					end
 				end
 			end
 		end
 		for yy = 0, height - 1 do
-			for xx = 0, width - 1 do
-				term.setCursorPos(x + xx, y + yy)
-				term.blit(buffer[1][yy+1], buffer[2][yy+1], buffer[3][yy+1])
-			end
+			term.setCursorPos(1, y + yy)
+			term.blit(buffer[1][yy+1], buffer[2][yy+1], buffer[3][yy+1])
 		end
 
 	end
 end
+
+-- every tool at your disposal
+local tools = {
+	pencil = function(arg)
+		if arg.event == "mouse_click" then
+			if arg.button == 1 then
+				placeDot(arg.sx, arg.sy, frame, arg.dot)
+			elseif arg.button == 2 then
+				deleteDot(arg.sx, arg.sy, frame)
+			end
+			dragPos = {arg.sx, arg.sy}
+		else
+			if #dragPos == 0 then
+				dragPos = {arg.sx, arg.sy}
+			end
+			local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
+			for i = 1, #poses do
+				if arg.button == 1 then
+					placeDot(poses[i].x, poses[i].y, frame, arg.dot)
+				elseif arg.button == 2 then
+					deleteDot(poses[i].x, poses[i].y, frame)
+				end
+			end
+			dragPos = {arg.sx, arg.sy}
+		end
+	end,
+	text = function(arg)
+		pain.paused = true
+		pain.barmsg = "Type text to add to canvas."
+		pain.barlife = 1
+		render(1, 1, scr_x, scr_y)
+		term.setCursorPos(arg.x, arg.y)
+		term.setTextColor(to_colors[arg.dot[2]])
+		term.setBackgroundColor(to_colors[arg.dot[3]])
+		local text = read()
+		-- re-render every keypress, requires custom read function
+		for i = 1, #text do
+			placeDot(arg.sx + i - 1, arg.sy, frame, {text:sub(i,i), pain.dots[dot][2], pain.dots[dot][3]})
+		end
+		pain.paused = false
+		keysDown = {}
+		miceDown = {}
+	end
+}
 
 local tryTool = function()
 	for butt = 1, 3 do
@@ -233,6 +336,7 @@ local tryTool = function()
 				button = butt,
 				event = miceDown[butt][3]
 			})
+			pain.doRender = true
 			break
 		end
 	end
@@ -251,65 +355,115 @@ getInput = function()
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = false
 		end
-		tryTool()
 	end
 end
 
 -- executes everything that doesn't run asynchronously
 main = function()
 	while true do
-		
-		render(1, 1, scr_x, scr_y)
-		
-		-- handle scrolling
-		if keysDown[control.scrollLeft] then
-			pain.scrollX = pain.scrollX - 1
-		end
-		if keysDown[control.scrollRight] then
-			pain.scrollX = pain.scrollX + 1
-		end
-		if keysDown[control.scrollUp] then
-			pain.scrollY = pain.scrollY - 1
-		end
-		if keysDown[control.scrollDown] then
-			pain.scrollY = pain.scrollY + 1
-		end
-		
-		if keysDown[control.toolSelect] then
-			-- dot palette selection
-			if keysDown[keys.one] then
-				dot = 1
-			elseif keysDown[keys.two] then
-				dot = 2
-			elseif keysDown[keys.three] then
-				dot = 3
-			elseif keysDown[keys.four] then
-				dot = 4
-			elseif keysDown[keys.five] then
-				dot = 5
-			elseif keysDown[keys.six] then
-				dot = 6
-			elseif keysDown[keys.seven] then
-				dot = 7
-			elseif keysDown[keys.eight] then
-				dot = 8
-			elseif keysDown[keys.nine] then
-				dot = 9
-			elseif keysDown[keys.zero] then
-				dot = 0
+
+		if not pain.paused then
+			if pain.doRender then
+				render(1, 1, scr_x, scr_y)
+				pain.doRender = false
 			end
-			-- tool selection
-			if keysDown[keys.p] then
-				pain.tool = "pencil"
-			elseif keysDown[keys.t] then
-				pain.tool = "text"
+
+			-- handle scrolling
+			if checkControl("resetScroll") then
+				pain.scrollX = 0
+				pain.scrollY = 0
+				pain.doRender = true
+			else
+				if checkControl("scrollLeft") then
+					pain.scrollX = pain.scrollX - 1
+					pain.doRender = true
+				end
+				if checkControl("scrollRight") then
+					pain.scrollX = pain.scrollX + 1
+					pain.doRender = true
+				end
+				if checkControl("scrollUp") then
+					pain.scrollY = pain.scrollY - 1
+					pain.doRender = true
+				end
+				if checkControl("scrollDown") then
+					pain.scrollY = pain.scrollY + 1
+					pain.doRender = true
+				end
 			end
+
+			if checkControl("toolSelect") then
+				-- dot palette selection
+				if keysDown[keys.one] and pain.dots[1] then
+					dot = 1
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.two] and pain.dots[2] then
+					dot = 2
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.three] and pain.dots[3] then
+					dot = 3
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.four] and pain.dots[4] then
+					dot = 4
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.five] and pain.dots[5] then
+					dot = 5
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.six] and pain.dots[6] then
+					dot = 6
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.seven] and pain.dots[7] then
+					dot = 7
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.eight] and pain.dots[8] then
+					dot = 8
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.nine] and pain.dots[9] then
+					dot = 9
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				elseif keysDown[keys.zero] and pain.dots[0] then
+					dot = 0
+					setBarMsg("Selected palette " .. dot .. ".")
+					pain.doRender = true
+				end
+				-- tool selection
+				if keysDown[keys.p] then
+					pain.tool = "pencil"
+					setBarMsg("Selected pencil tool.")
+				elseif keysDown[keys.t] then
+					pain.tool = "text"
+					setBarMsg("Selected text tool.")
+				end
+			end
+
+			pain.barlife = math.max(pain.barlife - 1, 0)
+			if pain.barlife == 0 and pain.barmsg ~= "" then
+				pain.barmsg = ""
+				pain.doRender = true
+			end
+
 		end
 
 		sleep(0.05)
 	end
 end
 
+local keepTryingTools = function()
+	while true do
+		os.pullEvent()
+		tryTool()
+	end
+end
+
 term.clear()
 
-parallel.waitForAny( main, getInput )
+parallel.waitForAny( main, getInput, keepTryingTools )
