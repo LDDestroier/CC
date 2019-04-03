@@ -19,6 +19,7 @@ local pain = {
 	screenHeight = scr_y,
 	scrollX = 0,
 	scrollY = 0,
+	brushSize = 2,
 	barmsg = "Started PAIN.",
 	barlife = 12,
 	showBar = true,
@@ -85,18 +86,48 @@ local control = {
 	toolSelect = {
 		key = keys.leftShift,
 		modifiers = {},
-	}
+	},
+	pencilTool = {
+		key = keys.p,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	brushTool = {
+		key = keys.b,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	textTool = {
+		key = keys.t,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
 }
 
 local checkControl = function(name)
-	if keysDown[control[name].key] then
-		for i = 1, #control[name].modifiers do
-			if not keysDown[control[name].modifiers[i]] then
+	local modlist = {
+		[keys.leftCtrl] = keysDown[keys.leftCtrl],
+		[keys.rightCtrl] = keysDown[keys.rightCtrl],
+		[keys.leftShift] = keysDown[keys.leftShift],
+		[keys.rightShift] = keysDown[keys.rightShift],
+		[keys.leftAlt] = keysDown[keys.leftAlt],
+		[keys.rightAlt] = keysDown[keys.rightAlt],
+	}
+	for k,down in pairs(modlist) do
+		if control[name].modifiers[k] then
+			if not down then
+				return false
+			end
+		else
+			if down then
 				return false
 			end
 		end
-		return true
 	end
+	return keysDown[control[name].key]
 end
 
 -- converts hex colors to colors api, and back
@@ -305,6 +336,41 @@ local tools = {
 			dragPos = {arg.sx, arg.sy}
 		end
 	end,
+	brush = function(arg)
+		if arg.event == "mouse_click" then
+			for y = -arg.size, arg.size do
+				for x = -arg.size, arg.size do
+					if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+						if arg.button == 1 then
+							placeDot(arg.sx + x, arg.sy + y, frame, arg.dot)
+						elseif arg.button == 2 then
+							deleteDot(arg.sx + x, arg.sy + y, frame)
+						end
+					end
+				end
+			end
+			dragPos = {arg.sx, arg.sy}
+		else
+			if #dragPos == 0 then
+				dragPos = {arg.sx, arg.sy}
+			end
+			local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
+			for i = 1, #poses do
+				for y = -arg.size, arg.size do
+					for x = -arg.size, arg.size do
+						if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+							if arg.button == 1 then
+								placeDot(poses[i].x + x, poses[i].y + y, frame, arg.dot)
+							elseif arg.button == 2 then
+								deleteDot(poses[i].x + x, poses[i].y + y, frame)
+							end
+						end
+					end
+				end
+			end
+			dragPos = {arg.sx, arg.sy}
+		end
+	end,
 	text = function(arg)
 		pain.paused = true
 		pain.barmsg = "Type text to add to canvas."
@@ -333,6 +399,7 @@ local tryTool = function()
 				sx = miceDown[butt][1] + pain.scrollX,
 				sy = miceDown[butt][2] + pain.scrollY,
 				dot = pain.dots[dot],
+				size = pain.brushSize,
 				button = butt,
 				event = miceDown[butt][3]
 			})
@@ -435,13 +502,16 @@ main = function()
 					setBarMsg("Selected palette " .. dot .. ".")
 					pain.doRender = true
 				end
-				-- tool selection
-				if keysDown[keys.p] then
+			else
+				if checkControl("pencilTool") then
 					pain.tool = "pencil"
 					setBarMsg("Selected pencil tool.")
-				elseif keysDown[keys.t] then
+				elseif checkControl("textTool") then
 					pain.tool = "text"
 					setBarMsg("Selected text tool.")
+				elseif checkControl("brushTool") then
+					pain.tool = "brush"
+					setBarMsg("Selected brush tool.")
 				end
 			end
 
