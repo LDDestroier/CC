@@ -1,10 +1,13 @@
 -- pain2
 
 local scr_x, scr_y = term.getSize()
-local mx, my = scr_x/2, scr_y/2
-local keysDown = {}
-local miceDown = {}
-local dragPoses = {{{},{}}, {{},{}}, {{},{}}}
+local mx, my = scr_x/2, scr_y/2		-- midpoint of screen
+local keysDown = {}					-- list of all pushed keys
+local miceDown = {}					-- list of all clicked mice buttons
+local dragPoses = {{{},{}}, {{},{}}, {{},{}}}	-- records initial and current mouse position per button while scrolling
+
+local TICKNO = 0				-- iterates every time main() loops
+local flashPaletteOnBar = false	-- whether or not to flash the dot palette numbers on the bottom bar
 
 -- debug renderer is slower, but the normal one isn't functional yet
 local useDebugRenderer = false
@@ -124,17 +127,23 @@ local control = {
 	moveMod = {
 		key = keys.leftShift,
 		holdDown = true,
-		modifiers = {},
+		modifiers = {
+			[keys.leftShift] = true
+		},
 	},
 	creepMod = {
 		key = keys.leftAlt,
 		holdDown = true,
-		modifiers = {},
+		modifiers = {
+			[keys.leftAlt] = true
+		},
 	},
-	toolSelect = {
+	toolMod = {
 		key = keys.leftShift,
 		holdDown = true,
-		modifiers = {},
+		modifiers = {
+			[keys.leftShift] = true
+		},
 	},
 	pencilTool = {
 		key = keys.p,
@@ -159,6 +168,76 @@ local control = {
 	},
 	lineTool = {
 		key = keys.l,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_0 = {
+		key = keys.zero,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_1 = {
+		key = keys.one,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_2 = {
+		key = keys.two,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_3 = {
+		key = keys.three,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_4 = {
+		key = keys.four,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_5 = {
+		key = keys.five,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_6 = {
+		key = keys.six,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_7 = {
+		key = keys.seven,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_8 = {
+		key = keys.eight,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	selectPalette_9 = {
+		key = keys.nine,
 		holdDown = false,
 		modifiers = {
 			[keys.leftShift] = true
@@ -275,6 +354,7 @@ end
 
 -- deletes a dot on the canvas, fool
 local deleteDot = function(x, y, frame)
+	x, y = 1 + x - pain.size.x, 1 + y - pain.size.y
 	if canvas[frame][1][y] then
 		if canvas[frame][1][y][x] then
 			canvas[frame][1][y][x] = nil
@@ -286,6 +366,7 @@ end
 
 -- places a dot on the canvas, predictably enough
 local placeDot = function(x, y, frame, dot)
+	x, y = 1 - pain.size.x + x, 1 - pain.size.y + y
 	if not canvas[frame][1][y] then
 		canvas[frame][1][y] = {}
 		canvas[frame][2][y] = {}
@@ -347,20 +428,28 @@ local render = function(x, y, width, height)
 	else
 
 		local gChar, gText, gBack
-		for yy = y, height do
+		for yy = 1, -1 + height + y do
 			buffer[1][yy] = ""
 			buffer[2][yy] = ""
 			buffer[3][yy] = ""
 			if pain.showBar and yy == height then
-				buffer[2][yy] = ("f"):rep(width)
-				buffer[3][yy] = ("8"):rep(width)
-				buffer[1][yy] = ((
-
-					"["..pain.scrollX..","..pain.scrollY.."] "..pain.barmsg
-
-				) .. (" "):rep(width)):sub(1, width)
+				term.setTextColor(colors.black)
+				term.setBackgroundColor(colors.lightGray)
+				term.setCursorPos(pain.size.x, -1 + pain.size.y + pain.size.height)
+				term.write("[" .. pain.scrollX .. "," .. pain.scrollY .. "] ")
+				for i = 1, #pain.dots do
+					if flashPaletteOnBar then
+						term.blit(table.unpack(pain.dots[i]))
+					else
+						term.blit(tostring(i), "7", pain.dots[i][3])
+					end
+				end
+				if pain.barlife > 0 then
+					term.write(" " .. pain.barmsg)
+				end
+				term.write((" "):rep(x + width - term.getCursorPos()))
 			else
-				for xx = x, width do
+				for xx = 1, width do
 					cx = xx + pain.scrollX
 					cy = yy + pain.scrollY
 					if canvas[frame][1][cy] then
@@ -384,7 +473,7 @@ local render = function(x, y, width, height)
 			end
 		end
 		for yy = 0, height - 1 do
-			term.setCursorPos(1, y + yy)
+			term.setCursorPos(x, y + yy)
 			term.blit(buffer[1][yy+1], buffer[2][yy+1], buffer[3][yy+1])
 		end
 
@@ -393,64 +482,80 @@ end
 
 -- every tool at your disposal
 local tools = {
-	pencil = function(arg)
-		if arg.event == "mouse_click" then
-			if arg.button == 1 then
-				placeDot(arg.sx, arg.sy, frame, arg.dot)
-			elseif arg.button == 2 then
-				deleteDot(arg.sx, arg.sy, frame)
-			end
-			dragPos = {arg.sx, arg.sy}
-		else
-			if #dragPos == 0 then
-				dragPos = {arg.sx, arg.sy}
-			end
-			local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
-			for i = 1, #poses do
+	pencil = {
+		info = {
+			name = "Pencil",
+			swapTool = "line",	-- if swap button is held, will turn into this tool
+			swapArg = {			-- any values in this table will overwrite those in 'arg'
+				size = 1
+			},
+		},
+		run = function(arg)
+			if arg.event == "mouse_click" then
 				if arg.button == 1 then
-					placeDot(poses[i].x, poses[i].y, frame, arg.dot)
+					placeDot(arg.sx, arg.sy, frame, arg.dot)
 				elseif arg.button == 2 then
-					deleteDot(poses[i].x, poses[i].y, frame)
+					deleteDot(arg.sx, arg.sy, frame)
 				end
-			end
-			dragPos = {arg.sx, arg.sy}
-		end
-	end,
-	brush = function(arg)
-		if arg.event == "mouse_click" then
-			for y = -arg.size, arg.size do
-				for x = -arg.size, arg.size do
-					if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-						if arg.button == 1 then
-							placeDot(arg.sx + x, arg.sy + y, frame, arg.dot)
-						elseif arg.button == 2 then
-							deleteDot(arg.sx + x, arg.sy + y, frame)
-						end
+				dragPos = {arg.sx, arg.sy}
+			else
+				if #dragPos == 0 then
+					dragPos = {arg.sx, arg.sy}
+				end
+				local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
+				for i = 1, #poses do
+					if arg.button == 1 then
+						placeDot(poses[i].x, poses[i].y, frame, arg.dot)
+					elseif arg.button == 2 then
+						deleteDot(poses[i].x, poses[i].y, frame)
 					end
 				end
-			end
-			dragPos = {arg.sx, arg.sy}
-		else
-			if #dragPos == 0 then
 				dragPos = {arg.sx, arg.sy}
 			end
-			local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
-			for i = 1, #poses do
+		end
+	},
+	brush = {
+		info = {
+			name = "Brush",
+			swapTool = "line",
+			swapArg = {},
+		},
+		run = function(arg)
+			if arg.event == "mouse_click" then
 				for y = -arg.size, arg.size do
 					for x = -arg.size, arg.size do
 						if math.sqrt(x^2 + y^2) <= arg.size / 2 then
 							if arg.button == 1 then
-								placeDot(poses[i].x + x, poses[i].y + y, frame, arg.dot)
+								placeDot(arg.sx + x, arg.sy + y, frame, arg.dot)
 							elseif arg.button == 2 then
-								deleteDot(poses[i].x + x, poses[i].y + y, frame)
+								deleteDot(arg.sx + x, arg.sy + y, frame)
 							end
 						end
 					end
 				end
+				dragPos = {arg.sx, arg.sy}
+			else
+				if #dragPos == 0 then
+					dragPos = {arg.sx, arg.sy}
+				end
+				local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
+				for i = 1, #poses do
+					for y = -arg.size, arg.size do
+						for x = -arg.size, arg.size do
+							if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+								if arg.button == 1 then
+									placeDot(poses[i].x + x, poses[i].y + y, frame, arg.dot)
+								elseif arg.button == 2 then
+									deleteDot(poses[i].x + x, poses[i].y + y, frame)
+								end
+							end
+						end
+					end
+				end
+				dragPos = {arg.sx, arg.sy}
 			end
-			dragPos = {arg.sx, arg.sy}
 		end
-	end,
+	},
 	text = function(arg)
 		pain.paused = true
 		pain.barmsg = "Type text to add to canvas."
@@ -468,66 +573,82 @@ local tools = {
 		keysDown = {}
 		miceDown = {}
 	end,
-	line = function(arg)
-		local dots
-		while miceDown[arg.button] do
-			dots = getDotsInLine(
-				dragPoses[arg.button][1].x + (arg.scrollX - pain.scrollX),
-				dragPoses[arg.button][1].y + (arg.scrollY - pain.scrollY),
-				dragPoses[arg.button][2].x,
-				dragPoses[arg.button][2].y
-			)
-			render()
-			for i = 1, #dots do
-				if dots[i].x >= 1 and dots[i].x <= scr_x then
-					for y = -arg.size, arg.size do
-						for x = -arg.size, arg.size do
-							if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-								term.setCursorPos(dots[i].x + x, dots[i].y + y)
-								if arg.button == 1 then
-									term.blit(table.unpack(arg.dot))
-								elseif arg.button == 2 then
-									term.blit(getGridAtPos(dots[i].x + pain.scrollX, dots[i].y + pain.scrollY))
+	line = {
+		info = {
+			name = "Line",
+			swapTool = "pencil",
+		},
+		run = function(arg)
+			local dots
+			while miceDown[arg.button] do
+				dots = getDotsInLine(
+					dragPoses[arg.button][1].x + (arg.scrollX - pain.scrollX),
+					dragPoses[arg.button][1].y + (arg.scrollY - pain.scrollY),
+					dragPoses[arg.button][2].x,
+					dragPoses[arg.button][2].y
+				)
+				render()
+				for i = 1, #dots do
+					if dots[i].x >= pain.size.x and dots[i].x < pain.size.x + pain.size.width then
+						for y = -arg.size, arg.size do
+							for x = -arg.size, arg.size do
+								if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+									if (not pain.showBar) or dots[i].y + y < -1 + pain.size.y + pain.size.height then
+										term.setCursorPos(dots[i].x + x, dots[i].y + y)
+										if arg.button == 1 then
+											term.blit(table.unpack(arg.dot))
+										elseif arg.button == 2 then
+											term.blit(getGridAtPos(dots[i].x + pain.scrollX, dots[i].y + pain.scrollY))
+										end
+									end
 								end
 							end
 						end
 					end
 				end
-			end
 
-			os.pullEvent()
-		end
-		for i = 1, #dots do
-			for y = -arg.size, arg.size do
-				for x = -arg.size, arg.size do
-					if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-						if arg.button == 1 then
-							placeDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, frame, arg.dot)
-						elseif arg.button == 2 then
-							deleteDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, frame)
+				os.pullEvent()
+			end
+			-- write dots to canvas
+			for i = 1, #dots do
+				for y = -arg.size, arg.size do
+					for x = -arg.size, arg.size do
+						if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+							if arg.button == 1 then
+								placeDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, frame, arg.dot)
+							elseif arg.button == 2 then
+								deleteDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, frame)
+							end
 						end
 					end
 				end
 			end
 		end
-	end,
+	},
 }
 
 local tryTool = function()
+	local swapArg, t = {}
+	if checkControl("toolMod") then
+		t = tools[tools[pain.tool].info.swapTool]
+		swapArg = tools[pain.tool].info.swapArg or {}
+	else
+		t = tools[pain.tool]
+	end
 	for butt = 1, 3 do
-		if miceDown[butt] and tools[pain.tool] then
-			tools[pain.tool]({
-				x = miceDown[butt].x,
-				y = miceDown[butt].y,
-				sx = miceDown[butt].x + pain.scrollX,
-				sy = miceDown[butt].y + pain.scrollY,
-				scrollX = pain.scrollX,
-				scrollY = pain.scrollY,
-				frame = frame,
-				dot = pain.dots[dot],
-				size = pain.brushSize,
-				button = butt,
-				event = miceDown[butt].event
+		if miceDown[butt] and t then
+			t.run({
+				x 		= swapArg.x or miceDown[butt].x,
+				y 		= swapArg.y or miceDown[butt].y,
+				sx 		= swapArg.sx or ((swapArg.x or miceDown[butt].x) + pain.scrollX),
+				sy 		= swapArg.sy or ((swapArg.y or miceDown[butt].y) + pain.scrollY),
+				scrollX = swapArg.scrollX or pain.scrollX,
+				scrollY = swapArg.scrollY or pain.scrollY,
+				frame 	= swapArg.frame or frame,
+				dot 	= swapArg.dot or pain.dots[dot],
+				size 	= swapArg.size or pain.brushSize,
+				button 	= swapArg.button or butt,
+				event 	= swapArg.event or miceDown[butt].event
 			})
 			pain.doRender = true
 			break
@@ -540,22 +661,28 @@ local getInput = function()
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
-			dragPoses[evt[2]] = {
-				{
-					x = dragPoses[evt[2]][1].x or evt[3],
-					y = dragPoses[evt[2]][1].y or evt[4]
-				},
-				{
-					x = evt[3],
-					y = evt[4]
-				}
-			}
-			miceDown[evt[2]] = {
-				event = evt[1],
-				button = evt[2],
-				x = evt[3],
-				y = evt[4],
-			}
+			if evt[3] >= pain.size.x and evt[3] <= -1 + pain.size.x + pain.size.width and evt[4] >= pain.size.y and evt[4] <= -1 + pain.size.y + pain.size.height then
+				if evt[4] == -1 + pain.size.y + pain.size.height then
+					-- openBarMenu()
+				else
+					dragPoses[evt[2]] = {
+						{
+							x = dragPoses[evt[2]][1].x or evt[3],
+							y = dragPoses[evt[2]][1].y or evt[4]
+						},
+						{
+							x = evt[3],
+							y = evt[4]
+						}
+					}
+					miceDown[evt[2]] = {
+						event = evt[1],
+						button = evt[2],
+						x = evt[3],
+						y = evt[4],
+					}
+				end
+			end
 		elseif evt[1] == "key" then
 			keysDown[evt[2]] = true
 		elseif evt[1] == "mouse_up" then
@@ -572,6 +699,15 @@ main = function()
 	while true do
 
 		if not pain.paused then
+
+			if TICKNO % 30 <= 20 then
+				flashPaletteOnBar = true
+				pain.doRender = true
+			elseif (TICKNO + 3) % 30 <= 20 then
+				flashPaletteOnBar = false
+				pain.doRender = true
+			end
+
 			if pain.doRender then
 				render()
 				pain.doRender = false
@@ -610,64 +746,30 @@ main = function()
 					pain.doRender = true
 				end
 			end
-
-			if checkControl("toolSelect") then
-				-- dot palette selection
-				if keysDown[keys.one] and pain.dots[1] then
-					dot = 1
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.two] and pain.dots[2] then
-					dot = 2
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.three] and pain.dots[3] then
-					dot = 3
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.four] and pain.dots[4] then
-					dot = 4
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.five] and pain.dots[5] then
-					dot = 5
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.six] and pain.dots[6] then
-					dot = 6
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.seven] and pain.dots[7] then
-					dot = 7
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.eight] and pain.dots[8] then
-					dot = 8
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.nine] and pain.dots[9] then
-					dot = 9
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
-				elseif keysDown[keys.zero] and pain.dots[0] then
-					dot = 0
-					setBarMsg("Selected palette " .. dot .. ".")
-					pain.doRender = true
+			for i = 0, 9 do
+				if checkControl("selectPalette_" .. i) then
+					if pain.dots[i] then
+						dot = i
+						setBarMsg("Selected palette " .. dot .. ".")
+						break
+					else
+						setBarMsg("There is no palette " .. i .. ".")
+						break
+					end
 				end
-			else
-				if checkControl("pencilTool") then
-					pain.tool = "pencil"
-					setBarMsg("Selected pencil tool.")
-				elseif checkControl("textTool") then
-					pain.tool = "text"
-					setBarMsg("Selected text tool.")
-				elseif checkControl("brushTool") then
-					pain.tool = "brush"
-					setBarMsg("Selected brush tool.")
-				elseif checkControl("lineTool") then
-					pain.tool = "line"
-					setBarMsg("Selected line tool.")
-				end
+			end
+			if checkControl("pencilTool") then
+				pain.tool = "pencil"
+				setBarMsg("Selected pencil tool.")
+			elseif checkControl("textTool") then
+				pain.tool = "text"
+				setBarMsg("Selected text tool.")
+			elseif checkControl("brushTool") then
+				pain.tool = "brush"
+				setBarMsg("Selected brush tool.")
+			elseif checkControl("lineTool") then
+				pain.tool = "line"
+				setBarMsg("Selected line tool.")
 			end
 
 			pain.barlife = math.max(pain.barlife - 1, 0)
@@ -678,7 +780,9 @@ main = function()
 
 		end
 
+		TICKNO = TICKNO + 1
 		sleep(0.05)
+
 	end
 end
 
