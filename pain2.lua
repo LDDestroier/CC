@@ -4,6 +4,7 @@ local scr_x, scr_y = term.getSize()
 local mx, my = scr_x/2, scr_y/2
 local keysDown = {}
 local miceDown = {}
+local dragPoses = {{{},{}}, {{},{}}, {{},{}}}
 
 -- debug renderer is slower, but the normal one isn't functional yet
 local useDebugRenderer = false
@@ -24,6 +25,12 @@ local pain = {
 	barlife = 12,
 	showBar = true,
 	doRender = true,
+	size = {
+		x = 1,
+		y = 1,
+		width = scr_x,
+		height = scr_y
+	},
 	dots = {
 		[0] = {
 			" ",
@@ -50,57 +57,109 @@ local setBarMsg = function(message)
 	pain.doRender = true
 end
 
+local controlHoldCheck = {}	-- used to prevent repeated inputs on non-repeating controls
 local control = {
+	quit = {
+		key = keys.q,
+		holdDown = false,
+		modifiers = {
+			[keys.leftCtrl] = true
+		},
+	},
 	scrollUp = { -- decrease scrollY
 		key = keys.up,
+		holdDown = true,
 		modifiers = {},
 	},
 	scrollDown = {
 		key = keys.down,
+		holdDown = true,
 		modifiers = {},
 	},
 	scrollLeft = {
 		key = keys.left,
+		holdDown = true,
 		modifiers = {},
 	},
 	scrollRight = {
 		key = keys.right,
+		holdDown = true,
 		modifiers = {},
 	},
 	resetScroll = {
 		key = keys.a,
+		holdDown = false,
 		modifiers = {},
 	},
 	switchNextFrame = {
-		key = keys.plus,
+		key = keys.rightBracket,
+		holdDown = false,
+		modifiers = {},
+	},
+	switchPrevFrame = {
+		key = keys.leftBracket,
+		holdDown = false,
+		modifiers = {},
+	},
+	increaseBrushSize = {
+		key = keys.equals,
+		holdDown = false,
+		modifiers = {},
+	},
+	increaseBrushSize_Alt = {
+		key = keys.numPadAdd,
+		holdDown = false,
+		modifiers = {},
+	},
+	decreaseBrushSize = {
+		key = keys.minus,
+		holdDown = false,
+		modifiers = {},
+	},
+	decreaseBrushSize_Alt = {
+		key = keys.numPadSubtract,
+		holdDown = false,
 		modifiers = {},
 	},
 	moveMod = {
 		key = keys.leftShift,
+		holdDown = true,
 		modifiers = {},
 	},
 	creepMod = {
 		key = keys.leftAlt,
+		holdDown = true,
 		modifiers = {},
 	},
 	toolSelect = {
 		key = keys.leftShift,
+		holdDown = true,
 		modifiers = {},
 	},
 	pencilTool = {
 		key = keys.p,
+		holdDown = false,
 		modifiers = {
 			[keys.leftShift] = true
 		},
 	},
 	brushTool = {
 		key = keys.b,
+		holdDown = false,
 		modifiers = {
 			[keys.leftShift] = true
 		},
 	},
 	textTool = {
 		key = keys.t,
+		holdDown = false,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	lineTool = {
+		key = keys.l,
+		holdDown = false,
 		modifiers = {
 			[keys.leftShift] = true
 		},
@@ -109,25 +168,37 @@ local control = {
 
 local checkControl = function(name)
 	local modlist = {
-		[keys.leftCtrl] = keysDown[keys.leftCtrl],
-		[keys.rightCtrl] = keysDown[keys.rightCtrl],
-		[keys.leftShift] = keysDown[keys.leftShift],
-		[keys.rightShift] = keysDown[keys.rightShift],
-		[keys.leftAlt] = keysDown[keys.leftAlt],
-		[keys.rightAlt] = keysDown[keys.rightAlt],
+		keys.leftCtrl,
+		keys.rightCtrl,
+		keys.leftShift,
+		keys.rightShift,
+		keys.leftAlt,
+		keys.rightAlt,
 	}
-	for k,down in pairs(modlist) do
-		if control[name].modifiers[k] then
-			if not down then
+	for i = 1, #modlist do
+		if control[name].modifiers[modlist[i]] then
+			if not keysDown[modlist[i]] then
 				return false
 			end
 		else
-			if down then
+			if keysDown[modlist[i]] then
 				return false
 			end
 		end
 	end
-	return keysDown[control[name].key]
+	if keysDown[control[name].key] then
+		if control[name].holdDown then
+			return true
+		else
+			if not controlHoldCheck[name] then
+				controlHoldCheck[name] = true
+				return true
+			end
+		end
+	else
+		controlHoldCheck[name] = false
+		return false
+	end
 end
 
 -- converts hex colors to colors api, and back
@@ -230,17 +301,18 @@ local dragPos = {}
 
 local getGridAtPos = function(x, y)
 	local grid = {
-		{"%","%",".","."},
-		{"%","%",".","."},
-		{"%","%",".","."},
-		{".",".","%","%"},
-		{".",".","%","%"},
-		{".",".","%","%"},
+		"..%%",
+		"..%%",
+		"..%%",
+		"%%..",
+		"%%..",
+		"%%..",
 	}
 	if x < 1 or y < 1 then
 		return "/", "7", "f"
 	else
-		return grid[1 + (2 + y) % #grid][1 + (1 + x) % #grid[1]], "7", "f"
+		local sx, sy = 1 + (1 + x) % #grid[1], 1 + (2 + y) % #grid
+		return grid[sy]:sub(sx,sx), "7", "f"
 	end
 end
 
@@ -248,6 +320,10 @@ end
 local render = function(x, y, width, height)
 	local buffer = {{},{},{}}
 	local cx, cy
+	x = x or pain.size.x
+	y = y or pain.size.y
+	width = width or pain.size.width
+	height = height or pain.size.height
 	-- see, it wouldn't do if I just individually set the cursor position for every dot
 	if useDebugRenderer then
 
@@ -278,7 +354,11 @@ local render = function(x, y, width, height)
 			if pain.showBar and yy == height then
 				buffer[2][yy] = ("f"):rep(width)
 				buffer[3][yy] = ("8"):rep(width)
-				buffer[1][yy] = ("["..pain.scrollX..","..pain.scrollY.."] "..pain.barmsg..(" "):rep(width)):sub(1, width)
+				buffer[1][yy] = ((
+
+					"["..pain.scrollX..","..pain.scrollY.."] "..pain.barmsg
+
+				) .. (" "):rep(width)):sub(1, width)
 			else
 				for xx = x, width do
 					cx = xx + pain.scrollX
@@ -375,7 +455,7 @@ local tools = {
 		pain.paused = true
 		pain.barmsg = "Type text to add to canvas."
 		pain.barlife = 1
-		render(1, 1, scr_x, scr_y)
+		render()
 		term.setCursorPos(arg.x, arg.y)
 		term.setTextColor(to_colors[arg.dot[2]])
 		term.setBackgroundColor(to_colors[arg.dot[3]])
@@ -387,21 +467,67 @@ local tools = {
 		pain.paused = false
 		keysDown = {}
 		miceDown = {}
-	end
+	end,
+	line = function(arg)
+		local dots
+		while miceDown[arg.button] do
+			dots = getDotsInLine(
+				dragPoses[arg.button][1].x + (arg.scrollX - pain.scrollX),
+				dragPoses[arg.button][1].y + (arg.scrollY - pain.scrollY),
+				dragPoses[arg.button][2].x,
+				dragPoses[arg.button][2].y
+			)
+			render()
+			for i = 1, #dots do
+				if dots[i].x >= 1 and dots[i].x <= scr_x then
+					for y = -arg.size, arg.size do
+						for x = -arg.size, arg.size do
+							if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+								term.setCursorPos(dots[i].x + x, dots[i].y + y)
+								if arg.button == 1 then
+									term.blit(table.unpack(arg.dot))
+								elseif arg.button == 2 then
+									term.blit(getGridAtPos(dots[i].x + pain.scrollX, dots[i].y + pain.scrollY))
+								end
+							end
+						end
+					end
+				end
+			end
+
+			os.pullEvent()
+		end
+		for i = 1, #dots do
+			for y = -arg.size, arg.size do
+				for x = -arg.size, arg.size do
+					if math.sqrt(x^2 + y^2) <= arg.size / 2 then
+						if arg.button == 1 then
+							placeDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, frame, arg.dot)
+						elseif arg.button == 2 then
+							deleteDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, frame)
+						end
+					end
+				end
+			end
+		end
+	end,
 }
 
 local tryTool = function()
 	for butt = 1, 3 do
 		if miceDown[butt] and tools[pain.tool] then
 			tools[pain.tool]({
-				x = miceDown[butt][1],
-				y = miceDown[butt][2],
-				sx = miceDown[butt][1] + pain.scrollX,
-				sy = miceDown[butt][2] + pain.scrollY,
+				x = miceDown[butt].x,
+				y = miceDown[butt].y,
+				sx = miceDown[butt].x + pain.scrollX,
+				sy = miceDown[butt].y + pain.scrollY,
+				scrollX = pain.scrollX,
+				scrollY = pain.scrollY,
+				frame = frame,
 				dot = pain.dots[dot],
 				size = pain.brushSize,
 				button = butt,
-				event = miceDown[butt][3]
+				event = miceDown[butt].event
 			})
 			pain.doRender = true
 			break
@@ -409,15 +535,31 @@ local tryTool = function()
 	end
 end
 
-getInput = function()
+local getInput = function()
 	local evt
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
-			miceDown[evt[2]] = {evt[3], evt[4], evt[1]}
+			dragPoses[evt[2]] = {
+				{
+					x = dragPoses[evt[2]][1].x or evt[3],
+					y = dragPoses[evt[2]][1].y or evt[4]
+				},
+				{
+					x = evt[3],
+					y = evt[4]
+				}
+			}
+			miceDown[evt[2]] = {
+				event = evt[1],
+				button = evt[2],
+				x = evt[3],
+				y = evt[4],
+			}
 		elseif evt[1] == "key" then
 			keysDown[evt[2]] = true
 		elseif evt[1] == "mouse_up" then
+			dragPoses[evt[2]] = {{},{}}, {{},{}}, {{},{}}
 			miceDown[evt[2]] = false
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = false
@@ -431,8 +573,12 @@ main = function()
 
 		if not pain.paused then
 			if pain.doRender then
-				render(1, 1, scr_x, scr_y)
+				render()
 				pain.doRender = false
+			end
+
+			if checkControl("quit") then
+				return true
 			end
 
 			-- handle scrolling
@@ -441,7 +587,13 @@ main = function()
 				pain.scrollY = 0
 				pain.doRender = true
 			else
-				if checkControl("scrollLeft") then
+				if checkControl("increaseBrushSize") or checkControl("increaseBrushSize_Alt") then
+					pain.brushSize = math.min(pain.brushSize + 1, 16)
+					setBarMsg("Increased brush size to " .. pain.brushSize .. ".")
+				elseif checkControl("decreaseBrushSize") or checkControl("decreaseBrushSize_Alt") then
+					pain.brushSize = math.max(pain.brushSize - 1, 1)
+					setBarMsg("Decreased brush size to " .. pain.brushSize .. ".")
+				elseif checkControl("scrollLeft") then
 					pain.scrollX = pain.scrollX - 1
 					pain.doRender = true
 				end
@@ -512,6 +664,9 @@ main = function()
 				elseif checkControl("brushTool") then
 					pain.tool = "brush"
 					setBarMsg("Selected brush tool.")
+				elseif checkControl("lineTool") then
+					pain.tool = "line"
+					setBarMsg("Selected line tool.")
 				end
 			end
 
@@ -537,3 +692,10 @@ end
 term.clear()
 
 parallel.waitForAny( main, getInput, keepTryingTools )
+
+-- exit cleanly
+
+term.setCursorPos(1, scr_y)
+term.setBackgroundColor(colors.black)
+term.setTextColor(colors.white)
+term.clearLine()
