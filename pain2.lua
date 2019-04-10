@@ -48,7 +48,42 @@ local pain = {
 		[2] = {
 			" ",
 			"f",
-			"e"
+			"a"
+		},
+		[3] = {
+			" ",
+			"f",
+			"b"
+		},
+		[4] = {
+			" ",
+			"f",
+			"c"
+		},
+		[5] = {
+			" ",
+			"f",
+			"d"
+		},
+		[6] = {
+			" ",
+			"f",
+			"2"
+		},
+		[7] = {
+			" ",
+			"f",
+			"3"
+		},
+		[8] = {
+			" ",
+			"f",
+			"4"
+		},
+		[9] = {
+			" ",
+			"f",
+			"5"
 		},
 	},
 	tool = "pencil"
@@ -478,6 +513,12 @@ local render = function(x, y, width, height)
 		end
 
 	end
+	
+	if false then
+		term.setCursorPos(1,1)
+		write(textutils.serialize(miceDown))
+	end
+	
 end
 
 -- every tool at your disposal
@@ -556,23 +597,30 @@ local tools = {
 			end
 		end
 	},
-	text = function(arg)
-		pain.paused = true
-		pain.barmsg = "Type text to add to canvas."
-		pain.barlife = 1
-		render()
-		term.setCursorPos(arg.x, arg.y)
-		term.setTextColor(to_colors[arg.dot[2]])
-		term.setBackgroundColor(to_colors[arg.dot[3]])
-		local text = read()
-		-- re-render every keypress, requires custom read function
-		for i = 1, #text do
-			placeDot(arg.sx + i - 1, arg.sy, frame, {text:sub(i,i), pain.dots[dot][2], pain.dots[dot][3]})
+	text = {
+		info = {
+			name = "Text",
+			swapTool = "pencil",
+			swapArg = {},
+		},
+		run = function(arg)
+			pain.paused = true
+			pain.barmsg = "Type text to add to canvas."
+			pain.barlife = 1
+			render()
+			term.setCursorPos(arg.x, arg.y)
+			term.setTextColor(to_colors[arg.dot[2]])
+			term.setBackgroundColor(to_colors[arg.dot[3]])
+			local text = read()
+			-- re-render every keypress, requires custom read function
+			for i = 1, #text do
+				placeDot(arg.sx + i - 1, arg.sy, frame, {text:sub(i,i), pain.dots[dot][2], pain.dots[dot][3]})
+			end
+			pain.paused = false
+			keysDown = {}
+			miceDown = {}
 		end
-		pain.paused = false
-		keysDown = {}
-		miceDown = {}
-	end,
+	},
 	line = {
 		info = {
 			name = "Line",
@@ -657,14 +705,32 @@ local tryTool = function()
 end
 
 local getInput = function()
-	local evt
+	local evt, adjX, adjY, paletteListX
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
-			if evt[3] >= pain.size.x and evt[3] <= -1 + pain.size.x + pain.size.width and evt[4] >= pain.size.y and evt[4] <= -1 + pain.size.y + pain.size.height then
-				if evt[4] == -1 + pain.size.y + pain.size.height then
-					-- openBarMenu()
+		
+			-- start X for the list of color palettes to choose from
+			paletteListX = 5 + #tostring(pain.scrollX) + #tostring(pain.scrollY)
+			
+			-- (x, y) relative to (pain.size.x, pain.size.y)
+			adjX, adjY = 1 + evt[3] - pain.size.x, 1 + evt[4] - pain.size.y
+			
+			if adjX >= 1 and adjX <= pain.size.width and adjY >= 1 and adjY <= pain.size.height then
+			
+				if adjY == pain.size.height then
+				
+					if evt[1] == "mouse_click" then
+						if adjX >= paletteListX and adjX <= -1 + paletteListX + #pain.dots then
+							dot = 1 + adjX - paletteListX
+							setBarMsg("Selected palette " .. dot .. ".")
+						else
+							-- openBarMenu()
+						end
+					end
+					
 				else
+				
 					dragPoses[evt[2]] = {
 						{
 							x = dragPoses[evt[2]][1].x or evt[3],
@@ -681,6 +747,7 @@ local getInput = function()
 						x = evt[3],
 						y = evt[4],
 					}
+					
 				end
 			end
 		elseif evt[1] == "key" then
