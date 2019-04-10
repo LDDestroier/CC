@@ -193,7 +193,7 @@ function getInput()
 					end, countdown)
 					if (res == 1) and not over then
 						cprint("FOUL!!")
-						exitGame()
+						--exitGame()
 					end
 					os.queueEvent("imready")
 					parallel.waitForAny(function()
@@ -262,7 +262,7 @@ function game()
 			term.setTextColor(colors.red)
 			term.setBackgroundColor(colors.lightBlue)
 			sleep(0.5)
-			exitGame()
+			--exitGame()
 		else
 			paintutils.drawImage(mixImages(s.enemy.dead,s.bg),1,1)
 			paintutils.drawPixel(x,y,colors.red)
@@ -273,7 +273,7 @@ function game()
 			wins = wins + 1
 			sleep(0.8)
 			difficulty = difficulty * 0.92
-			exitGame()
+			--exitGame()
 		end
 	end
 end
