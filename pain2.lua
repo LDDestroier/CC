@@ -7,7 +7,7 @@ local miceDown = {}					-- list of all clicked mice buttons
 local dragPoses = {{{},{}}, {{},{}}, {{},{}}}	-- records initial and current mouse position per button while scrolling
 
 local TICKNO = 0				-- iterates every time main() loops
-local flashPaletteOnBar = false	-- whether or not to flash the dot palette numbers on the bottom bar
+local flashPaletteOnBar = 0		-- whether or not to flash the dot palette numbers on the bottom bar, 0 is false, greater than 0 is true
 
 -- debug renderer is slower, but the normal one isn't functional yet
 local useDebugRenderer = false
@@ -132,12 +132,32 @@ local control = {
 	switchNextFrame = {
 		key = keys.rightBracket,
 		holdDown = false,
-		modifiers = {},
+		modifiers = {
+			[keys.leftShift] = true
+		},
 	},
 	switchPrevFrame = {
 		key = keys.leftBracket,
 		holdDown = false,
-		modifiers = {},
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	swapNextFrame = {
+		key = keys.rightBracket,
+		holdDownn = false,
+		modifiers = {
+			[keys.leftShift] = true,
+			[keys.leftAlt] = true,
+		}
+	},
+	swapPrevFrame = {
+		key = keys.leftBracket,
+		holdDownn = false,
+		modifiers = {
+			[keys.leftShift] = true,
+			[keys.leftAlt] = true,
+		}
 	},
 	increaseBrushSize = {
 		key = keys.equals,
@@ -211,83 +231,73 @@ local control = {
 	selectPalette_0 = {
 		key = keys.zero,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_1 = {
 		key = keys.one,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_2 = {
 		key = keys.two,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_3 = {
 		key = keys.three,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_4 = {
 		key = keys.four,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_5 = {
 		key = keys.five,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_6 = {
 		key = keys.six,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_7 = {
 		key = keys.seven,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_8 = {
 		key = keys.eight,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
 	},
 	selectPalette_9 = {
 		key = keys.nine,
 		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
+		modifiers = {},
+	},
+	selectNextPalette = {
+		key = keys.rightBracket,
+		holdDown = false,
+		modifiers = {},
+	},
+	selectPrevPalette = {
+		key = keys.leftBracket,
+		holdDown = false,
+		modifiers = {},
 	},
 }
 
 local checkControl = function(name)
 	local modlist = {
 		keys.leftCtrl,
-		keys.rightCtrl,
+--		keys.rightCtrl,
 		keys.leftShift,
-		keys.rightShift,
+--		keys.rightShift,
 		keys.leftAlt,
-		keys.rightAlt,
+--		keys.rightAlt,
 	}
 	for i = 1, #modlist do
 		if control[name].modifiers[modlist[i]] then
@@ -473,10 +483,14 @@ local render = function(x, y, width, height)
 				term.setCursorPos(pain.size.x, -1 + pain.size.y + pain.size.height)
 				term.write("[" .. pain.scrollX .. "," .. pain.scrollY .. "] ")
 				for i = 1, #pain.dots do
-					if flashPaletteOnBar then
-						term.blit(table.unpack(pain.dots[i]))
+					if flashPaletteOnBar > 0 then
+						if i == dot then
+							term.blit(tostring(i), "0", pain.dots[i][3])
+						else
+							term.blit(tostring(i), "7", pain.dots[i][3])
+						end
 					else
-						term.blit(tostring(i), "7", pain.dots[i][3])
+						term.blit(table.unpack(pain.dots[i]))
 					end
 				end
 				if pain.barlife > 0 then
@@ -513,12 +527,12 @@ local render = function(x, y, width, height)
 		end
 
 	end
-	
+
 	if false then
 		term.setCursorPos(1,1)
 		write(textutils.serialize(miceDown))
 	end
-	
+
 end
 
 -- every tool at your disposal
@@ -629,6 +643,7 @@ local tools = {
 		run = function(arg)
 			local dots
 			while miceDown[arg.button] do
+				arg.size = pain.brushSize
 				dots = getDotsInLine(
 					dragPoses[arg.button][1].x + (arg.scrollX - pain.scrollX),
 					dragPoses[arg.button][1].y + (arg.scrollY - pain.scrollY),
@@ -706,20 +721,25 @@ end
 
 local getInput = function()
 	local evt, adjX, adjY, paletteListX
+	local keySwapList = {
+		[keys.rightShift] = keys.leftShift,
+		[keys.rightAlt] = keys.leftAlt,
+		[keys.rightCtrl] = keys.leftCtrl,
+	}
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
-		
+
 			-- start X for the list of color palettes to choose from
 			paletteListX = 5 + #tostring(pain.scrollX) + #tostring(pain.scrollY)
-			
+
 			-- (x, y) relative to (pain.size.x, pain.size.y)
 			adjX, adjY = 1 + evt[3] - pain.size.x, 1 + evt[4] - pain.size.y
-			
+
 			if adjX >= 1 and adjX <= pain.size.width and adjY >= 1 and adjY <= pain.size.height then
-			
+
 				if adjY == pain.size.height then
-				
+
 					if evt[1] == "mouse_click" then
 						if adjX >= paletteListX and adjX <= -1 + paletteListX + #pain.dots then
 							dot = 1 + adjX - paletteListX
@@ -728,9 +748,9 @@ local getInput = function()
 							-- openBarMenu()
 						end
 					end
-					
+
 				else
-				
+
 					dragPoses[evt[2]] = {
 						{
 							x = dragPoses[evt[2]][1].x or evt[3],
@@ -741,22 +761,26 @@ local getInput = function()
 							y = evt[4]
 						}
 					}
-					miceDown[evt[2]] = {
-						event = evt[1],
-						button = evt[2],
-						x = evt[3],
-						y = evt[4],
-					}
-					
+					if evt[1] == "mouse_click" or miceDown[evt[2]] then
+						miceDown[evt[2]] = {
+							event = evt[1],
+							button = evt[2],
+							x = evt[3],
+							y = evt[4],
+						}
+					end
+
 				end
 			end
 		elseif evt[1] == "key" then
 			keysDown[evt[2]] = true
+			keysDown[keySwapList[evt[2]] or evt[2]] = true
 		elseif evt[1] == "mouse_up" then
 			dragPoses[evt[2]] = {{},{}}, {{},{}}, {{},{}}
 			miceDown[evt[2]] = false
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = false
+			keysDown[keySwapList[evt[2]] or evt[2]] = false
 		end
 	end
 end
@@ -766,14 +790,6 @@ main = function()
 	while true do
 
 		if not pain.paused then
-
-			if TICKNO % 30 <= 20 then
-				flashPaletteOnBar = true
-				pain.doRender = true
-			elseif (TICKNO + 3) % 30 <= 20 then
-				flashPaletteOnBar = false
-				pain.doRender = true
-			end
 
 			if pain.doRender then
 				render()
@@ -813,10 +829,29 @@ main = function()
 					pain.doRender = true
 				end
 			end
+			if checkControl("selectNextPalette") then
+				if dot < #pain.dots then
+					dot = dot + 1
+					flashPaletteOnBar = 6
+					setBarMsg("Switched to next palette " .. dot .. ".")
+				else
+					setBarMsg("Reached end of palette list.")
+				end
+			end
+			if checkControl("selectPrevPalette") then
+				if dot > 1 then
+					dot = dot - 1
+					flashPaletteOnBar = 6
+					setBarMsg("Switched to previous palette " .. dot .. ".")
+				else
+					setBarMsg("Reached beginning of palette list.")
+				end
+			end
 			for i = 0, 9 do
 				if checkControl("selectPalette_" .. i) then
 					if pain.dots[i] then
 						dot = i
+						flashPaletteOnBar = 6
 						setBarMsg("Selected palette " .. dot .. ".")
 						break
 					else
@@ -839,11 +874,18 @@ main = function()
 				setBarMsg("Selected line tool.")
 			end
 
-			pain.barlife = math.max(pain.barlife - 1, 0)
-			if pain.barlife == 0 and pain.barmsg ~= "" then
-				pain.barmsg = ""
+			-- decrement bar life and palette number indicator
+			-- if it's gonna hit zero, make sure it re-renders
+
+			if pain.barlife == 1 then
 				pain.doRender = true
 			end
+			pain.barlife = math.max(pain.barlife - 1, 0)
+
+			if flashPaletteOnBar == 1 then
+				pain.doRender = true
+			end
+			flashPaletteOnBar = math.max(flashPaletteOnBar - 1, 0)
 
 		end
 
