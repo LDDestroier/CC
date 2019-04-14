@@ -751,17 +751,17 @@ local getInput = function()
 
 				else
 
-					dragPoses[evt[2]] = {
-						{
-							x = dragPoses[evt[2]][1].x or evt[3],
-							y = dragPoses[evt[2]][1].y or evt[4]
-						},
-						{
-							x = evt[3],
-							y = evt[4]
-						}
-					}
 					if evt[1] == "mouse_click" or miceDown[evt[2]] then
+						dragPoses[evt[2]] = {
+							{
+								x = dragPoses[evt[2]][1].x or evt[3],
+								y = dragPoses[evt[2]][1].y or evt[4]
+							},
+							{
+								x = evt[3],
+								y = evt[4]
+							}
+						}
 						miceDown[evt[2]] = {
 							event = evt[1],
 							button = evt[2],
