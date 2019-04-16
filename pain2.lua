@@ -1458,7 +1458,7 @@ local getInput = function()
 			if adjX >= 1 and adjX <= pain.size.width and adjY >= 1 and adjY <= pain.size.height then
 
 				pain.isInFocus = true
-				
+
 				if adjY == pain.size.height then
 
 					if evt[1] == "mouse_click" then
@@ -1473,7 +1473,11 @@ local getInput = function()
 				else
 
 					if pain.limitOneMouseButton then
-						dragPoses = {{{},{}}, {{},{}}, {{},{}}}
+						dragPoses = {
+							dragPoses[1] or {{},{}},
+							dragPoses[2] or {{},{}},
+							dragPoses[3] or {{},{}}
+						}
 						dragPoses = {
 							[evt[2]] = {
 								{
@@ -1530,7 +1534,11 @@ local getInput = function()
 				keysDown = {}
 			end
 		elseif evt[1] == "mouse_up" then
-			dragPoses[evt[2]] = {{},{}}, {{},{}}, {{},{}}
+			if pain.limitOneMouseButton then
+				dragPoses = {{{},{}}, {{},{}}, {{},{}}}
+			else
+				dragPoses[evt[2]] = {{},{}}, {{},{}}, {{},{}}
+			end
 			miceDown[evt[2]] = false
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = false
