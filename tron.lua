@@ -249,7 +249,39 @@ local gridList = {
 			"=======",
 		},
 	},
-	[6] = {		-- some
+	[6] = {		-- pain background
+		{
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@                                                   ",
+			"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@SCREEN@MAX@",
+		},
+		{
+			"%%..",
+			"%%..",
+			"%%..",
+			"..%%",
+			"..%%",
+			"..%%"
+		},
+	},
+	[7] = {		-- some
 		{
 			" "
 		},
@@ -406,7 +438,7 @@ local tsv = function(visible)
 end
 
 local round = function(num, places)
-	return math.floor(num * 10^places) / 10^places
+	return math.floor(num * 10^places + 0.5) / 10^places
 end
 
 if doUpdateGame then
@@ -887,7 +919,7 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 				adjX = mathfloor(player[i].x - (scrollX + scrollAdjX) - (#player[i].name / 2) + 1)
 				adjY = mathfloor(player[i].y - (scrollY + scrollAdjY) - 1.5)
 				for cx = adjX, adjX + #player[i].name do
-					if doesIntersectBorder(adjX + (scrollX + scrollAdjX), adjY + (scrollY + scrollAdjY)) then
+					if doesIntersectBorder(adjX + mathfloor(0.5 + scrollX + scrollAdjX), adjY + mathfloor(0.5 + scrollY + scrollAdjY)) then
 						termsetBackgroundColor(tocolors[grid.edgecol])
 					else
 						termsetBackgroundColor(tocolors[grid.voidcol])
@@ -1106,6 +1138,9 @@ local nameChange = function(scrollInfo)
 		["red"] = colors.red,
 		["ldd"] = colors.orange,
 		["lddestroier"] = colors.orange,
+		["hydraz"] = colors.yellow,
+		["hugeblank"] = colors.orange,
+		["bagel"] = colors.orange,
 		["3d6"] = colors.lime,
 		["lyqyd"] = colors.red,
 		["squiddev"] = colors.cyan,
@@ -1113,9 +1148,15 @@ local nameChange = function(scrollInfo)
 		["dog"] = colors.purple,
 		["nothy"] = colors.lightGray,
 		["kepler"] = colors.cyan,
+		["kepler155c"] = colors.cyan,
+		["anavrins"] = colors.blue,
+		["redmatters"] = colors.red,
+		["fatmanchummy"] = colors.purple,
 		["crazed"] = colors.lightBlue,
 		["ape"] = colors.brown,
 		["everyos"] = colors.red,
+		["lemmmy"] = colors.red,
+		["yemmel"] = colors.red,
 		["apemanzilla"] = colors.brown,
 		["osmarks"] = colors.green,
 		["gollark"] = colors.green,
@@ -1127,6 +1168,7 @@ local nameChange = function(scrollInfo)
 		["pixeltoast"] = colors.lime,
 		["creator"] = colors.yellow,
 		["dannysmc"] = colors.purple,
+		["dannysmc95"] = colors.purple,
 		["kingdaro"] = colors.blue,
 		["valithor"] = colors.orange,
 		["logandark"] = colors.lightGray,
@@ -1452,23 +1494,48 @@ local deadAnimation = function(doSend)
 	end
 end
 
+local debugMoveMode = false	-- only works if host
 local moveTick = function(doSend)
 	local p
+	local hasMoved
 	for i = 1, #player do
 		p = player[i]
+		hasMoved = false
 		if not p.dead then
 			if isHost then
-				p.x = p.x + mathfloor(mathcos(mathrad(p.direction * 90)))
-				p.y = p.y + mathfloor(mathsin(mathrad(p.direction * 90)))
-				if doesIntersectBorder(p.x, p.y) or getTrail(p.x, p.y) then
+				if debugMoveMode then
+					if (i == 1 and keysDown[control.left]) or (i == 2 and netKeysDown[control.left]) then
+						p.x = p.x - 1
+						hasMoved = true
+					end
+					if (i == 1 and keysDown[control.right]) or (i == 2 and netKeysDown[control.right]) then
+						p.x = p.x + 1
+						hasMoved = true
+					end
+					if (i == 1 and keysDown[control.up]) or (i == 2 and netKeysDown[control.up]) then
+						p.y = p.y - 1
+						hasMoved = true
+					end
+					if (i == 1 and keysDown[control.down]) or (i == 2 and netKeysDown[control.down]) then
+						p.y = p.y + 1
+						hasMoved = true
+					end
+				else
+					p.x = p.x + mathfloor(mathcos(mathrad(p.direction * 90)))
+					p.y = p.y + mathfloor(mathsin(mathrad(p.direction * 90)))
+					hasMoved = true
+				end
+				if hasMoved and (doesIntersectBorder(p.x, p.y) or getTrail(p.x, p.y)) then
 					p.dead = true
 					deadGuys[i] = true
 				else
 					if p.putTrail or (p.trailLevel < 1) then
-						putTrail(p)
-						lastTrails[#lastTrails+1] = {p.x, p.y, p.num}
-						if #lastTrails > #player then
-							tableremove(lastTrails, 1)
+						if hasMoved then
+							putTrail(p)
+							lastTrails[#lastTrails+1] = {p.x, p.y, p.num}
+							if #lastTrails > #player then
+								tableremove(lastTrails, 1)
+							end
 						end
 						if p.putTrail then
 							p.trailLevel = math.min(p.trailLevel + p.trailRegen, p.trailMax)
@@ -1635,7 +1702,7 @@ local networking = function()
 							player = msg.player
 							if msg.trail then
 								for i = 1, #msg.trail do
-									putTrailXY(unpack(msg.trail[i]))
+									putTrailXY(table.unpack(msg.trail[i]))
 								end
 							end
 							deadGuys = msg.deadGuys
