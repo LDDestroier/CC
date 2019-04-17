@@ -1124,14 +1124,16 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 				end
 				doRend = true
 			elseif evt[2] == tID then
-				doRend = true
-				if x > fromX then
+				if x > fromX and xmod < x - fromX then
 					xmod = math.min(xmod + 1, x - fromX)
+					drawGrid(gsX, gsY, true)
 					tID = os.startTimer(0.05)
-				else
+				elseif xmod > x - fromX then
 					xmod = math.max(xmod - 1, x - fromX)
+					drawGrid(gsX, gsY, true)
 					tID = os.startTimer(0.05)
 				end
+				doRend = true
 			end
 		end
 		if lastPos ~= cpos or doRend then
@@ -1293,8 +1295,8 @@ local titleScreen = function()
 					(useSkynet and "Disable" or "Enable") .. " Skynet",
 					"Back..."
 				}
-				choice, scrollInfo = makeMenu(6, currentX, scr_y - #options, options, true, scrollInfo, _cpos)
-				currentX = 6
+				choice, scrollInfo = makeMenu(8, currentX, scr_y - #options, options, true, scrollInfo, _cpos)
+				currentX = 8
 				_cpos = choice
 				if choice == 1 then
 					return "demo"
