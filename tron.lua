@@ -352,7 +352,7 @@ if useSkynet and (not http.websocket) then
 	error("Skynet is not supported on this version of ComputerCraft.")
 end
 
-local skynetPath = fs.combine(fs.getDir(shell.getRunningProgram()), "skynet")
+local skynetPath = fs.combine(fs.getDir(shell.getRunningProgram()), "skynet.lua")
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
 if argumentName then
@@ -463,47 +463,50 @@ end
 
 local cwrite = function(text, y, xdiff, wordPosCheck)
 	wordPosCheck = wordPosCheck or #text
-	termsetCursorPos(mathfloor(scr_x / 2 - (#text + (xdiff or 0)) / 2), y or (scr_y - 2))
+	termsetCursorPos(mathfloor(scr_x / 2 - math.floor(0.5 + #text + (xdiff or 0)) / 2), y or (scr_y - 2))
 	term.write(text)
 	return (scr_x / 2) - (#text / 2) + wordPosCheck
 end
 
 local modem, skynet
-if not doGridDemo then
-	if useSkynet then
-		if fs.exists(skynetPath) then
-			skynet = dofile(skynetPath)
-			term.clear()
-			cwrite("Connecting to Skynet...", scr_y / 2)
-			skynet.open(port)
-		else
-			term.clear()
-			cwrite("Downloading Skynet...", scr_y / 2)
-			local prog = http.get(skynetURL)
-			if prog then
-				local file = fs.open(skynetPath, "w")
-				file.write(prog.readAll())
-				file.close()
+local setUpModem = function()
+	if not doGridDemo then
+		if useSkynet then
+			if fs.exists(skynetPath) then
 				skynet = dofile(skynetPath)
-				cwrite("Connecting to Skynet...", 1 + scr_y / 2)
+				term.clear()
+				cwrite("Connecting to Skynet...", scr_y / 2)
 				skynet.open(port)
 			else
-				error("Could not download Skynet.")
+				term.clear()
+				cwrite("Downloading Skynet...", scr_y / 2)
+				local prog = http.get(skynetURL)
+				if prog then
+					local file = fs.open(skynetPath, "w")
+					file.write(prog.readAll())
+					file.close()
+					skynet = dofile(skynetPath)
+					cwrite("Connecting to Skynet...", 1 + scr_y / 2)
+					skynet.open(port)
+				else
+					error("Could not download Skynet.")
+				end
 			end
-		end
-	else
-		modem = peripheral.find("modem")
-		if (not modem) and ccemux then
-			ccemux.attach("top", "wireless_modem")
-			modem = peripheral.find("modem")
-		end
-		if modem then
-			modem.open(port)
 		else
-			error("You should attach a modem.")
+			modem = peripheral.find("modem")
+			if (not modem) and ccemux then
+				ccemux.attach("top", "wireless_modem")
+				modem = peripheral.find("modem")
+			end
+			if modem then
+				modem.open(port)
+			else
+				error("You should attach a modem.")
+			end
 		end
 	end
 end
+setUpModem()
 
 local transmit = function(port, message)
 	if useSkynet then
@@ -1258,12 +1261,6 @@ local titleScreen = function()
 			"Exit"
 		}
 	end
-	options = {
-		"Grid Demo",
-		"Change Name",
-		"Change Grid",
-		"Back..."
-	}
 	while true do
 		choice, scrollInfo = makeMenu(2, scr_y - #menuOptions, menuOptions, true, scrollInfo)
 		if choice == 1 then
@@ -1273,7 +1270,14 @@ local titleScreen = function()
 		elseif choice == 3 then
 			local _cpos
 			while true do
-				choice, scrollInfo = makeMenu(14, scr_y - #menuOptions, options, true, scrollInfo, _cpos)
+				options = {
+					"Grid Demo",
+					"Change Name",
+					"Change Grid",
+					(useSkynet and "Disable" or "Enable") .. " Skynet",
+					"Back..."
+				}
+				choice, scrollInfo = makeMenu(14, scr_y - #options, options, true, scrollInfo, _cpos)
 				_cpos = choice
 				if choice == 1 then
 					return "demo"
@@ -1292,6 +1296,25 @@ local titleScreen = function()
 					gridID = (gridID % #gridList) + 1
 					gridFore, gridBack = table.unpack(gridList[gridID])
 				elseif choice == 4 then
+					if http.websocket then
+						useSkynet = not useSkynet
+						setUpModem()
+						if skynet and not useSkynet then
+							skynet.socket.close()
+						end
+					else
+						term.clear()
+						term.setTextColor(colors.white)
+						cwrite("Alas, this version of CC", 	-2 + scr_y / 2)
+						cwrite("does not support Skynet.", 	-1 + scr_y / 2)
+						term.setTextColor(colors.lightGray)
+						cwrite("Use CC:Tweaked or CCEmuX", 	 1 + scr_y / 2)
+						cwrite("instead for netplay.", 		 2 + scr_y / 2)
+						cwrite("Press any key to go back.",  4 + scr_y / 2)
+						sleep(0.1)
+						os.pullEvent("key")
+					end
+				elseif choice == 5 then
 					break
 				end
 			end
@@ -1795,7 +1818,11 @@ local main = function()
 			lockInput = false
 			if decision == "start" then
 				mode = "game"
-				startGame()
+				if useSkynet then
+					parallel.waitForAny(startGame, skynet.listen)
+				else
+					startGame()
+				end
 			elseif decision == "help" then
 				mode = "help"
 				helpScreen()
@@ -1841,11 +1868,9 @@ else
 		end
 		term.setCursorPos(1, scr_y)
 	else
-		if useSkynet then
-			parallel.waitForAny(main, skynet.listen)
+		main()
+		if skynet then
 			skynet.socket.close()
-		else
-			main()
 		end
 	end
 end
