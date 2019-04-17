@@ -1029,8 +1029,9 @@ local startCountdown = function()
 	end
 end
 
-local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
+local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 	local cpos = _cpos or 1
+	local xmod = 0
 	local cursor = "> "
 	local gsX, gsY = (scrollInfo or {})[2] or 0, (scrollInfo or {})[3] or 0
 	local step = (scrollInfo or {})[1] or 0
@@ -1062,16 +1063,16 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 		end
 		for i = 1, #options do
 			if i == cpos then
-				termsetCursorPos(x, y + (i - 1))
+				termsetCursorPos(fromX + xmod, y + (i - 1))
 				termsetTextColor(colors.white)
 				termwrite(cursor .. options[i])
 			else
 				if i == lastPos then
-					termsetCursorPos(x, y + (i - 1))
+					termsetCursorPos(fromX + xmod, y + (i - 1))
 					termwrite((" "):rep(#cursor))
 					lastPos = nil
 				else
-					termsetCursorPos(x + #cursor, y + (i - 1))
+					termsetCursorPos(fromX + xmod + #cursor, y + (i - 1))
 				end
 				termsetTextColor(colors.gray)
 				termwrite(options[i])
@@ -1083,6 +1084,7 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 		os.queueEvent("timer", gstID)
 	end
 	rend()
+	local tID = os.startTimer(0.05)
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
@@ -1107,22 +1109,34 @@ local makeMenu = function(x, y, options, doAnimate, scrollInfo, _cpos)
 					return cpos, {step, gsX, gsY}
 				else
 					cpos = evt[4] - (y - 1)
-					rend()
+					doRend = true
 				end
 			end
-		elseif evt[1] == "timer" and evt[2] == gstID then
-			gstID = os.startTimer(gameDelayInit)
-			drawGrid(gsX, gsY, true)
-			step = step + 1
-			if mathceil(step / 100) % 2 == 1 then
-				gsX = gsX + 1
-			else
-				gsY = gsY - 1
+		elseif evt[1] == "timer" then
+			if evt[2] == gstID then
+				gstID = os.startTimer(gameDelayInit)
+				drawGrid(gsX, gsY, true)
+				step = step + 1
+				if mathceil(step / 100) % 2 == 1 then
+					gsX = gsX + 1
+				else
+					gsY = gsY - 1
+				end
+				doRend = true
+			elseif evt[2] == tID then
+				doRend = true
+				if x > fromX then
+					xmod = math.min(xmod + 1, x - fromX)
+					tID = os.startTimer(0.05)
+				else
+					xmod = math.max(xmod - 1, x - fromX)
+					tID = os.startTimer(0.05)
+				end
 			end
-			rend()
 		end
-		if lastPos ~= cpos then
+		if lastPos ~= cpos or doRend then
 			rend()
+			doRend = false
 		end
 	end
 end
@@ -1261,8 +1275,10 @@ local titleScreen = function()
 			"Exit"
 		}
 	end
+	local currentX = 2
 	while true do
-		choice, scrollInfo = makeMenu(2, scr_y - #menuOptions, menuOptions, true, scrollInfo)
+		choice, scrollInfo = makeMenu(2, currentX, scr_y - #menuOptions, menuOptions, true, scrollInfo)
+		currentX = 2
 		if choice == 1 then
 			return "start"
 		elseif choice == 2 then
@@ -1277,7 +1293,8 @@ local titleScreen = function()
 					(useSkynet and "Disable" or "Enable") .. " Skynet",
 					"Back..."
 				}
-				choice, scrollInfo = makeMenu(14, scr_y - #options, options, true, scrollInfo, _cpos)
+				choice, scrollInfo = makeMenu(6, currentX, scr_y - #options, options, true, scrollInfo, _cpos)
+				currentX = 6
 				_cpos = choice
 				if choice == 1 then
 					return "demo"
