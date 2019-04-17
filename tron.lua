@@ -352,7 +352,7 @@ if useSkynet and (not http.websocket) then
 	error("Skynet is not supported on this version of ComputerCraft.")
 end
 
-local skynetPath = "skynet"
+local skynetPath = fs.combine(fs.getDir(shell.getRunningProgram()), "skynet")
 local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
 if argumentName then
