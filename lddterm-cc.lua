@@ -1,6 +1,3 @@
--- LDDTerm for ComputerCraft
--- Basically a replacement for the Window API but different
-
 local lddterm = {}
 local scr_x, scr_y
 
@@ -8,6 +5,7 @@ lddterm.alwaysRender = true		-- renders after any and all screen-changing functi
 lddterm.useColors = true			-- normal computers do not allow color, but this variable doesn't do anything yet
 lddterm.baseTerm = term.current()	-- will draw to this terminal
 lddterm.transformation = nil		-- will modify the current buffer as an NFT image before rendering
+lddterm.cursorTransformation = nil	-- will modify the cursor position
 lddterm.drawFunction = nil			-- will draw using this function instead of basic NFT drawing
 lddterm.adjustX = 0					-- moves entire screen X
 lddterm.adjustY = 0					-- moves entire screen Y
@@ -85,11 +83,20 @@ lddterm.checkWindowOverlap = function(window, ...)
 end
 
 local fixCursorPos = function()
+	local cx, cy
 	if lddterm.windows[1] then
-		lddterm.baseTerm.setCursorPos(
-			-1 + lddterm.windows[1].cursor[1] + lddterm.windows[1].x,
-			lddterm.windows[1].cursor[2] + lddterm.windows[1].y - 1
-		)
+		if lddterm.cursorTransformation then
+			cx, cy = lddterm.cursorTransformation(lddterm.windows[1].cursor[1], lddterm.windows[1].cursor[2])
+			lddterm.baseTerm.setCursorPos(
+				cx + lddterm.windows[1].x - 1,
+				cy + lddterm.windows[1].y - 1
+			)
+		else
+			lddterm.baseTerm.setCursorPos(
+				-1 + lddterm.windows[1].cursor[1] + lddterm.windows[1].x,
+				lddterm.windows[1].cursor[2] + lddterm.windows[1].y - 1
+			)
+		end
 	end
 end
 
