@@ -1,5 +1,5 @@
 local getAPI = function(apiname, apipath, apiurl, doDoFile, doScroll)
-	apipath = fs.combine(fs.getDir(shell.getRunningProgram()), apipath)
+	apipath = fs.combine(".roterm-api", apipath)
 	if (not fs.exists(apipath)) then
 		if doScroll then term.scroll(1) end
 		print(apiname .. " API not found! Downloading...")
@@ -29,7 +29,7 @@ local getAPI = function(apiname, apipath, apiurl, doDoFile, doScroll)
 	end
 end
 
-local nfte 		= getAPI("NFT Extra", 	"nfte.lua", 	"https://github.com/LDDestroier/NFT-Extra/raw/master/nfte.lua", true)
+local nfte 	= getAPI("NFT Extra", 	"nfte.lua", 	"https://github.com/LDDestroier/NFT-Extra/raw/master/nfte.lua", true)
 local lddterm 	= getAPI("LDDTerm", 	"lddterm.lua", 	"https://github.com/LDDestroier/CC/raw/master/lddterm-cc.lua", 	true)
 
 local scr_x, scr_y = term.getSize()
