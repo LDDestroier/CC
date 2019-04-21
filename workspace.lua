@@ -547,6 +547,7 @@ local newInstance = function(x, y, program, initialStart)
 					end
 				end
 				
+				sleep(0)
 				term.clear()
 				term.setCursorBlink(false)
 				local text, evt = "Press SPACE to start workspace."
