@@ -12,6 +12,14 @@ local windowHeight = scr_y
 -- program that will start up for workspaces
 local defaultProgram = "rom/programs/shell.lua"
 
+if _G.currentlyRunningWorkspace then
+	print("Workspace is already running.")
+	return
+else
+	_G.currentlyRunningWorkspace = true
+end
+local isRunning = true
+
 -- start up lddterm
 local lddterm = {}
 lddterm.alwaysRender = false		-- renders after any and all screen-changing functions.
@@ -545,9 +553,15 @@ local newInstance = function(x, y, program, initialStart)
 				term.setCursorPos(scr_x / 2 - #text / 2, scr_y / 2)
 				term.write(text)
 				repeat
-					evt = {os.pullEvent("key")}
-				until evt[2] == keys.space
+					evt = {os.pullEventRaw()}
+				until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
 				sleep(0)
+					
+				if evt[1] == "terminate" then
+					isRunning = false
+					return
+				end
+					
 				term.setCursorPos(1,1)
 				term.clear()
 				term.setCursorBlink(true)
@@ -632,7 +646,7 @@ end
 local main = function()
 	local enteringCommand
 	local justStarted = true
-	while true do
+	while isRunning do
 		local evt = {os.pullEventRaw()}
 		enteringCommand = false
 		if evt[1] == "key" then
@@ -702,3 +716,9 @@ local main = function()
 end
 
 main()
+
+_G.currentlyRunningWorkspace = false
+
+term.clear()
+term.setCursorPos(1,1)
+print("Thanks for using Workspace!")
