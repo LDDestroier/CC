@@ -347,6 +347,7 @@ if gridList[argList["--gridID"]] then
 	gridID = argList["--gridID"]
 end
 local argumentName = argList[1]
+local argumentPassword = argList[2] or ""
 
 if useSkynet and (not http.websocket) then
 	error("Skynet is not supported on this version of ComputerCraft.")
@@ -1374,7 +1375,8 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 	end
 end
 
-local nameChange = function(scrollInfo)
+local specialRead = function(scrollInfo, specialNames, message, preInput)
+	specialNames = specialNames or {}
 	local gsX, gsY = (scrollInfo or {})[2] or 0, (scrollInfo or {})[3] or 0
 	local step = (scrollInfo or {})[1] or 0
 	local tID = os.startTimer(gameDelayInit)
@@ -1382,66 +1384,15 @@ local nameChange = function(scrollInfo)
 	local cpos = 1
 	local maxSize = 15
 	local evt
-	-- this has no functional significance. just some shoutouts
-	local specialNames = {
-		["blu"] = colors.blue,
-		["red"] = colors.red,
-		["ldd"] = colors.orange,
-		["lddestroier"] = colors.orange,
-		["hydraz"] = colors.yellow,
-		["hugeblank"] = colors.orange,
-		["bagel"] = colors.orange,
-		["3d6"] = colors.lime,
-		["lyqyd"] = colors.red,
-		["squiddev"] = colors.cyan,
-		["oeed"] = colors.lime,
-		["dog"] = colors.purple,
-		["nothy"] = colors.lightGray,
-		["kepler"] = colors.cyan,
-		["kepler155c"] = colors.cyan,
-		["anavrins"] = colors.blue,
-		["redmatters"] = colors.red,
-		["fatmanchummy"] = colors.purple,
-		["crazed"] = colors.lightBlue,
-		["ape"] = colors.brown,
-		["everyos"] = colors.red,
-		["lemmmy"] = colors.red,
-		["yemmel"] = colors.red,
-		["apemanzilla"] = colors.brown,
-		["osmarks"] = colors.green,
-		["gollark"] = colors.green,
-		["dece"] = colors.cyan,
-		["hpwebcamable"] = colors.lightGray,
-		["theoriginalbit"] = colors.blue,
-		["bombbloke"] = colors.red,
-		["kingofgamesyami"] = colors.lightBlue,
-		["pixeltoast"] = colors.lime,
-		["creator"] = colors.yellow,
-		["dannysmc"] = colors.purple,
-		["dannysmc95"] = colors.purple,
-		["kingdaro"] = colors.blue,
-		["valithor"] = colors.orange,
-		["logandark"] = colors.lightGray,
-		["lupus590"] = colors.lightGray,
-		["nitrogenfingers"] = colors.green,
-		["gravityscore"] = colors.lime,
-		["1lann"] = colors.gray,
-		["konlab"] = colors.brown,
-		["elvishjerricco"] = colors.pink
-	}
-	local prevName = argumentName or player[you].initName
-	for x = 1, #prevName do
-		buff[x] = prevName:sub(x, x)
+	for x = 1, #preInput do
+		buff[x] = preInput:sub(x, x)
 		cpos = cpos + 1
 	end
 	term.setCursorBlink(true)
 	local rend = function()
-		if table.concat(buff):upper() == "GASTER" then
-			os.reboot() -- lol
-		end
 		drawGrid(gsX, gsY, true)
 		term.setTextColor(colors.white)
-		cwrite("Enter your name.", scr_y - 5)
+		cwrite(message, scr_y - 5)
 		term.setTextColor(specialNames[table.concat(buff):lower()] or colors.white)
 		term.setCursorPos( cwrite(table.concat(buff), scr_y - 3, nil, cpos) - 1, scr_y - 3)
 		term.setTextColor(colors.white)
@@ -1492,6 +1443,61 @@ local nameChange = function(scrollInfo)
 	end
 end
 
+local passwordChange = function(scrollInfo)
+	return specialRead(scrollInfo, {}, "Enter a password.", argumentPassword or "") or ""
+end
+
+local nameChange = function(scrollInfo)
+	-- this has no functional significance. just some shoutouts
+	local specialNames = {
+		["blu"] = colors.blue,
+		["red"] = colors.red,
+		["ldd"] = colors.orange,
+		["lddestroier"] = colors.orange,
+		["hydraz"] = colors.yellow,
+		["hugeblank"] = colors.orange,
+		["bagel"] = colors.orange,
+		["3d6"] = colors.lime,
+		["lyqyd"] = colors.red,
+		["squiddev"] = colors.cyan,
+		["oeed"] = colors.lime,
+		["dog"] = colors.purple,
+		["nothy"] = colors.lightGray,
+		["kepler"] = colors.cyan,
+		["kepler155c"] = colors.cyan,
+		["anavrins"] = colors.blue,
+		["redmatters"] = colors.red,
+		["fatmanchummy"] = colors.purple,
+		["crazed"] = colors.lightBlue,
+		["ape"] = colors.brown,
+		["everyos"] = colors.red,
+		["lemmmy"] = colors.red,
+		["yemmel"] = colors.red,
+		["apemanzilla"] = colors.brown,
+		["osmarks"] = colors.green,
+		["gollark"] = colors.green,
+		["dece"] = colors.cyan,
+		["hpwebcamable"] = colors.lightGray,
+		["theoriginalbit"] = colors.blue,
+		["bombbloke"] = colors.red,
+		["kingofgamesyami"] = colors.lightBlue,
+		["pixeltoast"] = colors.lime,
+		["creator"] = colors.yellow,
+		["dannysmc"] = colors.purple,
+		["dannysmc95"] = colors.purple,
+		["kingdaro"] = colors.blue,
+		["valithor"] = colors.orange,
+		["logandark"] = colors.lightGray,
+		["lupus590"] = colors.lightGray,
+		["nitrogenfingers"] = colors.green,
+		["gravityscore"] = colors.lime,
+		["1lann"] = colors.gray,
+		["konlab"] = colors.brown,
+		["elvishjerricco"] = colors.pink
+	}
+	return specialRead(scrollInfo, specialNames, "Enter your name.", argumentName or player[you].initName)
+end
+
 local titleScreen = function()
 	termclear()
 	local menuOptions, options, choice, scrollInfo
@@ -1523,6 +1529,7 @@ local titleScreen = function()
 					"Grid Demo",
 					"Change Name",
 					"Change Grid",
+					"Change Password",
 					(useSkynet and "Disable" or "Enable") .. " Skynet",
 					"Back..."
 				}
@@ -1546,6 +1553,8 @@ local titleScreen = function()
 					gridID = (gridID % #gridList) + 1
 					gridFore, gridBack = table.unpack(gridList[gridID])
 				elseif choice == 4 then
+					argumentPassword = passwordChange(scrollInfo)
+				elseif choice == 5 then
 					if http.websocket then
 						useSkynet = not useSkynet
 						setUpModem()
@@ -1564,7 +1573,7 @@ local titleScreen = function()
 						sleep(0.1)
 						os.pullEvent("key")
 					end
-				elseif choice == 5 then
+				elseif choice == 6 then
 					break
 				end
 			end
@@ -1938,33 +1947,36 @@ local networking = function()
 		if channel == port and type(msg) == "table" then
 			if type(msg.gameID) == "string" then
 				if waitingForGame and (type(msg.time) == "number") then
+					if msg.password == argumentPassword or (argumentPassword == "" and not msg.password) then
 
-					-- called while waiting for match
-					if msg.time < cTime then
-						isHost = false
-						you, nou = nou, you
-						gamename = msg.gameID
-						gameDelay = tonumber(msg.gameDelay) or gameDelayInit
-						grid = msg.grid or copyTable(initGrid)
-						player = msg.player or player
-						player[you].name = argumentName or player[you].initName
-					else
-						isHost = true
+						-- called while waiting for match
+						if msg.time < cTime then
+							isHost = false
+							you, nou = nou, you
+							gamename = msg.gameID
+							gameDelay = tonumber(msg.gameDelay) or gameDelayInit
+							grid = msg.grid or copyTable(initGrid)
+							player = msg.player or player
+							player[you].name = argumentName or player[you].initName
+						else
+							isHost = true
+						end
+
+						player[nou].name = msg.name or player[nou].initName
+
+						transmit(port, {
+							player = player,
+							gameID = gamename,
+							time = cTime,
+							name = argumentName,
+							password = argumentPassword,
+							grid = initGrid
+						})
+						waitingForGame = false
+						netKeysDown = {}
+						os.queueEvent("new_game", gameID)
+						return gameID
 					end
-
-					player[nou].name = msg.name or player[nou].initName
-
-					transmit(port, {
-						player = player,
-						gameID = gamename,
-						time = cTime,
-						name = argumentName,
-						grid = initGrid
-					})
-					waitingForGame = false
-					netKeysDown = {}
-					os.queueEvent("new_game", gameID)
-					return gameID
 
 				elseif msg.gameID == gamename then
 
@@ -2045,6 +2057,7 @@ local startGame = function()
 		gameID = gamename,
 		gameDelay = gameDelayInit,
 		time = cTime,
+		password = argumentPassword,
 		name = argumentName,
 		grid = initGrid
 	})
