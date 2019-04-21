@@ -1159,6 +1159,14 @@ local drawGrid = function(x, y, onlyDrawGrid, useSetVisible)
 	tsv(true)
 end
 
+local getTime = function()
+	if os.epoch then
+		return os.epoch("utc")
+	else
+		return 24 * os.day() + os.time()
+	end
+end
+
 local render = function(useSetVisible, netTime)
 	local p = player[you]
 	drawGrid(scrollX + scrollAdjX, scrollY + scrollAdjY, false, useSetVisible)
@@ -1184,7 +1192,7 @@ local render = function(useSetVisible, netTime)
 	end
 	term.setCursorPos(1,2)
 	if netTime and useSkynet then
-		ping = (os.epoch("utc") - netTime)
+		ping = (getTime() - netTime)
 		term.setTextColor(colors.white)
 		term.write(" " .. tostring(ping) .. " ms")
 	end
@@ -1701,7 +1709,7 @@ local sendInfo = function(gameID, doSendTime)
 		name = player[you].name,
 		putTrail = isPuttingDown,
 		gameID = gameID,
-		time = doSendTime and os.epoch("utc"),
+		time = doSendTime and getTime(),
 		keysDown = isHost and nil or keysDown,
 		trail = isHost and lastTrails or nil,
 		deadGuys = isHost and deadGuys or nil,
@@ -2031,7 +2039,7 @@ local startGame = function()
 	end
 
 	waitingForGame = true
-	cTime = os.epoch("utc")
+	cTime = getTime()
 	transmit(port, {
 		player = player,
 		gameID = gamename,
