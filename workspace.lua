@@ -547,7 +547,6 @@ local newInstance = function(x, y, program, initialStart)
 					end
 				end
 				
-				sleep(0)
 				term.clear()
 				term.setCursorBlink(false)
 				local text, evt = "Press SPACE to start workspace."
@@ -557,7 +556,6 @@ local newInstance = function(x, y, program, initialStart)
 					evt = {os.pullEventRaw()}
 				until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
 				sleep(0)
-					
 				if evt[1] == "terminate" then
 					isRunning = false
 					return
@@ -613,7 +611,8 @@ local inputEvt = {
 	mouse_scroll = true,
 	mouse_drag = true,
 	mouse_up = true,
-	paste = true
+	paste = true,
+	terminate = true
 }
 
 local fullScroll = function(xDir, yDir)
