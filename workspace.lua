@@ -1,9 +1,14 @@
 -- Workspaces for ComputerCraft
 -- by LDDestroier
 
+local tArg = {...}
+
+-- higher number means faster workspace movement animation, caps at 1
+local workspaceMoveSpeed = 0.2
+
 -- x,y size of workspace grid
-local gridWidth = 3
-local gridHeight = 3
+local gridWidth = math.max(1, tonumber(tArg[1]) or 3)
+local gridHeight = math.max(1, tonumber(tArg[2]) or 3)
 
 local scr_x, scr_y = term.getSize()
 local windowWidth = scr_x
@@ -23,14 +28,14 @@ local isRunning = true
 -- start up lddterm
 local lddterm = {}
 lddterm.alwaysRender = false		-- renders after any and all screen-changing functions.
-lddterm.useColors = true			-- normal computers do not allow color, but this variable doesn't do anything yet
+lddterm.useColors = true		-- normal computers do not allow color, but this variable doesn't do anything yet
 lddterm.baseTerm = term.current()	-- will draw to this terminal
 lddterm.transformation = nil		-- will modify the current buffer as an NFT image before rendering
 lddterm.cursorTransformation = nil	-- will modify the cursor position
-lddterm.drawFunction = nil			-- will draw using this function instead of basic NFT drawing
-lddterm.adjustX = 0					-- moves entire screen X
-lddterm.adjustY = 0					-- moves entire screen Y
-lddterm.selectedWindow = 1			-- determines which window controls the cursor
+lddterm.drawFunction = nil		-- will draw using this function instead of basic NFT drawing
+lddterm.adjustX = 0			-- moves entire screen X
+lddterm.adjustY = 0			-- moves entire screen Y
+lddterm.selectedWindow = 1		-- determines which window controls the cursor
 lddterm.windows = {}
 
 -- converts hex colors to colors api, and back
@@ -313,16 +318,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 				window.buffer[2][cy][cx] = textCol:sub(i,i)
 				window.buffer[3][cy][cx] = backCol:sub(i,i)
 			end
-			if cx >= window.width or cy < 1 then
-				cx = 1
-				if cy >= window.height then
-					window.handle.scroll(1)
-				else
-					cy = cy + 1
-				end
-			else
-				cx = cx + 1
-			end
+			cx = cx + 1
 		end
 		window.cursor = {cx, cy}
 		if lddterm.alwaysRender and not ignoreAlwaysRender then
@@ -441,6 +437,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 	end
 
 	window.handle.redraw = lddterm.render
+	window.handle.current = window.handle
 
 	window.layer = #lddterm.windows + 1
 	lddterm.windows[window.layer] = window
@@ -522,6 +519,14 @@ local keysDown = {}
 
 local instances = {}
 
+local cwrite = function(text, y, terminal)
+	terminal = terminal or term.current()
+	local cx, cy = terminal.getCursorPos()
+	local sx, sy = terminal.getSize()
+	terminal.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
+	terminal.write(text)
+end
+
 local defaultProgram = "rom/programs/shell.lua"
 local newInstance = function(x, y, program, initialStart)
 	x, y = math.floor(x), math.floor(y)
@@ -537,8 +542,9 @@ local newInstance = function(x, y, program, initialStart)
 		y = y,
 		co = coroutine.create(function()
 			term.redirect(window.handle)
+			local evt
 			while true do
-			
+
 				if initialStart then
 					if not program or type(program) == "string" then
 						shell.run(program or defaultProgram)
@@ -546,12 +552,10 @@ local newInstance = function(x, y, program, initialStart)
 						program()
 					end
 				end
-				
+
 				term.clear()
 				term.setCursorBlink(false)
-				local text, evt = "Press SPACE to start workspace."
-				term.setCursorPos(scr_x / 2 - #text / 2, scr_y / 2)
-				term.write(text)
+				cwrite("Press SPACE to start workspace.")
 				repeat
 					evt = {os.pullEventRaw()}
 				until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
@@ -560,11 +564,11 @@ local newInstance = function(x, y, program, initialStart)
 					isRunning = false
 					return
 				end
-					
+
 				term.setCursorPos(1,1)
 				term.clear()
 				term.setCursorBlink(true)
-			
+
 				if not initialStart then
 					if not program or type(program) == "string" then
 						shell.run(program or defaultProgram)
@@ -579,20 +583,40 @@ local newInstance = function(x, y, program, initialStart)
 	}
 end
 
-local scroll = {0,0}
+local scroll = {0,0}		-- change this value when scrolling
+local realScroll = {0,0}	-- this value changes depending on scroll for smoothness purposes
 local focus = {1,1}
 
+-- prevents wiseassed-ness
+workspaceMoveSpeed = math.min(math.max(workspaceMoveSpeed, 0.01), 1)
+
 local scrollWindows = function()
+	local changed = false
+	if realScroll[1] < scroll[1] then
+		realScroll[1] = math.min(realScroll[1] + workspaceMoveSpeed, scroll[1])
+		changed = true
+	elseif realScroll[1] > scroll[1] then
+		realScroll[1] = math.max(realScroll[1] - workspaceMoveSpeed, scroll[1])
+		changed = true
+	end
+	if realScroll[2] < scroll[2] then
+		realScroll[2] = math.min(realScroll[2] + workspaceMoveSpeed, scroll[2])
+		changed = true
+	elseif realScroll[2] > scroll[2] then
+		realScroll[2] = math.max(realScroll[2] - workspaceMoveSpeed, scroll[2])
+		changed = true
+	end
 	for y = 1, #instances do
 		if instances[y] then
 			for x = 1, #instances[y] do
 				if instances[y][x] then
-					instances[y][x].window.x = math.floor(1 + (instances[y][x].x + scroll[1] - 1) * scr_x)
-					instances[y][x].window.y = math.floor(1 + (instances[y][x].y + scroll[2] - 1) * scr_y)
+					instances[y][x].window.x = math.floor(1 + (instances[y][x].x + realScroll[1] - 1) * scr_x)
+					instances[y][x].window.y = math.floor(1 + (instances[y][x].y + realScroll[2] - 1) * scr_y)
 				end
 			end
 		end
 	end
+	return changed
 end
 
 for y = 1, gridHeight do
@@ -615,37 +639,10 @@ local inputEvt = {
 	terminate = true
 }
 
-local fullScroll = function(xDir, yDir)
-	local speed = 20
-	if xDir ~= 0 then
-		for i = 1, speed - 1 do
-			scroll[1] = scroll[1] + (xDir / speed)
-			scrollWindows()
-			lddterm.render()
-		end
-	end
-	if yDir ~= 0 then
-		for i = 1, speed - 1 do
-			scroll[2] = scroll[2] + (yDir / speed)
-			scrollWindows()
-			lddterm.render()
-		end
-	end
-	scroll[1] = math.floor(0.5 + scroll[1])
-	scroll[2] = math.floor(0.5 + scroll[2])
-	scrollWindows()
-	
-	keysDown[keys.up] = nil
-	keysDown[keys.down] = nil
-	keysDown[keys.left] = nil
-	keysDown[keys.right] = nil
-	
-	lddterm.render()
-end
-
 local main = function()
 	local enteringCommand
 	local justStarted = true
+	local tID
 	while isRunning do
 		local evt = {os.pullEventRaw()}
 		enteringCommand = false
@@ -654,19 +651,25 @@ local main = function()
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		end
-		
+
+		if scrollWindows() then
+			tID = os.startTimer(0.05)
+		end
+
 		if keysDown[keys.leftCtrl] and keysDown[keys.leftShift] then
 			if keysDown[keys.left] then
 				if instances[focus[2]][focus[1] - 1] then
 					focus[1] = focus[1] - 1
-					fullScroll(1, 0)
+					scroll[1] = scroll[1] + 1
+					keysDown[keys.left] = false
 					enteringCommand = true
 				end
 			end
 			if keysDown[keys.right] then
 				if instances[focus[2]][focus[1] + 1] then
 					focus[1] = focus[1] + 1
-					fullScroll(-1, 0)
+					scroll[1] = scroll[1] - 1
+					keysDown[keys.right] = false
 					enteringCommand = true
 				end
 			end
@@ -674,7 +677,8 @@ local main = function()
 				if instances[focus[2] - 1] then
 					if instances[focus[2] - 1][focus[1]] then
 						focus[2] = focus[2] - 1
-						fullScroll(0, 1)
+						scroll[2] = scroll[2] + 1
+						keysDown[keys.up] = false
 						enteringCommand = true
 					end
 				end
@@ -683,37 +687,45 @@ local main = function()
 				if instances[focus[2] + 1] then
 					if instances[focus[2] + 1][focus[1]] then
 						focus[2] = focus[2] + 1
-						fullScroll(0, -1)
+						scroll[2] = scroll[2] - 1
+						keysDown[keys.down] = false
 						enteringCommand = true
 					end
 				end
 			end
 		end
-		
+
 		if not enteringCommand then
 			for y = 1, #instances do
 				if instances[y] then
 					for x = 1, #instances[y] do
 						if instances[y][x] then
-						
+
 							if justStarted or (not inputEvt[evt[1]]) or (x == focus[1] and y == focus[2]) then
 								local previousTerm = term.redirect(instances[y][x].window.handle)
 								coroutine.resume(instances[y][x].co, table.unpack(evt))
 								term.redirect(previousTerm)
 							end
-							
+
 						end
 					end
 				end
 			end
 		end
-		
+
 		lddterm.selectedWindow = instances[focus[2]][focus[1]].window.layer
 		lddterm.render()
 		justStarted = false
-		
+
 	end
 end
+
+term.clear()
+cwrite("Use CTRL+SHIFT+ARROW to switch workspace.")
+sleep(0.1)
+os.pullEvent("key")
+
+os.queueEvent("mouse_click", 0, 0, 0)
 
 main()
 
