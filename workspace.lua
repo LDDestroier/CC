@@ -67,8 +67,10 @@ local drawWorkspaceIndicator = function(terminal)
 				if instances[y][x] then
 					if focus[1] == x and focus[2] == y then
 						term.blit(" ", "8", "8")
-					else
+					elseif instances[y][x].active then
 						term.blit(" ", "7", "7")
+					else
+						term.blit(" ", "f", "f")
 					end
 				else
 					term.blit(" ", "0", "0")
@@ -574,6 +576,7 @@ local newInstance = function(x, y, program, initialStart)
 	instances[y][x] = {
 		x = x,
 		y = y,
+		active = initialStart,
 		co = coroutine.create(function()
 			term.redirect(window.handle)
 			local evt
@@ -587,6 +590,7 @@ local newInstance = function(x, y, program, initialStart)
 					end
 				end
 
+				instances[y][x].active = false
 				term.clear()
 				term.setCursorBlink(false)
 				cwrite("This workspace is inactive.", 0 + scr_y / 2)
@@ -603,6 +607,8 @@ local newInstance = function(x, y, program, initialStart)
 				term.setCursorPos(1,1)
 				term.clear()
 				term.setCursorBlink(true)
+
+				instances[y][x].active = true
 
 				if not initialStart then
 					if not program or type(program) == "string" then
