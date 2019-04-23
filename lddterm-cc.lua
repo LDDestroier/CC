@@ -1,14 +1,14 @@
+-- start up lddterm
 local lddterm = {}
-local scr_x, scr_y
-
-lddterm.alwaysRender = true		-- renders after any and all screen-changing functions.
-lddterm.useColors = true			-- normal computers do not allow color, but this variable doesn't do anything yet
+lddterm.alwaysRender = false		-- renders after any and all screen-changing functions.
+lddterm.useColors = true		-- normal computers do not allow color, but this variable doesn't do anything yet
 lddterm.baseTerm = term.current()	-- will draw to this terminal
 lddterm.transformation = nil		-- will modify the current buffer as an NFT image before rendering
 lddterm.cursorTransformation = nil	-- will modify the cursor position
-lddterm.drawFunction = nil			-- will draw using this function instead of basic NFT drawing
-lddterm.adjustX = 0					-- moves entire screen X
-lddterm.adjustY = 0					-- moves entire screen Y
+lddterm.drawFunction = nil		-- will draw using this function instead of basic NFT drawing
+lddterm.adjustX = 0			-- moves entire screen X
+lddterm.adjustY = 0			-- moves entire screen Y
+lddterm.selectedWindow = 1		-- determines which window controls the cursor
 lddterm.windows = {}
 
 -- converts hex colors to colors api, and back
@@ -51,7 +51,7 @@ end
 
 -- determines the size of the terminal before rendering always
 local determineScreenSize = function()
-	scr_x, scr_y = term.getSize()
+	scr_x, scr_y = lddterm.baseTerm.getSize()
 	lddterm.screenWidth = scr_x
 	lddterm.screenHeight = scr_y
 end
@@ -84,19 +84,23 @@ end
 
 local fixCursorPos = function()
 	local cx, cy
-	if lddterm.windows[1] then
+	if lddterm.windows[lddterm.selectedWindow] then
 		if lddterm.cursorTransformation then
-			cx, cy = lddterm.cursorTransformation(lddterm.windows[1].cursor[1], lddterm.windows[1].cursor[2])
+			cx, cy = lddterm.cursorTransformation(
+				lddterm.windows[lddterm.selectedWindow].cursor[1],
+				lddterm.windows[lddterm.selectedWindow].cursor[2]
+			)
 			lddterm.baseTerm.setCursorPos(
-				cx + lddterm.windows[1].x - 1,
-				cy + lddterm.windows[1].y - 1
+				cx + lddterm.windows[lddterm.selectedWindow].x - 1,
+				cy + lddterm.windows[lddterm.selectedWindow].y - 1
 			)
 		else
 			lddterm.baseTerm.setCursorPos(
-				-1 + lddterm.windows[1].cursor[1] + lddterm.windows[1].x,
-				lddterm.windows[1].cursor[2] + lddterm.windows[1].y - 1
+				-1 + lddterm.windows[lddterm.selectedWindow].cursor[1] + lddterm.windows[lddterm.selectedWindow].x,
+				lddterm.windows[lddterm.selectedWindow].cursor[2] + lddterm.windows[lddterm.selectedWindow].y - 1
 			)
 		end
+		lddterm.baseTerm.setCursorBlink(lddterm.windows[lddterm.selectedWindow].blink)
 	end
 end
 
@@ -123,258 +127,12 @@ lddterm.render = function(transformation, drawFunction)
 	fixCursorPos()
 end
 
--- paintutils is a set of art functions for loading and drawing images and drawing lines and boxes.
-local makePaintutilsAPI = function(term)
-	local paintutils = {}
-
-	local function drawPixelInternal( xPos, yPos )
-		term.setCursorPos( xPos, yPos )
-		term.write(" ")
-	end
-
-	local tColourLookup = {}
-	for n=1,16 do
-		tColourLookup[ string.byte( "0123456789abcdef",n,n ) ] = 2^(n-1)
-	end
-
-	local function parseLine( tImageArg, sLine )
-		local tLine = {}
-		for x=1,sLine:len() do
-			tLine[x] = tColourLookup[ string.byte(sLine,x,x) ] or 0
-		end
-		table.insert( tImageArg, tLine )
-	end
-
-	function paintutils.parseImage( sRawData )
-		if type( sRawData ) ~= "string" then
-			error( "bad argument #1 (expected string, got " .. type( sRawData ) .. ")" )
-		end
-		local tImage = {}
-		for sLine in ( sRawData .. "\n" ):gmatch( "(.-)\n" ) do -- read each line like original file handling did
-			parseLine( tImage, sLine )
-		end
-		return tImage
-	end
-
-	function paintutils.loadImage( sPath )
-		if type( sPath ) ~= "string" then
-			error( "bad argument #1 (expected string, got " .. type( sPath ) .. ")", 2 )
-		end
-
-		local file = io.open( sPath, "r" )
-		if file then
-			local sContent = file:read("*a")
-			file:close()
-			return paintutils.parseImage( sContent ) -- delegate image parse to parseImage
-		end
-		return nil
-	end
-
-	function paintutils.drawPixel( xPos, yPos, nColour )
-		if type( xPos ) ~= "number" then error( "bad argument #1 (expected number, got " .. type( xPos ) .. ")", 2 ) end
-		if type( yPos ) ~= "number" then error( "bad argument #2 (expected number, got " .. type( yPos ) .. ")", 2 ) end
-		if nColour ~= nil and type( nColour ) ~= "number" then error( "bad argument #3 (expected number, got " .. type( nColour ) .. ")", 2 ) end
-		if nColour then
-			term.setBackgroundColor( nColour )
-		end
-		drawPixelInternal( xPos, yPos )
-	end
-
-	function paintutils.drawLine( startX, startY, endX, endY, nColour )
-		if type( startX ) ~= "number" then error( "bad argument #1 (expected number, got " .. type( startX ) .. ")", 2 ) end
-		if type( startY ) ~= "number" then error( "bad argument #2 (expected number, got " .. type( startY ) .. ")", 2 ) end
-		if type( endX ) ~= "number" then error( "bad argument #3 (expected number, got " .. type( endX ) .. ")", 2 ) end
-		if type( endY ) ~= "number" then error( "bad argument #4 (expected number, got " .. type( endY ) .. ")", 2 ) end
-		if nColour ~= nil and type( nColour ) ~= "number" then error( "bad argument #5 (expected number, got " .. type( nColour ) .. ")", 2 ) end
-
-		local alwaysRender = lddterm.alwaysRender
-		lddterm.alwaysRender = false
-
-		startX = math.floor(startX)
-		startY = math.floor(startY)
-		endX = math.floor(endX)
-		endY = math.floor(endY)
-
-		if nColour then
-			term.setBackgroundColor( nColour )
-		end
-		if startX == endX and startY == endY then
-			drawPixelInternal( startX, startY )
-			if alwaysRender then lddterm.render(lddterm.transformation, lddterm.drawFunction) end
-			lddterm.alwaysRender = alwaysRender
-			return
-		end
-
-		local minX = math.min( startX, endX )
-		local maxX, minY, maxY
-		if minX == startX then
-			minY = startY
-			maxX = endX
-			maxY = endY
-		else
-			minY = endY
-			maxX = startX
-			maxY = startY
-		end
-
-		local xDiff = maxX - minX
-		local yDiff = maxY - minY
-
-		if xDiff > math.abs(yDiff) then
-			local y = minY
-			local dy = yDiff / xDiff
-			for x=minX,maxX do
-				drawPixelInternal( x, math.floor( y + 0.5 ) )
-				y = y + dy
-			end
-		else
-			local x = minX
-			local dx = xDiff / yDiff
-			if maxY >= minY then
-				for y=minY,maxY do
-					drawPixelInternal( math.floor( x + 0.5 ), y )
-					x = x + dx
-				end
-			else
-				for y=minY,maxY,-1 do
-					drawPixelInternal( math.floor( x + 0.5 ), y )
-					x = x - dx
-				end
-			end
-		end
-		if alwaysRender then lddterm.render(lddterm.transformation, lddterm.drawFunction) end
-		lddterm.alwaysRender = alwaysRender
-	end
-
-	function paintutils.drawBox( startX, startY, endX, endY, nColour )
-		if type( startX ) ~= "number" then error( "bad argument #1 (expected number, got " .. type( startX ) .. ")", 2 ) end
-		if type( startY ) ~= "number" then error( "bad argument #2 (expected number, got " .. type( startY ) .. ")", 2 ) end
-		if type( endX ) ~= "number" then error( "bad argument #3 (expected number, got " .. type( endX ) .. ")", 2 ) end
-		if type( endY ) ~= "number" then error( "bad argument #4 (expected number, got " .. type( endY ) .. ")", 2 ) end
-		if nColour ~= nil and type( nColour ) ~= "number" then error( "bad argument #5 (expected number, got " .. type( nColour ) .. ")", 2 ) end
-
-		local alwaysRender = lddterm.alwaysRender
-		lddterm.alwaysRender = false
-
-		startX = math.floor(startX)
-		startY = math.floor(startY)
-		endX = math.floor(endX)
-		endY = math.floor(endY)
-
-		if nColour then
-			term.setBackgroundColor( nColour )
-		end
-		if startX == endX and startY == endY then
-			drawPixelInternal( startX, startY )
-			if alwaysRender then lddterm.render(lddterm.transformation, lddterm.drawFunction) end
-			lddterm.alwaysRender = alwaysRender
-			return
-		end
-
-		local minX = math.min( startX, endX )
-		local maxX, minY, maxY
-		if minX == startX then
-			minY = startY
-			maxX = endX
-			maxY = endY
-		else
-			minY = endY
-			maxX = startX
-			maxY = startY
-		end
-
-		for x=minX,maxX do
-			drawPixelInternal( x, minY )
-			drawPixelInternal( x, maxY )
-		end
-
-		if (maxY - minY) >= 2 then
-			for y=(minY+1),(maxY-1) do
-				drawPixelInternal( minX, y )
-				drawPixelInternal( maxX, y )
-			end
-		end
-		if alwaysRender then lddterm.render(lddterm.transformation, lddterm.drawFunction) end
-		lddterm.alwaysRender = alwaysRender
-	end
-
-	function paintutils.drawFilledBox( startX, startY, endX, endY, nColour )
-		if type( startX ) ~= "number" then error( "bad argument #1 (expected number, got " .. type( startX ) .. ")", 2 ) end
-		if type( startY ) ~= "number" then error( "bad argument #2 (expected number, got " .. type( startY ) .. ")", 2 ) end
-		if type( endX ) ~= "number" then error( "bad argument #3 (expected number, got " .. type( endX ) .. ")", 2 ) end
-		if type( endY ) ~= "number" then error( "bad argument #4 (expected number, got " .. type( endY ) .. ")", 2 ) end
-		if nColour ~= nil and type( nColour ) ~= "number" then error( "bad argument #5 (expected number, got " .. type( nColour ) .. ")", 2 ) end
-
-		local alwaysRender = lddterm.alwaysRender
-		lddterm.alwaysRender = false
-
-		startX = math.floor(startX)
-		startY = math.floor(startY)
-		endX = math.floor(endX)
-		endY = math.floor(endY)
-
-		if nColour then
-			term.setBackgroundColor( nColour )
-		end
-		if startX == endX and startY == endY then
-			drawPixelInternal( startX, startY )
-			return
-		end
-
-		local minX = math.min( startX, endX )
-		local maxX, minY, maxY
-		if minX == startX then
-			minY = startY
-			maxX = endX
-			maxY = endY
-		else
-			minY = endY
-			maxX = startX
-			maxY = startY
-		end
-
-		for x=minX,maxX do
-			for y=minY,maxY do
-				drawPixelInternal( x, y )
-			end
-		end
-		if alwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
-		end
-		lddterm.alwaysRender = alwaysRender
-	end
-
-	function paintutils.drawImage( tImage, xPos, yPos )
-		if type( tImage ) ~= "table" then error( "bad argument #1 (expected table, got " .. type( tImage ) .. ")", 2 ) end
-		if type( xPos ) ~= "number" then error( "bad argument #2 (expected number, got " .. type( xPos ) .. ")", 2 ) end
-		if type( yPos ) ~= "number" then error( "bad argument #3 (expected number, got " .. type( yPos ) .. ")", 2 ) end
-
-		local alwaysRender = lddterm.alwaysRender
-		lddterm.alwaysRender = false
-
-		for y=1,#tImage do
-			local tLine = tImage[y]
-			for x=1,#tLine do
-				if tLine[x] > 0 then
-					term.setBackgroundColor( tLine[x] )
-					drawPixelInternal( x + xPos - 1, y + yPos - 1 )
-				end
-			end
-		end
-		if alwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
-		end
-		lddterm.alwaysRender = alwaysRender
-	end
-
-	return paintutils
-	end
-
 lddterm.newWindow = function(width, height, x, y, meta)
 	meta = meta or {}
 	local window = {
 		width = math.floor(width),
 		height = math.floor(height),
+		blink = true,
 		cursor = meta.cursor or {1, 1},
 		colors = meta.colors or {"0", "f"},
 		clearChar = meta.clearChar or " ",
@@ -403,10 +161,10 @@ lddterm.newWindow = function(width, height, x, y, meta)
 		return window.cursor[1], window.cursor[2]
 	end
 	window.handle.setCursorBlink = function(blink)
-		return lddterm.baseTerm.setCursorBlink(blink)
+		window.blink = blink or false
 	end
 	window.handle.getCursorBlink = function()
-		return lddterm.baseTerm.getCursorBlink(blink)
+		return window.blink
 	end
 	window.handle.scroll = function(amount)
 		if amount > 0 then
@@ -533,16 +291,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 				window.buffer[2][cy][cx] = textCol:sub(i,i)
 				window.buffer[3][cy][cx] = backCol:sub(i,i)
 			end
-			if cx >= window.width or cy < 1 then
-				cx = 1
-				if cy >= window.height then
-					window.handle.scroll(1)
-				else
-					cy = cy + 1
-				end
-			else
-				cx = cx + 1
-			end
+			cx = cx + 1
 		end
 		window.cursor = {cx, cy}
 		if lddterm.alwaysRender and not ignoreAlwaysRender then
@@ -661,11 +410,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 	end
 
 	window.handle.redraw = lddterm.render
-
-	window.ccapi = {
-		colors = colors,
-		paintutils = makePaintutilsAPI(window.handle)
-	}
+	window.handle.current = window.handle
 
 	window.layer = #lddterm.windows + 1
 	lddterm.windows[window.layer] = window
@@ -712,7 +457,7 @@ lddterm.screenshot = function(window)
 			line = {"","",""}
 			for x = 1, scr_x do
 
-				c = " "
+				c = "."
 				lt, lb = t, b
 				t, b = "0", "f"
 				for l = 1, #lddterm.windows do
@@ -741,6 +486,11 @@ lddterm.screenshot = function(window)
 		end
 	end
 	return output
+end
+
+-- supports os.loadAPI
+for k,v in pairs(lddterm) do
+	_ENV[k] = v
 end
 
 return lddterm
