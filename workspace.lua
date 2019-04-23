@@ -4,7 +4,13 @@
 local tArg = {...}
 
 -- higher number means faster workspace movement animation, caps at 1
-local workspaceMoveSpeed = 0.2
+local workspaceMoveSpeed = 0.1
+
+-- amount of time (seconds) until workspace indicator disappears
+local workspaceIndicatorDuration = 0.6
+
+-- if held down while moving workspace, will swap positions
+local swapKey = keys.tab
 
 -- x,y size of workspace grid
 local gridWidth = math.max(1, tonumber(tArg[1]) or 3)
@@ -13,9 +19,15 @@ local gridHeight = math.max(1, tonumber(tArg[2]) or 3)
 local scr_x, scr_y = term.getSize()
 local windowWidth = scr_x
 local windowHeight = scr_y
+local doDrawWorkspaceIndicator = false
 
 -- program that will start up for workspaces
 local defaultProgram = "rom/programs/shell.lua"
+
+local scroll = {0,0}		-- change this value when scrolling
+local realScroll = {0,0}	-- this value changes depending on scroll for smoothness purposes
+local focus = {1,1}			-- currently focused instance
+local instances = {}
 
 if _G.currentlyRunningWorkspace then
 	print("Workspace is already running.")
@@ -24,6 +36,14 @@ else
 	_G.currentlyRunningWorkspace = true
 end
 local isRunning = true
+
+local cwrite = function(text, y, terminal)
+	terminal = terminal or term.current()
+	local cx, cy = terminal.getCursorPos()
+	local sx, sy = terminal.getSize()
+	terminal.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
+	terminal.write(text)
+end
 
 -- start up lddterm
 local lddterm = {}
@@ -37,6 +57,28 @@ lddterm.adjustX = 0			-- moves entire screen X
 lddterm.adjustY = 0			-- moves entire screen Y
 lddterm.selectedWindow = 1		-- determines which window controls the cursor
 lddterm.windows = {}
+
+local drawWorkspaceIndicator = function(terminal)
+	terminal = terminal or lddterm.baseTerm
+	for y = 0, gridHeight + 1 do
+		for x = 0, gridWidth + 1 do
+			term.setCursorPos(x + scr_x / 2 - gridWidth / 2, y + scr_y / 2 - gridHeight / 2)
+			if instances[y] then
+				if instances[y][x] then
+					if focus[1] == x and focus[2] == y then
+						term.blit(" ", "8", "8")
+					else
+						term.blit(" ", "7", "7")
+					end
+				else
+					term.blit(" ", "0", "0")
+				end
+			else
+				term.blit(" ", "0", "0")
+			end
+		end
+	end
+end
 
 -- converts hex colors to colors api, and back
 local to_colors, to_blit = {
@@ -150,6 +192,9 @@ lddterm.render = function(transformation, drawFunction)
 			lddterm.baseTerm.setCursorPos(1 + lddterm.adjustX, y + lddterm.adjustY)
 			lddterm.baseTerm.blit(image[1][y], image[2][y], image[3][y])
 		end
+	end
+	if doDrawWorkspaceIndicator then
+		drawWorkspaceIndicator()
 	end
 	fixCursorPos()
 end
@@ -458,7 +503,6 @@ lddterm.setLayer = function(window, _layer)
 	return true
 end
 
--- if the screen changes size, the effect is broken
 local old_scr_x, old_scr_y
 
 -- gets screenshot of whole lddterm desktop, OR a single window
@@ -517,16 +561,6 @@ end
 
 local keysDown = {}
 
-local instances = {}
-
-local cwrite = function(text, y, terminal)
-	terminal = terminal or term.current()
-	local cx, cy = terminal.getCursorPos()
-	local sx, sy = terminal.getSize()
-	terminal.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
-	terminal.write(text)
-end
-
 local defaultProgram = "rom/programs/shell.lua"
 local newInstance = function(x, y, program, initialStart)
 	x, y = math.floor(x), math.floor(y)
@@ -555,7 +589,8 @@ local newInstance = function(x, y, program, initialStart)
 
 				term.clear()
 				term.setCursorBlink(false)
-				cwrite("Press SPACE to start workspace.")
+				cwrite("This workspace is inactive.", 0 + scr_y / 2)
+				cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
 				repeat
 					evt = {os.pullEventRaw()}
 				until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
@@ -582,10 +617,6 @@ local newInstance = function(x, y, program, initialStart)
 		window = window
 	}
 end
-
-local scroll = {0,0}		-- change this value when scrolling
-local realScroll = {0,0}	-- this value changes depending on scroll for smoothness purposes
-local focus = {1,1}
 
 -- prevents wiseassed-ness
 workspaceMoveSpeed = math.min(math.max(workspaceMoveSpeed, 0.01), 1)
@@ -627,6 +658,11 @@ end
 
 scrollWindows()
 
+local swapInstances = function(xmod, ymod)
+	instances[focus[2]][focus[1]].co, 		instances[focus[2] + ymod][focus[1] + xmod].co 	= instances[focus[2] + ymod][focus[1] + xmod].co, 			instances[focus[2]][focus[1]].co
+	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window = instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
+end
+
 local inputEvt = {
 	key = true,
 	key_up = true,
@@ -642,7 +678,7 @@ local inputEvt = {
 local main = function()
 	local enteringCommand
 	local justStarted = true
-	local tID
+	local tID, wID
 	while isRunning do
 		local evt = {os.pullEventRaw()}
 		enteringCommand = false
@@ -650,27 +686,44 @@ local main = function()
 			keysDown[evt[2]] = true
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
+		elseif evt[1] == "timer" then
+			if evt[2] == wID then
+				enteringCommand = true
+				doDrawWorkspaceIndicator = false
+			elseif evt[2] == tID then
+				enteringCommand = true
+			end
 		end
 
 		if scrollWindows() then
 			tID = os.startTimer(0.05)
 		end
 
-		if keysDown[keys.leftCtrl] and keysDown[keys.leftShift] then
+		if (keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]) and (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
 			if keysDown[keys.left] then
 				if instances[focus[2]][focus[1] - 1] then
+					if keysDown[swapKey] then
+						swapInstances(-1, 0)
+					end
 					focus[1] = focus[1] - 1
 					scroll[1] = scroll[1] + 1
 					keysDown[keys.left] = false
 					enteringCommand = true
+					doDrawWorkspaceIndicator = true
+					wID = os.startTimer(workspaceIndicatorDuration)
 				end
 			end
 			if keysDown[keys.right] then
 				if instances[focus[2]][focus[1] + 1] then
+					if keysDown[swapKey] then
+						swapInstances(1, 0)
+					end
 					focus[1] = focus[1] + 1
 					scroll[1] = scroll[1] - 1
 					keysDown[keys.right] = false
 					enteringCommand = true
+					doDrawWorkspaceIndicator = true
+					wID = os.startTimer(workspaceIndicatorDuration)
 				end
 			end
 			if keysDown[keys.up] then
@@ -680,6 +733,8 @@ local main = function()
 						scroll[2] = scroll[2] + 1
 						keysDown[keys.up] = false
 						enteringCommand = true
+						doDrawWorkspaceIndicator = true
+						wID = os.startTimer(workspaceIndicatorDuration)
 					end
 				end
 			end
@@ -690,6 +745,8 @@ local main = function()
 						scroll[2] = scroll[2] - 1
 						keysDown[keys.down] = false
 						enteringCommand = true
+						doDrawWorkspaceIndicator = true
+						wID = os.startTimer(workspaceIndicatorDuration)
 					end
 				end
 			end
@@ -721,16 +778,23 @@ local main = function()
 end
 
 term.clear()
-cwrite("Use CTRL+SHIFT+ARROW to switch workspace.")
+cwrite("Use CTRL+SHIFT+ARROW to switch workspace.",		0 + scr_y / 2)
+cwrite("Terminate on an inactive workspace to exit.",	1 + scr_y / 2)
 sleep(0.1)
 os.pullEvent("key")
 
 os.queueEvent("mouse_click", 0, 0, 0)
 
-main()
+local result, message = pcall(main)
 
 _G.currentlyRunningWorkspace = false
 
 term.clear()
 term.setCursorPos(1,1)
-print("Thanks for using Workspace!")
+if result then
+	print("Thanks for using Workspace!")
+else
+	print("There was an error, and Workspace had to stop.")
+	print("The error goes as follows:\n")
+	print(message)
+end
