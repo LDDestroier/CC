@@ -656,14 +656,6 @@ local scrollWindows = function()
 	return changed
 end
 
-for y = 1, gridHeight do
-	for x = 1, gridWidth do
-		newInstance(x, y, defaultProgram, x == focus[1] and y == focus[2])
-	end
-end
-
-scrollWindows()
-
 local swapInstances = function(xmod, ymod)
 	instances[focus[2]][focus[1]].co, 		instances[focus[2] + ymod][focus[1] + xmod].co 	= instances[focus[2] + ymod][focus[1] + xmod].co, 			instances[focus[2]][focus[1]].co
 	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window = instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
@@ -685,6 +677,22 @@ local main = function()
 	local enteringCommand
 	local justStarted = true
 	local tID, wID
+
+	for y = 1, gridHeight do
+		for x = 1, gridWidth do
+			newInstance(x, y, defaultProgram, x == focus[1] and y == focus[2])
+		end
+	end
+	scrollWindows()
+
+	term.clear()
+	cwrite("Use CTRL+SHIFT+ARROW to switch workspace.",		0 + scr_y / 2)
+	cwrite("Terminate on an inactive workspace to exit.",	1 + scr_y / 2)
+	sleep(0.1)
+	os.pullEvent("key")
+
+	os.queueEvent("mouse_click", 0, 0, 0)
+
 	while isRunning do
 		local evt = {os.pullEventRaw()}
 		enteringCommand = false
@@ -788,14 +796,6 @@ local main = function()
 
 	end
 end
-
-term.clear()
-cwrite("Use CTRL+SHIFT+ARROW to switch workspace.",		0 + scr_y / 2)
-cwrite("Terminate on an inactive workspace to exit.",	1 + scr_y / 2)
-sleep(0.1)
-os.pullEvent("key")
-
-os.queueEvent("mouse_click", 0, 0, 0)
 
 local result, message = pcall(main)
 
