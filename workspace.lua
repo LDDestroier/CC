@@ -729,6 +729,9 @@ local main = function()
 			if keysDown[keys.up] then
 				if instances[focus[2] - 1] then
 					if instances[focus[2] - 1][focus[1]] then
+						if keysDown[swapKey] then
+							swapInstances(0, -1)
+						end
 						focus[2] = focus[2] - 1
 						scroll[2] = scroll[2] + 1
 						keysDown[keys.up] = false
@@ -741,6 +744,9 @@ local main = function()
 			if keysDown[keys.down] then
 				if instances[focus[2] + 1] then
 					if instances[focus[2] + 1][focus[1]] then
+						if keysDown[swapKey] then
+							swapInstances(0, 1)
+						end
 						focus[2] = focus[2] + 1
 						scroll[2] = scroll[2] - 1
 						keysDown[keys.down] = false
