@@ -657,8 +657,9 @@ local scrollWindows = function()
 end
 
 local swapInstances = function(xmod, ymod)
-	instances[focus[2]][focus[1]].co, 		instances[focus[2] + ymod][focus[1] + xmod].co 	= instances[focus[2] + ymod][focus[1] + xmod].co, 			instances[focus[2]][focus[1]].co
-	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window = instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
+	instances[focus[2]][focus[1]].co, 	instances[focus[2] + ymod][focus[1] + xmod].co 		= instances[focus[2] + ymod][focus[1] + xmod].co, 	instances[focus[2]][focus[1]].co
+	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window 	= instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
+	instances[focus[2]][focus[1]].active, 	instances[focus[2] + ymod][focus[1] + xmod].active 	= instances[focus[2] + ymod][focus[1] + xmod].active, 	instances[focus[2]][focus[1]].active
 end
 
 local inputEvt = {
