@@ -6,6 +6,10 @@ local dx = tonumber(tArg[1])
 local dy = tonumber(tArg[2])
 local dz = tonumber(tArg[3])
 
+if dy == 0 then
+	dy = 1
+end
+
 -- relative position, used for printing a graphic
 local pos = {
 	x = 0,
@@ -59,8 +63,10 @@ local move = function(direction)
 	end
 end
 
-local UDdig = function(left, check, right)
-	dig( 0 )
+local UDdig = function(left, check, right, doNotDigForwards)
+	if not doNotDigForwards then
+		dig( 0 )
+	end
 	if check > left then
 		dig( -1 )
 	end
@@ -106,19 +112,22 @@ end
 
 local doTurn = true
 if dy > 1 then
+	dig( 1 )
 	move( "up" )
 elseif dy < 1 then
+	dig( -1 )
 	move( "down" )
 end
 for y = (math.abs(dy) > 1 and 2 or 1), math.abs(dy) do
-	if (y % 3 == 2) then
+	if (y % 3 == 2) or (math.abs(dy) - y == 1) then
 		for x = 1, dx do
 			for z = 1, dz do
-				UDdig(dy / math.abs(dy), y * (dy / math.abs(dy)), dy)
+				UDdig(dy / math.abs(dy), y * (dy / math.abs(dy)), dy, false)
 				move( "forward" )
+				UDdig(dy / math.abs(dy), y * (dy / math.abs(dy)), dy, true)
 				printData()
 			end
-			turn(doTurn, x < dx, dy / math.abs(dy), y * (dy / math.abs(dy)), dy)
+			turn(doTurn, x < dx, dy / math.abs(dy), y * (dy / math.abs(dy)), dy, false)
 			printData()
 			if x < dx then
 				doTurn = not doTurn
