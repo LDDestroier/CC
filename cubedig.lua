@@ -111,7 +111,7 @@ elseif dy < 1 then
 	move( "down" )
 end
 for y = (math.abs(dy) > 1 and 2 or 1), math.abs(dy) do
-	if y % 3 == 1 then
+	if (y % 3 == 2) then
 		for x = 1, dx do
 			for z = 1, dz do
 				UDdig(dy / math.abs(dy), y * (dy / math.abs(dy)), dy)
