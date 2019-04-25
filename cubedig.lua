@@ -24,13 +24,13 @@ dz = dz - 1
 local dig = function(direction)
 	if direction == -1 then 			-- down
 		while turtle.inspectDown() do
-            turtle.digDown()
-        end
+		    turtle.digDown()
+		end
 	elseif direction == 1 then			-- up
 		while turtle.inspectUp() do
-            turtle.digUp()
-        end
-	else								-- forwards
+			turtle.digUp()
+		end
+	else						-- forwards
 		while turtle.inspect() do
 			turtle.dig()
 		end
@@ -48,8 +48,8 @@ local move = function(direction)
 		turtle.forward()
 		pos.x = pos.x + math.cos(math.rad(pos.f * 90))
 	elseif direction == "back" then
-        turtle.forward()
-        pos.x = pos.x - math.cos(math.rad(pos.f * 90))
+		turtle.forward()
+		pos.x = pos.x - math.cos(math.rad(pos.f * 90))
 	elseif direction == "left" then
 		turtle.turnLeft()
 		pos.f = (pos.f - 1) % 4
@@ -94,18 +94,35 @@ local printData = function()
 	print("Fuel: " .. turtle.getFuelLevel())
 end
 
+local UDdig = function(left, check, right)
+	dig( 0 )
+	if check > left then
+		dig( -1 )
+	end
+	if check < right then
+		dig ( 1 )
+	end
+end
+
 local doTurn = true
-for y = 1, math.abs(dy) do
-	for x = 1, dx do
-		for z = 1, dz do
-			dig( 0 )
-			move( "forward" )
+if dy > 1 then
+	move( "up" )
+elseif dy < 1 then
+	move( "down" )
+end
+for y = (math.abs(dy) > 1 and 2 or 1), math.abs(dy) do
+	if y % 3 == 1 then
+		for x = 1, dx do
+			for z = 1, dz do
+				UDdig(dy / math.abs(dy), y * (dy / math.abs(dy)), dy)
+				move( "forward" )
+				printData()
+			end
+			turn(doTurn, x < dx)
 			printData()
-		end
-		turn(doTurn, x < dx)
-		printData()
-		if x < dx then
-			doTurn = not doTurn
+			if x < dx then
+				doTurn = not doTurn
+			end
 		end
 	end
 	if y ~= math.abs(dy) then
