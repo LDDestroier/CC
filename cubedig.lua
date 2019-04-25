@@ -73,14 +73,14 @@ local turn = function(dir, doDig, left, check, right)
 	if dir then
 		move( "right" )
 		if doDig then
-			UDig( left, check, right )
+			UDdig( left, check, right )
 			move( "forward" )
 		end
 		move( "right" )
 	else
 		move( "left" )
 		if doDig then
-			UDig( left, check, right )
+			UDdig( left, check, right )
 			move( "forward" )
 		end
 		move( "left" )
