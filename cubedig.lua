@@ -59,18 +59,28 @@ local move = function(direction)
 	end
 end
 
-local turn = function(dir, doDig)
+local UDdig = function(left, check, right)
+	dig( 0 )
+	if check > left then
+		dig( -1 )
+	end
+	if check < right then
+		dig ( 1 )
+	end
+end
+
+local turn = function(dir, doDig, left, check, right)
 	if dir then
 		move( "right" )
 		if doDig then
-			dig( 0 )
+			UDig( left, check, right )
 			move( "forward" )
 		end
 		move( "right" )
 	else
 		move( "left" )
 		if doDig then
-			dig( 0 )
+			UDig( left, check, right )
 			move( "forward" )
 		end
 		move( "left" )
@@ -94,16 +104,6 @@ local printData = function()
 	print("Fuel: " .. turtle.getFuelLevel())
 end
 
-local UDdig = function(left, check, right)
-	dig( 0 )
-	if check > left then
-		dig( -1 )
-	end
-	if check < right then
-		dig ( 1 )
-	end
-end
-
 local doTurn = true
 if dy > 1 then
 	move( "up" )
@@ -118,7 +118,7 @@ for y = (math.abs(dy) > 1 and 2 or 1), math.abs(dy) do
 				move( "forward" )
 				printData()
 			end
-			turn(doTurn, x < dx)
+			turn(doTurn, x < dx, dy / math.abs(dy), y * (dy / math.abs(dy)), dy)
 			printData()
 			if x < dx then
 				doTurn = not doTurn
