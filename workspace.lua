@@ -3,8 +3,64 @@
 
 local tArg = {...}
 
--- higher number means faster workspace movement animation, caps at 1
-local workspaceMoveSpeed = 0.1
+local instances = {}
+local configPath = ".workspace_config"	-- finish later
+local config = {
+	workspaceMoveSpeed = 0.1,
+	defaultProgram = "rom/programs/shell.lua",
+	timesRan = 0,
+	WSmap = {
+		{true,true,true},
+		{true,true,true},
+		{true,true,true},
+	}
+}
+
+-- values determined after every new/removed workspace
+local gridWidth, gridHeight, gridMinX, gridMinY
+
+local getMapSize = function()
+	local xmax, xmin, ymax, ymin = -math.huge, math.huge, -math.huge, math.huge
+	local isRowEmpty
+	for y, v in pairs(config.WSmap) do
+		isRowEmpty = true
+		for x, vv in pairs(v) do
+			if vv then
+				xmin = math.min(xmin, x)
+				xmax = math.max(xmax, x)
+				isRowEmpty = false
+			end
+		end
+		if not isRowEmpty then
+			ymin = math.min(ymin, y)
+			ymax = math.max(ymax, y)
+		end
+	end
+	return xmax, ymax, xmin, ymin
+end
+
+local saveConfig = function()
+	local file = fs.open(configPath, "w")
+	file.write( textutils.serialize(config) )
+	file.close()
+end
+
+local loadConfig = function()
+	if fs.exists(configPath) then
+		local file = fs.open(configPath, "r")
+		local contents = file.readAll()
+		file.close()
+		local newConfig = textutils.unserialize(contents)
+		for k,v in pairs(newConfig) do
+			config[k] = v
+		end
+	end
+end
+
+loadConfig()
+saveConfig()
+
+local keysDown = {}
 
 -- amount of time (seconds) until workspace indicator disappears
 local workspaceIndicatorDuration = 0.6
@@ -12,29 +68,15 @@ local workspaceIndicatorDuration = 0.6
 -- if held down while moving workspace, will swap positions
 local swapKey = keys.tab
 
--- x,y size of workspace grid
-local gridWidth = math.max(1, tonumber(tArg[1]) or 3)
-local gridHeight = math.max(1, tonumber(tArg[2]) or 3)
-
 local scr_x, scr_y = term.getSize()
 local windowWidth = scr_x
 local windowHeight = scr_y
 local doDrawWorkspaceIndicator = false
 
--- program that will start up for workspaces
-local defaultProgram = "rom/programs/shell.lua"
-
 local scroll = {0,0}		-- change this value when scrolling
 local realScroll = {0,0}	-- this value changes depending on scroll for smoothness purposes
-local focus = {1,1}			-- currently focused instance
-local instances = {}
+local focus = {}			-- currently focused instance, declared when loading from config
 
-if _G.currentlyRunningWorkspace then
-	print("Workspace is already running.")
-	return
-else
-	_G.currentlyRunningWorkspace = true
-end
 local isRunning = true
 
 local cwrite = function(text, y, terminal)
@@ -59,10 +101,11 @@ lddterm.selectedWindow = 1		-- determines which window controls the cursor
 lddterm.windows = {}
 
 local drawWorkspaceIndicator = function(terminal)
+	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 	terminal = terminal or lddterm.baseTerm
-	for y = 0, gridHeight + 1 do
-		for x = 0, gridWidth + 1 do
-			term.setCursorPos(x + scr_x / 2 - gridWidth / 2, y + scr_y / 2 - gridHeight / 2)
+	for y = gridMinY - 1, gridHeight + 1 do
+		for x = gridMinX - 1, gridWidth + 1 do
+			term.setCursorPos((x - gridMinX) + scr_x / 2 - (gridWidth - gridMinX) / 2, (y - gridMinY) + scr_y / 2 - (gridHeight - gridMinY) / 2)
 			if instances[y] then
 				if instances[y][x] then
 					if focus[1] == x and focus[2] == y then
@@ -530,19 +573,21 @@ lddterm.screenshot = function(window)
 			line = {"","",""}
 			for x = 1, scr_x do
 
-				c = "."
+				c = " "
 				lt, lb = t, b
 				t, b = "0", "f"
-				for l = 1, #lddterm.windows do
-					if lddterm.windows[l].visible then
-						sx = 1 + x - lddterm.windows[l].x
-						sy = 1 + y - lddterm.windows[l].y
-						if lddterm.windows[l].buffer[1][sy] then
-							if lddterm.windows[l].buffer[1][sy][sx] then
-								c = lddterm.windows[l].buffer[1][sy][sx] or c
-								t = lddterm.windows[l].buffer[2][sy][sx] or t
-								b = lddterm.windows[l].buffer[3][sy][sx] or b
-								break
+				for l, v in pairs(lddterm.windows) do
+					if lddterm.windows[l] then
+						if lddterm.windows[l].visible then
+							sx = 1 + x - lddterm.windows[l].x
+							sy = 1 + y - lddterm.windows[l].y
+							if lddterm.windows[l].buffer[1][sy] then
+								if lddterm.windows[l].buffer[1][sy][sx] then
+									c = lddterm.windows[l].buffer[1][sy][sx] or c
+									t = lddterm.windows[l].buffer[2][sy][sx] or t
+									b = lddterm.windows[l].buffer[3][sy][sx] or b
+									break
+								end
 							end
 						end
 					end
@@ -561,15 +606,19 @@ lddterm.screenshot = function(window)
 	return output
 end
 
-local keysDown = {}
-
-local defaultProgram = "rom/programs/shell.lua"
 local newInstance = function(x, y, program, initialStart)
 	x, y = math.floor(x), math.floor(y)
-	for yy = 1, y do
+	if instances[y] then
+		if instances[y][x] then
+			return
+		end
+	end
+	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+	for yy = gridMinY, y do
 		instances[yy] = instances[yy] or {}
 	end
-	for xx = 1, x do
+	instances[y] = instances[y] or {}
+	for xx = gridMinX, x do
 		instances[y][xx] = instances[y][xx] or false
 	end
 	local window = lddterm.newWindow(windowWidth, windowHeight, 1, 1)
@@ -584,7 +633,7 @@ local newInstance = function(x, y, program, initialStart)
 
 				if initialStart then
 					if not program or type(program) == "string" then
-						shell.run(program or defaultProgram)
+						shell.run(program or config.defaultProgram)
 					elseif type(program) == "function" then
 						program()
 					end
@@ -612,7 +661,7 @@ local newInstance = function(x, y, program, initialStart)
 
 				if not initialStart then
 					if not program or type(program) == "string" then
-						shell.run(program or defaultProgram)
+						shell.run(program or config.defaultProgram)
 					elseif type(program) == "function" then
 						program()
 					end
@@ -625,27 +674,28 @@ local newInstance = function(x, y, program, initialStart)
 end
 
 -- prevents wiseassed-ness
-workspaceMoveSpeed = math.min(math.max(workspaceMoveSpeed, 0.01), 1)
+config.workspaceMoveSpeed = math.min(math.max(config.workspaceMoveSpeed, 0.001), 1)
 
 local scrollWindows = function()
 	local changed = false
 	if realScroll[1] < scroll[1] then
-		realScroll[1] = math.min(realScroll[1] + workspaceMoveSpeed, scroll[1])
+		realScroll[1] = math.min(realScroll[1] + config.workspaceMoveSpeed, scroll[1])
 		changed = true
 	elseif realScroll[1] > scroll[1] then
-		realScroll[1] = math.max(realScroll[1] - workspaceMoveSpeed, scroll[1])
+		realScroll[1] = math.max(realScroll[1] - config.workspaceMoveSpeed, scroll[1])
 		changed = true
 	end
 	if realScroll[2] < scroll[2] then
-		realScroll[2] = math.min(realScroll[2] + workspaceMoveSpeed, scroll[2])
+		realScroll[2] = math.min(realScroll[2] + config.workspaceMoveSpeed, scroll[2])
 		changed = true
 	elseif realScroll[2] > scroll[2] then
-		realScroll[2] = math.max(realScroll[2] - workspaceMoveSpeed, scroll[2])
+		realScroll[2] = math.max(realScroll[2] - config.workspaceMoveSpeed, scroll[2])
 		changed = true
 	end
-	for y = 1, #instances do
+	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+	for y = gridMinY, gridHeight do
 		if instances[y] then
-			for x = 1, #instances[y] do
+			for x = gridMinX, gridWidth do
 				if instances[y][x] then
 					instances[y][x].window.x = math.floor(1 + (instances[y][x].x + realScroll[1] - 1) * scr_x)
 					instances[y][x].window.y = math.floor(1 + (instances[y][x].y + realScroll[2] - 1) * scr_y)
@@ -662,6 +712,65 @@ local swapInstances = function(xmod, ymod)
 	instances[focus[2]][focus[1]].active, 	instances[focus[2] + ymod][focus[1] + xmod].active 	= instances[focus[2] + ymod][focus[1] + xmod].active, 	instances[focus[2]][focus[1]].active
 end
 
+local addWorkspace = function(xmod, ymod)
+	config.WSmap[focus[2] + ymod] = config.WSmap[focus[2] + ymod] or {}
+	if not config.WSmap[focus[2] + ymod][focus[1] + xmod] then
+		config.WSmap[focus[2] + ymod][focus[1] + xmod] = true
+		newInstance(focus[1] + xmod, focus[2] + ymod, config.defaultProgram, false)
+		saveConfig()
+		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+	else
+--		print("There's already a workspace there.")
+	end
+end
+
+local removeWorkspace = function(xmod, ymod)
+	if config.WSmap[focus[2] + ymod][focus[1] + xmod] then
+		local good = false
+		for y = -1, 1 do
+			for x = -1, 1 do
+				if math.abs(x) + math.abs(y) == 1 then
+					if instances[focus[2] + y] then
+						if instances[focus[2] + y][focus[1] + x] then
+							good = true
+							break
+						end
+					end
+				end
+			end
+			if good then
+				break
+			end
+		end
+		if good then
+			lddterm.windows[instances[focus[2] + ymod][focus[1] + xmod].window.layer] = nil
+			config.WSmap[focus[2] + ymod][focus[1] + xmod] = nil
+			instances[focus[2] + ymod][focus[1] + xmod] = nil
+			local isRowEmpty
+			local remList = {}
+			for y, v in pairs(config.WSmap) do
+				isRowEmpty = true
+				for x, vv in pairs(v) do
+					if vv then
+						isRowEmpty = false
+						break
+					end
+				end
+				if isRowEmpty then
+					remList[#remList + 1] = y
+				end
+			end
+			for i = 1, #remList do
+				config.WSmap[remList[i]] = nil
+			end
+			saveConfig()
+			gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+		end
+	else
+--		print("There's no such workspace.")
+	end
+end
+
 local inputEvt = {
 	key = true,
 	key_up = true,
@@ -674,27 +783,47 @@ local inputEvt = {
 	terminate = true
 }
 
+local displayHelp = function()
+	cwrite("CTRL+SHIFT+ARROW to switch workspace.   ",	-2 + scr_y / 2)
+	cwrite("CTRL+SHIFT+TAB+ARROW to swap.           ",	-1 + scr_y / 2)
+	cwrite("CTRL+SHIFT+[WASD] to create a workspace ",	 0 + scr_y / 2)
+	cwrite("up/left/down/right respectively.        ",	 1 + scr_y / 2)
+	cwrite("CTRL+SHIFT+Q to delete a workspace.     ",	 2 + scr_y / 2)
+	cwrite("Terminate an inactive workspace to exit.",	 3 + scr_y / 2)
+end
+
 local main = function()
 	local enteringCommand
 	local justStarted = true
 	local tID, wID
 
-	for y = 1, gridHeight do
-		for x = 1, gridWidth do
-			newInstance(x, y, defaultProgram, x == focus[1] and y == focus[2])
+	for y, v in pairs(config.WSmap) do
+		for x, vv in pairs(v) do
+			if vv then
+				if not focus[1] then
+					focus = {x, y}
+				end
+				newInstance(x, y, config.defaultProgram, x == focus[1] and y == focus[2])
+			end
 		end
 	end
+
 	scrollWindows()
 
 	term.clear()
-	cwrite("Use CTRL+SHIFT+ARROW to switch workspace.",		0 + scr_y / 2)
-	cwrite("Terminate on an inactive workspace to exit.",	1 + scr_y / 2)
-	sleep(0.1)
-	os.pullEvent("key")
+	if config.timesRan <= 0 then
+		displayHelp()
+		sleep(0.1)
+		os.pullEvent("key")
 
-	os.queueEvent("mouse_click", 0, 0, 0)
+		os.queueEvent("mouse_click", 0, 0, 0)
+	end
+
+	config.timesRan = config.timesRan + 1
+	saveConfig()
 
 	while isRunning do
+		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 		local evt = {os.pullEventRaw()}
 		enteringCommand = false
 		if evt[1] == "key" then
@@ -771,12 +900,71 @@ local main = function()
 					end
 				end
 			end
+			if keysDown[keys.w] then
+				addWorkspace(0, -1)
+				doDrawWorkspaceIndicator = true
+				wID = os.startTimer(workspaceIndicatorDuration)
+				keysDown[keys.w] = false
+				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+			end
+			if keysDown[keys.s] then
+				addWorkspace(0, 1)
+				doDrawWorkspaceIndicator = true
+				wID = os.startTimer(workspaceIndicatorDuration)
+				keysDown[keys.s] = false
+				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+			end
+			if keysDown[keys.a] then
+				addWorkspace(-1, 0)
+				doDrawWorkspaceIndicator = true
+				wID = os.startTimer(workspaceIndicatorDuration)
+				keysDown[keys.a] = false
+				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+			end
+			if keysDown[keys.d] then
+				addWorkspace(1, 0)
+				doDrawWorkspaceIndicator = true
+				wID = os.startTimer(workspaceIndicatorDuration)
+				keysDown[keys.d] = false
+				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+			end
+			if keysDown[keys.q] then
+				removeWorkspace(0, 0)
+				doDrawWorkspaceIndicator = true
+				wID = os.startTimer(workspaceIndicatorDuration)
+				keysDown[keys.q] = false
+				local good = false
+				for y = -1, 1 do
+					for x = -1, 1 do
+						if math.abs(x) + math.abs(y) == 1 then
+							if instances[focus[2] + y] then
+								if instances[focus[2] + y][focus[1] + x] then
+									focus = {
+										focus[1] + x,
+										focus[2] + y
+									}
+									scroll = {
+										scroll[1] - x,
+										scroll[2] - y
+									}
+									good = true
+									break
+								end
+							end
+						end
+					end
+					if good then
+						break
+					end
+				end
+				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+			end
 		end
 
 		if not enteringCommand then
-			for y = 1, #instances do
+			for y = gridMinY, gridHeight do
 				if instances[y] then
-					for x = 1, #instances[y] do
+					for x = gridMinX, gridWidth do
 						if instances[y][x] then
 
 							if justStarted or (not inputEvt[evt[1]]) or (x == focus[1] and y == focus[2]) then
@@ -796,6 +984,22 @@ local main = function()
 		justStarted = false
 
 	end
+end
+
+if tArg[1] == "help" then
+	displayHelp()
+	write("\n")
+	return
+elseif tArg[1] == "config" then
+	shell.run("rom/programs/edit.lua", configPath)
+	return
+end
+
+if _G.currentlyRunningWorkspace then
+	print("Workspace is already running.")
+	return
+else
+	_G.currentlyRunningWorkspace = true
 end
 
 local result, message = pcall(main)
