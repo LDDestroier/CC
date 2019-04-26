@@ -821,6 +821,8 @@ local main = function()
 
 	config.timesRan = config.timesRan + 1
 	saveConfig()
+	
+	local previousTerm
 
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -967,8 +969,8 @@ local main = function()
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
 
-							if justStarted or (not inputEvt[evt[1]]) or (x == focus[1] and y == focus[2]) then
-								local previousTerm = term.redirect(instances[y][x].window.handle)
+							if justStarted or ((not inputEvt[evt[1]]) and instances[y][x].active or (x == focus[1] and y == focus[2])) then
+								previousTerm = term.redirect(instances[y][x].window.handle)
 								coroutine.resume(instances[y][x].co, table.unpack(evt))
 								term.redirect(previousTerm)
 							end
