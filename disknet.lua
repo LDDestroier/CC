@@ -1,6 +1,6 @@
 local disknet = {}
 
-local mainPath = "DISKNET"
+local mainPath = "disk/DISKNET"
 local limitChannelsToModem = false
 local openChannels = {}
 local yourID = os.getComputerID()
