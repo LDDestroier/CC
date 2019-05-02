@@ -156,7 +156,7 @@ disknet.receive = function(channel)
 	
 		local output, contents
 		local doRewrite = false
-		local look = 1
+		
 		while true do
 			loadFList()
 			for i = 1, #fList do
@@ -164,20 +164,23 @@ disknet.receive = function(channel)
 				if contents ~= "" then
 					contents = textutils.unserialize(contents)
 					if type(contents) == "table" then
-						if contents[look] then
+						if contents[1] then
 							if not output then
-								if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[1].messageID]) then
-									if getTime() - (contents[look].time or 0) <= 0.01 then
-										msgCheckList[contents[look].messageID] = true
-										output = {}
-										for k,v in pairs(contents[look]) do
-											output[k] = v
+								for look = 1, #contents do
+									if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
+										if getTime() - (contents[look].time or 0) <= 0.01 then
+											msgCheckList[contents[look].messageID] = true
+											output = {}
+											for k,v in pairs(contents[look]) do
+												output[k] = v
+											end
+											break
 										end
 									end
-								else
-									look = math.min(look + 1, #contents)
 								end
 							end
+							
+							-- delete old msesages
 							doRewrite = false
 							for t = #contents, 1, -1 do
 								if getTime() - (contents[t].time or 0) > 0.01 then
