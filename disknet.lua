@@ -184,6 +184,7 @@ disknet.receive = function(channel)
 							doRewrite = false
 							for t = #contents, 1, -1 do
 								if getTime() - (contents[t].time or 0) > 0.01 then
+									msgCheckList[contents[t].messageID] = nil
 									table.remove(contents, t)
 									doRewrite = true
 								end
