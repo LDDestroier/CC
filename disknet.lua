@@ -96,6 +96,9 @@ end
 disknet.send = function(channel, message)
 	local valid, grr = checkValidChannel(channel)
 	if valid then
+		if not fs.exists(fs.combine(disknet.mainPath, tostring(channel))) then
+			fs.open(fs.combine(disknet.mainPath, tostring(channel)), "w").close()
+		end
 		local contents = textutils.unserialize(readFile(fs.combine(disknet.mainPath, tostring(channel))))
 		if disknet.isOpen(channel) then
 			local file = fs.open(fs.combine(disknet.mainPath, tostring(channel)), "w")
