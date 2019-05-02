@@ -159,64 +159,74 @@ disknet.receive = function(channel)
 
 		loadFList()
 
-		while true do
-			for i = 1, #fList do
-				contents = fList[i].readAll()
-				if contents ~= "" then
-					fList[i].close()
-					fList[i] = fs.open(pList[i], "r")
-					contents = textutils.unserialize(fList[i].readAll())
-					if type(contents) == "table" then
-						if contents[1] then
-							if not output then
-								for look = 1, #contents do
-									if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
-										if getTime() - (contents[look].time or 0) <= 0.001 then
-											msgCheckList[contents[look].messageID] = true
-											output = {}
-											for k,v in pairs(contents[look]) do
-												output[k] = v
+		local good, goddamnit = pcall(function()
+			while true do
+				for i = 1, #fList do
+					contents = fList[i].readAll()
+					if contents ~= "" then
+						fList[i].close()
+						fList[i] = fs.open(pList[i], "r")
+						contents = textutils.unserialize(fList[i].readAll())
+						if type(contents) == "table" then
+							if contents[1] then
+								if not output then
+									for look = 1, #contents do
+										if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
+											if getTime() - (contents[look].time or 0) <= 0.001 then
+												msgCheckList[contents[look].messageID] = true
+												output = {}
+												for k,v in pairs(contents[look]) do
+													output[k] = v
+												end
+												break
 											end
-											break
 										end
 									end
 								end
-							end
 
-							-- delete old msesages
-							doRewrite = false
-							for t = #contents, 1, -1 do
-								if getTime() - (contents[t].time or 0) > 0.001 then
-									msgCheckList[contents[t].messageID] = nil
-									table.remove(contents, t)
-									doRewrite = true
+								-- delete old msesages
+								doRewrite = false
+								for t = #contents, 1, -1 do
+									if getTime() - (contents[t].time or 0) > 0.001 then
+										msgCheckList[contents[t].messageID] = nil
+										table.remove(contents, t)
+										doRewrite = true
+									end
 								end
-							end
-							if doRewrite then
-								writeFile(pList[i], textutils.serialize(contents))
-							end
-							if output then
-								for i = 1, #fList do
-									fList[i].close()
+								if doRewrite then
+									writeFile(pList[i], textutils.serialize(contents))
 								end
-								break
+								if output then
+									for i = 1, #fList do
+										fList[i].close()
+									end
+									fList, pList = {}, {}
+									break
+								end
 							end
 						end
 					end
 				end
+				if output then
+					break
+				else
+					os.queueEvent("")
+					os.pullEvent("")
+				end
 			end
-			if output then
-				break
-			else
-				os.queueEvent("")
-				os.pullEvent("")
-			end
-		end
+		end)
 
-		if contents then
-			return output.message, output.channel, output.id, output.time
+		if good then
+			if contents then
+				return output.message, output.channel, output.id, output.time
+			else
+				return nil
+			end
 		else
-			return nil
+			for i = 1, #fList do
+				fList[i].close()
+			end
+			error(goddamnit, 0)
 		end
 	else
 		error(grr)
