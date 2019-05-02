@@ -1,6 +1,7 @@
 local disknet = {}
 
-local mainPath = "disk/DISKNET"
+disknet.mainPath = ({...})[1] or "disk/DISKNET"
+
 local limitChannelsToModem = false
 local openChannels = {}
 local yourID = os.getComputerID()
@@ -78,7 +79,7 @@ disknet.transmit = function(channel, message)
 	local valid, grr = checkValidChannel(channel)
 	if valid then
 		if disknet.isOpen(channel) then
-			local file = fs.open(fs.combine(mainPath, tostring(channel)), "a")
+			local file = fs.open(fs.combine(disknet.mainPath, tostring(channel)), "a")
 			file.write(textutils.serialize({
 				time = getTime(),
 				id = yourID,
@@ -104,15 +105,15 @@ disknet.receive = function(channel)
 		-- clear files
 		if channel then
 			if openChannels[channel] then
-				file = fs.open(fs.combine(mainPath, tostring(channel)), "w")
+				file = fs.open(fs.combine(disknet.mainPath, tostring(channel)), "w")
 				file.close()
-				fList[1] = fs.open(fs.combine(mainPath, tostring(channel)), "r")
+				fList[1] = fs.open(fs.combine(disknet.mainPath, tostring(channel)), "r")
 			end
 		else
 			for i = 1, #openChannels do
-				file = fs.open(fs.combine(mainPath, tostring(openChannels[i])), "w")
+				file = fs.open(fs.combine(disknet.mainPath, tostring(openChannels[i])), "w")
 				file.close()
-				fList[i] = fs.open(fs.combine(mainPath, tostring(openChannels[i])), "r")
+				fList[i] = fs.open(fs.combine(disknet.mainPath, tostring(openChannels[i])), "r")
 			end
 		end
 		
