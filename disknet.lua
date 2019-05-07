@@ -93,7 +93,7 @@ disknet.closeAll = function()
 	openChannels = {}
 end
 
-disknet.send = function(channel, message)
+disknet.send = function(channel, message, recipient)
 	local valid, grr = checkValidChannel(channel)
 	if valid then
 		if not fs.exists(fs.combine(disknet.mainPath, tostring(channel))) then
@@ -109,6 +109,7 @@ disknet.send = function(channel, message)
 					uniqueID = uniqueID,
 					messageID = math.random(1, 2^31 - 1),
 					channel = channel,
+					recipient = recipient,
 					message = message,
 				}
 				if #contents > maximumBufferSize then
@@ -172,13 +173,15 @@ disknet.receive = function(channel)
 								if not output then
 									for look = 1, #contents do
 										if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
-											if getTime() - (contents[look].time or 0) <= 0.001 then
-												msgCheckList[contents[look].messageID] = true
-												output = {}
-												for k,v in pairs(contents[look]) do
-													output[k] = v
+											if (not conetnts[look].recipient) or contents[look].recipient == yourID then
+												if getTime() - (contents[look].time or 0) <= 0.001 then
+													msgCheckList[contents[look].messageID] = true
+													output = {}
+													for k,v in pairs(contents[look]) do
+														output[k] = v
+													end
+													break
 												end
-												break
 											end
 										end
 									end
