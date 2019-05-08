@@ -101,11 +101,12 @@ disknet.send = function(channel, message, recipient)
 			fs.open(fs.combine(disknet.mainPath, tostring(channel)), "w").close()
 		end
 		local contents = textutils.unserialize(readFile(fs.combine(disknet.mainPath, tostring(channel))))
+		local cTime = getTime()
 		if disknet.isOpen(channel) then
 			local file = fs.open(fs.combine(disknet.mainPath, tostring(channel)), "w")
 			if contents then
 				contents[#contents + 1] = {
-					time = getTime(),
+					time = cTime,
 					id = yourID,
 					uniqueID = uniqueID,
 					messageID = math.random(1, 2^31 - 1),
@@ -113,13 +114,18 @@ disknet.send = function(channel, message, recipient)
 					recipient = recipient,
 					message = message,
 				}
+				for i = #contents, 1, -1 do
+					if cTime - (contents[i].time or 0) > ageToToss then
+						table.remove(contents, i)
+					end
+				end
 				if #contents > maximumBufferSize then
 					table.remove(contents, 1)
 				end
 				file.write(textutils.serialize(contents))
 			else
 				file.write(textutils.serialize({{
-					time = getTime(),
+					time = cTime,
 					id = yourID,
 					uniqueID = uniqueID,
 					messageID = math.random(1, 2^31 - 1),
@@ -137,7 +143,7 @@ disknet.send = function(channel, message, recipient)
 	end
 end
 
-local fList, pList = {}, {}
+local fList, pList, sList = {}, {}, {}
 
 local loadFList = function()
 	fList, pList = {}, {}
@@ -152,36 +158,38 @@ local loadFList = function()
 	end
 end
 
-disknet.receive = function(channel)
+disknet.receive = function(channel, senderFilter)
 	local valid, grr = checkValidChannel(channel)
 	if valid or not channel then
 
 		local output, contents
 		local doRewrite = false
 
-		loadFList()
-
 		local good, goddamnit = pcall(function()
+			local cTime = getTime()
 			while true do
+				loadFList()
 				for i = 1, #fList do
 					contents = fList[i].readAll()
 					if contents ~= "" then
-						fList[i].close()
-						fList[i] = fs.open(pList[i], "r")
-						contents = textutils.unserialize(fList[i].readAll())
+						contents = textutils.unserialize(contents)
 						if type(contents) == "table" then
 							if contents[1] then
 								if not output then
 									for look = 1, #contents do
-										if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
-											if (not contents[look].recipient) or contents[look].recipient == yourID then
-												if getTime() - (contents[look].time or 0) <= ageToToss then
-													msgCheckList[contents[look].messageID] = true
-													output = {}
-													for k,v in pairs(contents[look]) do
-														output[k] = v
+										if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then	-- make sure you're not receiving messages that you sent
+											if (not contents[look].recipient) or contents[look].recipient == yourID then				-- make sure that messages intended for others aren't picked up
+												if (not channel) or channel == contents[look].channel then								-- make sure that messages are the same channel as the filter, if any
+													if (not senderFilter) or senderFilter == contents[look].id then						-- make sure that the sender is the same as the id filter, if any
+														if cTime - (contents[look].time or 0) <= ageToToss then						-- make sure the message isn't too old
+															msgCheckList[contents[look].messageID] = true
+															output = {}
+															for k,v in pairs(contents[look]) do
+																output[k] = v
+															end
+															break
+														end
 													end
-													break
 												end
 											end
 										end
@@ -191,7 +199,7 @@ disknet.receive = function(channel)
 								-- delete old msesages
 								doRewrite = false
 								for t = #contents, 1, -1 do
-									if getTime() - (contents[t].time or 0) > ageToToss then
+									if cTime - (contents[t].time or 0) > ageToToss then
 										msgCheckList[contents[t].messageID] = nil
 										table.remove(contents, t)
 										doRewrite = true
@@ -201,10 +209,6 @@ disknet.receive = function(channel)
 									writeFile(pList[i], textutils.serialize(contents))
 								end
 								if output then
-									for i = 1, #fList do
-										fList[i].close()
-									end
-									fList, pList = {}, {}
 									break
 								end
 							end
@@ -217,6 +221,10 @@ disknet.receive = function(channel)
 					os.queueEvent("")
 					os.pullEvent("")
 				end
+				for i = 1, #fList do
+					fList[i].close()
+				end
+				fList, pList = {}, {}
 			end
 		end)
 
