@@ -4,12 +4,13 @@ local tArg = {...}
 
 disknet.mainPath = tArg[1] or "disk/DISKNET"
 local limitChannelsToModem = false
-local maximumBufferSize = 32
+local maximumBufferSize = 64
 
 local openChannels = {}
 local yourID = os.getComputerID()
 local uniqueID = math.random(1, 2^31 - 1) -- prevents receiving your own messages
 local msgCheckList = {} -- makes sure duplicate messages aren't received
+local ageToToss = 0.002	-- amount of time before a message is removed
 
 -- do not think for one second that os.epoch("utc") would be a proper substitute
 local getTime = function()
@@ -174,7 +175,7 @@ disknet.receive = function(channel)
 									for look = 1, #contents do
 										if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
 											if (not contents[look].recipient) or contents[look].recipient == yourID then
-												if getTime() - (contents[look].time or 0) <= 0.001 then
+												if getTime() - (contents[look].time or 0) <= ageToToss then
 													msgCheckList[contents[look].messageID] = true
 													output = {}
 													for k,v in pairs(contents[look]) do
@@ -190,7 +191,7 @@ disknet.receive = function(channel)
 								-- delete old msesages
 								doRewrite = false
 								for t = #contents, 1, -1 do
-									if getTime() - (contents[t].time or 0) > 0.001 then
+									if getTime() - (contents[t].time or 0) > ageToToss then
 										msgCheckList[contents[t].messageID] = nil
 										table.remove(contents, t)
 										doRewrite = true
