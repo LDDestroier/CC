@@ -173,7 +173,7 @@ disknet.receive = function(channel)
 								if not output then
 									for look = 1, #contents do
 										if (contents[look].uniqueID ~= uniqueID) and (not msgCheckList[contents[look].messageID]) then
-											if (not conetnts[look].recipient) or contents[look].recipient == yourID then
+											if (not contents[look].recipient) or contents[look].recipient == yourID then
 												if getTime() - (contents[look].time or 0) <= 0.001 then
 													msgCheckList[contents[look].messageID] = true
 													output = {}
