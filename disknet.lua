@@ -4,6 +4,7 @@ local tArg = {...}
 
 disknet.mainPath = tArg[1] or "disk/DISKNET"
 local limitChannelsToModem = false
+local useSleepToYield = false
 local maximumBufferSize = 64
 
 local openChannels = {}
@@ -218,8 +219,12 @@ disknet.receive = function(channel, senderFilter)
 				if output then
 					break
 				else
-					os.queueEvent("")
-					os.pullEvent("")
+					if useSleepToYield then
+						sleep(0)
+					else
+						os.queueEvent("")
+						os.pullEvent("")
+					end
 				end
 				for i = 1, #fList do
 					fList[i].close()
