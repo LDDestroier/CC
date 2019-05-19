@@ -1393,7 +1393,7 @@ local specialRead = function(scrollInfo, specialNames, message, preInput)
 		drawGrid(gsX, gsY, true)
 		term.setTextColor(colors.white)
 		cwrite(message, scr_y - 5)
-		term.setTextColor(specialNames[table.concat(buff):lower()] or colors.white)
+		termsetTextColor(specialNames[table.concat(buff):lower()] or colors.white)
 		term.setCursorPos( cwrite(table.concat(buff), scr_y - 3, nil, cpos) - 1, scr_y - 3)
 		term.setTextColor(colors.white)
 	end
