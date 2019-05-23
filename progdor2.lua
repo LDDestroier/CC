@@ -3,16 +3,21 @@
 	by LDDestroier
 	Get with:
 	 wget https://raw.githubusercontent.com/LDDestroier/CC/master/progdor2.lua
-	
+
 	Uses CCA compression API, made by minizbot2012.
 --]]
 
 local progdor = {
 	version = "2.0",
-	PBlogPath = ".progdor_PB_uploads"
+	PBlogPath = ".progdor_PB_uploads",
+	channel = 8366,
+	skynetPath = "skynet.lua",
+	skynetURL = "https://github.com/osmarks/skynet/raw/master/client.lua"
 }
 
 local scr_x, scr_y = term.getSize()
+local modem = peripheral.find("modem")
+local skynet, skynetBigReceive, skynetBigSend
 
 local function interpretArgs(tInput, tArgs)
     local output = {}
@@ -199,16 +204,20 @@ local safeColorList = {
 local pastebinFileSizeLimit = 1024 * 512
 
 local argData = {
-	["-pb"] = "string",	-- pastebin get
-	["-dd"] = "string",	-- direct URL download
-	["-m"] = "string",	-- specify main file
-	["-PB"] = false,	-- pastebin upload
-	["-e"] = false,		-- automatic self-extractor
-	["-s"] = false,		-- silent
-	["-a"] = false,		-- use as API with require, also makes silent
-	["-c"] = false,		-- use CCA compression
-	["-h"] = false,		-- show help
-	["-i"] = false,		-- inspect mode
+	["-pb"] = "string",		-- pastebin get
+	["-dd"] = "string",		-- direct URL download
+	["-m"] = "string",		-- specify main file
+	["-PB"] = false,		-- pastebin upload
+	["-t"] = false,			-- transmit file
+	["-r"] = false,			-- receive file
+	["-S"] = false,			-- use skynet
+	["-e"] = false,			-- automatic self-extractor
+	["-s"] = false,			-- silent
+	["-a"] = false,			-- use as API with require, also makes silent
+	["-c"] = false,			-- use CCA compression
+	["-h"] = false,			-- show help
+	["-i"] = false,			-- inspect mode
+	["-o"] = false,			-- always overwrite
 }
 
 local argList, argErrors = interpretArgs({...}, argData)
@@ -231,6 +240,10 @@ local selfExtractor	 = argList["-e"]	-- boolean
 local silent		 = argList["-s"]	-- boolean
 local useCompression = argList["-c"]	-- boolean
 local justOverwrite	 = argList["-o"]	-- boolean
+local useSkynet		 = argList["-S"]	-- boolean
+local trMode		 = argList["-t"] and "transmit" or (argList["-r"] and "receive" or "normal")
+
+local skynet
 
 if useCompression and selfExtract then
 	error("Cannot use compression with self-extractor.")
@@ -248,29 +261,64 @@ local sPrint = function(text)
 	end
 end
 
-local function showHelp()
-	local helpInfo = {
-		"progdor v" .. progdor.version,
-		"Usage: progdor [options] inputFolder (outputFile)",
-		"       progdor [options] inputFile (outputFolder)",
-		"",
-		"Progdor is a file/folder packaging program with support for CCA compression and self-extraction.",
-		"",
-		"Options:",
-		" -pb [pastebin ID] : Download from Pastebin.",			-- added
-		" -PB : Upload to pastebin.",							-- added
-		" -dd [download URL] : Download from URL.",				-- added
-		" -e : Adds on self-extractor code to archive.",		-- added
-		" -s : Silences all terminal writing",					-- added
-		" -a : Allows programs to use require() on Progdor.",	-- added
-		" -c : Enables CCA compression.",						-- added
-		" -m : Specify main executable file in archive.",		-- added
-		" -i : Inspect archive without extracting.",			-- added
-		" -o : Overwrite files without asking.",				-- added
-		" -h : Show this help.",								-- added
-		"",
-		"   This Progdor has Super Cow Powers."					-- not actually added
-	}
+local cWrite = function(text, color, ignoreSilent)
+	local col = term.getTextColor()
+	term.setTextColor(color or col)
+	if ignoreSilent then
+		write(text)
+	else
+		sWrite(text)
+	end
+	term.setTextColor(col)
+end
+
+local cPrint = function(text, color, ignoreSilent)
+	local col = term.getTextColor()
+	term.setTextColor(color or col)
+	if ignoreSilent then
+		print(text)
+	else
+		sPrint(text)
+	end
+	term.setTextColor(col)
+end
+
+local function showHelp(verboseHelp)
+	local helpInfo
+	if verboseHelp then
+		helpInfo = {
+			"Progdor v" .. progdor.version,
+			"",
+			"Options:",
+			" -pb [pastebin ID] : Download from Pastebin.",			-- added
+			" -PB : Upload to pastebin.",							-- added
+			" -dd [download URL] : Download from URL.",				-- added
+			" -e : Adds on self-extractor code to archive.",		-- added
+			" -s : Silences all terminal writing",					-- added
+			" -S : Use skynet when transmitting/receiving.",		-- added
+			" -t : Transmit a folder/file.",						-- added
+			" -r : Receive a file/packed folder.",					-- added
+			" -a : Allows programs to use require() on Progdor.",	-- added
+			" -c : Enables CCA compression.",						-- added
+			" -m : Specify main executable file in archive.",		-- added
+			" -i : Inspect archive without extracting.",			-- added
+			" -o : Overwrite files without asking.",				-- added
+			"",
+			"   This Progdor has Super Cow Powers."					-- not actually added
+		}
+	else
+		helpInfo = {
+			"Progdor v" .. progdor.version,
+			"Usage: progdor [options] inputFolder (outputFile)",
+			"       progdor [options] inputFile (outputFolder)",
+			"",
+			"Progdor is a file/folder packaging program with support for CCA compression and self-extraction.",
+			"",
+			"Use -h for all options.",
+			"",
+			"   This Progdor has Super Cow Powers."					-- not actually added
+		}
+	end
 	for y = 1, #helpInfo do
 		sPrint(helpInfo[y])
 	end
@@ -304,7 +352,7 @@ ___________|_|_|_____________
 end
 
 if argList["-h"] then
-	return showHelp()
+	return showHelp(true)
 elseif argList["-a"] then
 	mode = "api"
 elseif inputPath then
@@ -316,8 +364,8 @@ elseif inputPath then
 	else
 		mode = "unpack"
 	end
-else
-	return showHelp()
+elseif trMode ~= "receive" then
+	return showHelp(false)
 end
 
 if mode == "api" then
@@ -519,16 +567,338 @@ local writeArchiveData = function(archive, outputPath)
 	specialPrint("Unpacked to '", outputPath .. "/", "'.", colors.yellow)
 end
 
+local getSkynet = function()
+	if http.websocket then
+		-- Skynet only supports messages that are 65506 bytes or smaller
+		-- I'm just going with 65200 bytes to play safe.
+		local defineBigOnes = function(skynet)
+			local div = 65200
+			return function(channel, _message)	-- big send
+				local message = textutils.serialize(_message)
+				for i = 1, math.ceil(#message / div) do
+					skynet.send(progdor.channel, {
+						msg = message:sub( (i - 1) * div + 1, i * div ),
+						complete = i == math.ceil(#message / div),
+						part = i
+					})
+					sleep(0.1)
+					cWrite(".", colors.lightGray)
+				end
+			end, function(channel)				-- big receive
+				local ch, msg
+				local output = {}
+				local gotFile = false
+				while true do
+					ch, msg = skynet.receive(channel)
+					if type(msg) == "table" then
+						if type(msg.complete) == "boolean" and type(msg.msg) == "string" and type(msg.part) == "number" then
+							output[msg.part] = msg.msg
+							cWrite(".", colors.lightGray)
+							if msg.complete then
+								break
+							end
+						end
+					end
+				end
+				return channel, textutils.unserialize(table.concat(output))
+			end
+		end
+		if skynet then
+			local bS, bR = defineBigOnes(skynet)
+			skynet.open(progdor.channel)
+			return skynet, "", bS, bR
+		else
+			if fs.exists(progdor.skynetPath) then
+				local sn = dofile(progdor.skynetPath)
+				sn.open(progdor.channel)
+				local bS, bR = defineBigOnes(sn)
+				return sn, "", bS, bR
+			else
+				local net, contents = http.get(progdor.skynetURL)
+				if net then
+					contents = net.readAll()
+					local file = fs.open(progdor.skynetPath, "w")
+					file.write(contents)
+					file.close()
+					local sn = dofile(progdor.skynetPath)
+					local bS, bR = defineBigOnes(sn)
+					sn.open(progdor.channel)
+					return sn, "", bS, bR
+				else
+					return false, "Couldn't download Skynet."
+				end
+			end
+		end
+	else
+		return false, "This version of CC does not support Skynet."
+	end
+end
+
+local getModem = function()
+	local mod = peripheral.find("modem")
+	if mod then
+		mod.open(progdor.channel)
+		return mod
+	else
+		return false, "No modem was found."
+	end
+end
+
 local archive
 local doOverwrite, doContinue = false, true
 
-if mode == "pack" then
-	
+--[[ JUST SUMMIN' UP THE ELSEIF CHAIN
+	if mode == "api" then
+	elseif trMode == "transmit" then
+		if mode == "pack" then
+		end
+	elseif trMode == "receive" then
+		if mode == "pack" then
+		end
+	elseif mode == "pack" then
+	elseif mode == "unpack" then
+	elseif mode == "inspect" then
+	end
+--]]
+
+-- API mode takes top priority
+if mode == "api" then
+
+	return {
+		parseArchive = parseArchive,
+		parseArchiveData = parseArchiveData,
+		buildArchive = buildArchive,
+		uploadToPastebin = uploadToPastebin,
+	}
+
+-- after that, trans
+elseif trMode == "transmit" then
+
+	-- assemble something to send
+	local output = {name = fs.getName(inputPath)}
+	if mode == "pack" then
+		output.contents = textutils.serialize(buildArchive(inputPath, mainFile, useCompression))
+	else
+		local file = fs.open(inputPath, "r")
+		output.contents = file.readAll()
+		file.close()
+	end
+
+	local grr
+	if useSkynet then
+		if not skynet then
+			cWrite("Connecting to Skynet...", colors.lightGray)
+			skynet, grr, skynetBigSend, skynetBigReceive = getSkynet()
+			if not skynet then
+				print(grr)
+				print("Aborting.")
+				return false
+			else
+				cPrint("good", colors.green)
+			end
+		end
+		cWrite("Sending file...", colors.lightGray)
+		skynetBigSend(progdor.channel, output)
+		skynet.socket.close()
+		cPrint("good", colors.green)
+		sWrite("Sent '")
+		cWrite(fs.getName(inputPath), colors.yellow)
+		sWrite("' using Skynet.")
+	else
+		if not modem then
+			modem, grr = getModem()
+			if not modem then
+				print(grr)
+				print("Abort.")
+				return false
+			end
+		end
+		cWrite("Sending file...", colors.lightGray)
+		modem.transmit(progdor.channel, progdor.channel, output)
+		cPrint("good", colors.green)
+		sWrite("Sent '")
+		cWrite(fs.getName(inputPath), colors.yellow)
+		sWrite("' using modem.")
+	end
+
+elseif trMode == "receive" then
+	local grr
+	local gotFile = false
+	local input, channel
+	local didAbort = false
+	if useSkynet then
+		if not skynet then
+			cWrite("Connecting to Skynet...", colors.lightGray)
+			skynet, grr, skynetBigSend, skynetBigReceive = getSkynet()
+			if not skynet then
+				print(grr)
+				print("Aborting.")
+				return false
+			else
+				cPrint("good", colors.green)
+			end
+		end
+		cWrite("Waiting for file on Skynet...", colors.lightGray)
+		local result, grr = pcall(function()
+			sleep(0.05)
+			while true do
+				if parallel.waitForAny(function()
+					channel, input = skynetBigReceive(progdor.channel)
+				end, function()
+					local evt
+					while true do
+						evt = {os.pullEvent()}
+						if evt[1] == "key" then
+							if evt[2] == keys.q then
+								return
+							end
+						end
+					end
+				end) == 2 then
+					print("\nAbort.")
+					sleep(0.05)
+					didAbort = true
+					break
+				end
+				if channel == progdor.channel and type(input) == "table" then
+					if type(input.contents) == "string" and type(input.name) == "string" then
+						gotFile = true
+						break
+					end
+				end
+			end
+		end)
+		skynet.socket.close()
+		if not result then
+			error(grr, 0)
+		end
+	else
+		modem, grr = getModem()
+		if not modem then
+			error("is it open? " .. modem.isOpen(progdor.channel))
+			print(grr)
+			print("Abort.")
+			sleep(0.05)
+			return false
+		end
+		--modem.open(progdor.channel)
+		local evt
+		cWrite("Waiting for file...", colors.lightGray)
+		sleep(0.05)
+		while true do
+			evt = {os.pullEvent()}
+			if evt[1] == "modem_message" then
+				if evt[3] == progdor.channel and type(evt[5]) == "table" then
+					if type(evt[5].contents) == "string" and type(evt[5].name) == "string" then
+						input = evt[5]
+						gotFile = true
+						break
+					end
+				end
+			elseif evt[1] == "key" then
+				if evt[2] == keys.q then
+					print("\nAbort.")
+					sleep(0.05)
+					didAbort = true
+					break
+				end
+			end
+		end
+	end
+
+	if gotFile then
+		cPrint("good", colors.green)
+		if input.contents then
+			local writePath, c = fs.combine(shell.dir(), outputPath or input.name)
+			write("Received '")
+			cWrite(input.name or outputPath, colors.yellow, true)
+			print("'.")
+			if (not justOverwrite and fs.exists(writePath)) or fs.isReadOnly(writePath) then
+				write("\nBut, '")
+				cWrite(fs.getName(writePath), colors.yellow, true)
+				print("' is already there.")
+				local roCount = 0
+				local showROmessage = function(roCount)
+					if roCount == 1 then
+						write("\nThat file/folder is ")
+						cWrite("read-only", colors.yellow, true)
+						print("!")
+					elseif roCount == 2 then
+						write("\nI told you, that file/folder is ")
+						cWrite("read-only", colors.yellow, true)
+						print("!")
+					elseif roCount == 3 then
+						write("\nNope. The file/folder is ")
+						cWrite("read-only", colors.yellow, true)
+						print(".")
+					elseif roCount == 4 then
+						write("\nDoes the phrase ")
+						cWrite("read-only", colors.yellow, true)
+						print(" mean nothing to you?")
+					elseif roCount == 5 then
+						print("\nAlright wise-ass, that's enough.")
+					elseif roCount > 5 then
+						write("\nThat's ")
+						cWrite("read-only", colors.yellow, true)
+						print(", damn you!")
+					end
+				end
+				while true do
+					sleep(0.05)
+					if roCount < 5 then
+						write("Overwrite [Y/N]? Or [R]ename?\n")
+						c = choice("nry", false)
+					else
+						write("Overwrite [ /N]? Or [R]ename?\n")
+						c = choice("nr", false)
+					end
+					if c == 3 then
+						if fs.isReadOnly(writePath) then
+							roCount = roCount + 1
+							showROmessage(roCount)
+						else
+							break
+						end
+					elseif c == 1 then
+						print("Abort.")
+						return false
+					elseif c == 2 then
+						print("New name:")
+						if shell.dir() == "" then
+							write("/")
+						else
+							write("/" .. shell.dir() .. "/")
+						end
+						writePath = fs.combine(shell.dir(), read())
+						roCount = roCount + 1
+						if fs.isReadOnly(writePath) then
+							showROmessage(roCount)
+						else
+							break
+						end
+					end
+				end
+			end
+			local file = fs.open(writePath, "w")
+			file.write(input.contents)
+			file.close()
+			sWrite("Wrote to '")
+			cWrite(writePath, colors.yellow)
+			sWrite("'")
+		end
+	elseif not didAbort then
+		print("fail!")
+	end
+
+elseif mode == "pack" then
+
 	if not pastebinUpload then
 		if fs.isReadOnly(outputPath) then
 			error("Output path is read-only.")
 		elseif fs.exists(outputPath) and (outputPath ~= inputPath) then
 			doContinue, doOverwrite = overwriteOutputPath(inputPath, outputPath, false, justOverwrite)
+		elseif fs.combine("", outputPath) == "" then
+			error("Output path cannot be root.")
 		end
 		if not doContinue then
 			return false
@@ -549,7 +919,7 @@ local safeColorList = {[colors.white] = true,[colors.lightGray] = true,[colors.g
 local stc = function(color) if (term.isColor() or safeColorList[color]) then term.setTextColor(color) end end
 local archive = textutils.unserialize(]] ..
 
-textutils.serialize(archive) .. 
+textutils.serialize(archive) ..
 
 [[)
 if fs.isReadOnly(outputPath) then
@@ -585,7 +955,7 @@ write(outputPath .. "/")
 stc(colors.white)
 print("'.")
 ]])
-			
+
 		end
 		if pastebinUpload then
 			sWrite("Uploading to Pastebin...")
@@ -662,7 +1032,9 @@ elseif mode == "unpack" then -- unpack OR upload
 		if pastebinGet and directDownload then
 			error("Cannot do both pastebin get and direct download.")
 		elseif fs.isReadOnly(outputPath) then
-			error("Output path is read only.")
+			error("Output path is read-only.")
+		elseif fs.combine(outputPath, "") == "" then
+			error("Output path cannot be root.")
 		else
 			if pastebinGet then
 				url = "http://www.pastebin.com/raw/" .. pastebinGet
@@ -684,12 +1056,10 @@ elseif mode == "unpack" then -- unpack OR upload
 			sWrite("\"...")
 			local handle = http.get(url)
 			if handle then
-				setTextColor(colors.green)
-				sPrint("success!")
-				setTextColor(colors.white)
+				cPrint("success!", colors.green)
 				contents = handle.readAll()
 				handle.close()
-				
+
 				-- detects if you didn't solve the captcha, since archives commonly trigger anti-spam measures
 				if (
 					pastebinGet and
@@ -699,7 +1069,7 @@ elseif mode == "unpack" then -- unpack OR upload
 					specialPrint("You must go to '", url, "' and do the Captcha to be able to download that paste.", colors.yellow)
 					return false
 				end
-				
+
 				setTextColor(colors.lightGray)
 				sWrite("Parsing archive...")
 				archive = parseArchiveData(contents)
@@ -735,12 +1105,18 @@ elseif mode == "unpack" then -- unpack OR upload
 			setTextColor(colors.lightGray)
 			sWrite("Parsing archive...")
 			archive = parseArchive(inputPath)
-			setTextColor(colors.green)
-			sPrint("good")
-			if doOverwrite then
-				fs.delete(outputPath)
+			if archive then
+				setTextColor(colors.green)
+				sPrint("good")
+				if doOverwrite then
+					fs.delete(outputPath)
+				end
+				writeArchiveData(archive, outputPath)
+			else
+				setTextColor(colors.red)
+				sPrint("Invalid archive file.")
+				return false
 			end
-			writeArchiveData(archive, outputPath)
 		else
 			error("No such input path exists.")
 		end
@@ -753,9 +1129,9 @@ elseif mode == "inspect" then
 		local totalSize = 0
 		local amountOfFiles = 0
 		local averageSize = 0
-		
+
 		local output = {}
-		
+
 		if archive then
 			for k,v in pairs(archive) do
 				if k == "data" then
@@ -788,13 +1164,4 @@ elseif mode == "inspect" then
 		end
 	end
 
-elseif mode == "api" then
-	
-	return {
-		parseArchive = parseArchive,
-		parseArchiveData = parseArchiveData,
-		buildArchive = buildArchive,
-		uploadToPastebin = uploadToPastebin,
-	}
-	
 end
