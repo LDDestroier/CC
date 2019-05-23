@@ -1094,7 +1094,9 @@ elseif mode == "unpack" then -- unpack OR upload
 		end
 	else -- regular unpack
 		if exists then
-			if fs.exists(outputPath) and (outputPath ~= inputPath) or outputPath == shell.getRunningProgram() then
+			if fs.isReadOnly(outputPath) then
+				error("Output path is read-only.")
+			elseif fs.exists(outputPath) and (outputPath ~= inputPath) or outputPath == shell.getRunningProgram() then
 				doContinue, doOverwrite = overwriteOutputPath(inputPath, outputPath, true, justOverwrite)
 			end
 			if not doContinue then
