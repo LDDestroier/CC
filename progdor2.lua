@@ -353,7 +353,7 @@ end
 
 if argList["-h"] then
 	return showHelp(true)
-elseif argList["-a"] then
+elseif argList["-a"] or (not shell) then
 	mode = "api"
 elseif inputPath then
 	exists = fs.exists(inputPath)
