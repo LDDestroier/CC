@@ -37,6 +37,8 @@ local function interpretArgs(tInput, tArgs)
 	return output, errors
 end
 
+return interpretArgs
+
 --[[
 
 --example from progdor2
