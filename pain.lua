@@ -3000,468 +3000,480 @@ local listAllMonitors = function()
 end
 
 local getInput = function() --gotta catch them all
-	local button, x, y, oldmx, oldmy, origx, origy
-	local isDragging = false
-	local proceed = false
-	renderBar(barmsg)
-	while true do
-		doRender = false
-		local oldx,oldy = paint.scrollX,paint.scrollY
-		local evt = {getEvents("mouse_scroll","mouse_click", "mouse_drag","mouse_up","key","key_up",true)}
-		if (evt[1] == "mouse_scroll") and (not viewing) then
-			local dir = evt[2]
-			if dir == 1 then
-				if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
-					paint.t = paint.t * 2
-					if paint.t > 32768 then
-						paint.t = 32768
+	
+	local doot = function()
+		local button, x, y, oldmx, oldmy, origx, origy
+		local isDragging = false
+		local proceed = false
+		local evt, oldx, oldy = {}
+		local button, points, key, dir
+		renderBar(barmsg)
+		while true do
+			evt = {getEvents("mouse_scroll","mouse_click", "mouse_drag","mouse_up","key","key_up",true)}
+			
+			--doRender = false
+			oldx, oldy = paint.scrollX,paint.scrollY
+			
+			if (evt[1] == "mouse_scroll") and (not viewing) then
+				dir = evt[2]
+				if dir == 1 then
+					if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
+						paint.t = paint.t * 2
+						if paint.t > 32768 then
+							paint.t = 32768
+						end
+					else
+						paint.b = paint.b * 2
+						if paint.b > 32768 then
+							paint.b = 32768
+						end
 					end
 				else
-					paint.b = paint.b * 2
-					if paint.b > 32768 then
-						paint.b = 32768
-					end
-				end
-			else
-				if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
-					paint.t = math.ceil(paint.t / 2)
-					if paint.t < 1 then
-						paint.t = 1
-					end
-				else
-					paint.b = math.ceil(paint.b / 2)
-					if paint.b < 1 then
-						paint.b = 1
-					end
-				end
-			end
-			renderBar(barmsg)
-		elseif ((evt[1] == "mouse_click") or (evt[1] == "mouse_drag")) and (not viewing) then
-			if evt[1] == "mouse_click" then
-				origx, origy = evt[3], evt[4]
-			end
-			oldmx,oldmy = x or evt[3], y or evt[4]
-			lastMX,lastMY = evt[3],evt[4]
-			button,x,y = evt[2],evt[3],evt[4]
-			if plc.renderBlittle then
-				x = 2*x
-				y = 3*y
-				lastMX = 2*lastMX
-				lastMY = 3*lastMY
-			end
-			linePoses = {{x=oldmx,y=oldmy},{x=x,y=y}}
-			miceDown[button] = true
-			if y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
-				if (button == 3) then
-					putDownText(x,y)
-					miceDown = {}
-					keysDown = {}
-					doRender = true
-				elseif button == 1 then
-					if keysDown[keys.leftShift] and evt[1] == "mouse_click" then
-						isDragging = true
-					end
-					if isDragging then
-						if evt[1] == "mouse_click" or dontDragThisTime then
-							dragPoses[1] = {x=x,y=y}
+					if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
+						paint.t = math.ceil(paint.t / 2)
+						if paint.t < 1 then
+							paint.t = 1
 						end
-						dragPoses[2] = {x=x,y=y}
-						local points = getDotsInLine(dragPoses[1].x,dragPoses[1].y,dragPoses[2].x,dragPoses[2].y)
-						renderAllPAIN()
-						for a = 1, #points do
-							term.setCursorPos(points[a].x, points[a].y)
-							term.blit(paint.c, CTB(paint.t), CTB(paint.b))
+					else
+						paint.b = math.ceil(paint.b / 2)
+						if paint.b < 1 then
+							paint.b = 1
 						end
-					elseif (not dontDragThisTime) then
-						if evt[1] == "mouse_drag" then
-							local points = getDotsInLine(linePoses[1].x,linePoses[1].y,linePoses[2].x,linePoses[2].y)
-							for a = 1, #points do
-								putDotDown({x=points[a].x, y=points[a].y})
-							end
-						else
-							putDotDown({x=x, y=y})
-						end
-						plc.changedImage = true
-						doRender = true
 					end
-					dontDragThisTime = false
-				elseif button == 2 and y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
-					deleteDot(x+paint.scrollX,y+paint.scrollY)
-					plc.changedImage = true
-					doRender = true
 				end
-			elseif origy >= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
-				miceDown = {}
-				keysDown = {}
-				isDragging = false
-				local res = displayMenu()
-				if res == "exit" then break end
-				doRender = true
-			end
-		elseif (evt[1] == "mouse_up") and (not viewing) and (not plc.isCurrentlyFilling) then
-			origx,origy = 0,0
-			local button = evt[2]
-			miceDown[button] = false
-			oldmx,oldmy = nil,nil
-			lastMX, lastMY = nil,nil
-			if isDragging then
-				local points = getDotsInLine(dragPoses[1].x,dragPoses[1].y,dragPoses[2].x,dragPoses[2].y)
-				for a = 1, #points do
-					putDotDown({x=points[a].x, y=points[a].y})
+				renderBar(barmsg)
+			elseif ((evt[1] == "mouse_click") or (evt[1] == "mouse_drag")) and (not viewing) then
+				if evt[1] == "mouse_click" then
+					origx, origy = evt[3], evt[4]
 				end
-				plc.changedImage = true
-				doRender = true
-			end
-			saveToUndoBuffer()
-			isDragging = false
-		elseif evt[1] == "key" then
-			local key = evt[2]
-			if (isDragging or not keysDown[keys.leftShift]) and (keysDown[keys.tab]) then
-				if key == keys.right and (not keysDown[keys.right]) then
-					paint.scrollX = paint.scrollX + 1
-					doRender = true
-				elseif key == keys.left and (not keysDown[keys.left]) then
-					paint.scrollX = paint.scrollX - 1
-					doRender = true
-				end
-				if key == keys.down and (not keysDown[keys.down]) then
-					paint.scrollY = paint.scrollY + 1
-					doRender = true
-				elseif key == keys.up and (not keysDown[keys.up]) then
-					paint.scrollY = paint.scrollY - 1
-					doRender = true
-				end
-			end
-			keysDown[key] = true
-			if key == keys.space then
-				if keysDown[keys.leftShift] then
-					plc.evenDrawGrid = not plc.evenDrawGrid
-				else
-					doRenderBar = math.abs(doRenderBar-1)
-				end
-				doRender = true
-			end
-			if key == keys.b then
-				local blTerm, oldTerm = getBlittle()
-				plc.renderBlittle = not plc.renderBlittle
-				isDragging = false
-				term.setBackgroundColor(rendback.b)
-				term.clear()
+				oldmx,oldmy = x or evt[3], y or evt[4]
+				lastMX,lastMY = evt[3],evt[4]
+				button,x,y = evt[2],evt[3],evt[4]
 				if plc.renderBlittle then
-					term.redirect(blTerm)
-					blTerm.setVisible(true)
-				else
-					term.redirect(oldTerm)
-					blTerm.setVisible(false)
+					x = 2*x
+					y = 3*y
+					lastMX = 2*lastMX
+					lastMY = 3*lastMY
 				end
-				doRender = true
-				scr_x, scr_y = term.current().getSize()
-			end
-			if keysDown[keys.leftAlt] then
-				if (not plc.renderBlittle) then
-					if (key == keys.c) then
-						editFuncs.copy()
-					elseif (key == keys.x) then
-						editFuncs.cut()
-					elseif (key == keys.v) then
-						editFuncs.paste()
-					end
-				end
-			else
-				if (key == keys.c) and (not plc.renderBlittle) then
-					gotoCoords()
-					resetInputState()
-					doRender = true
-				end
-			end
-			if (keysDown[keys.leftShift]) and (not isDragging) then
-				if key == keys.left then
-					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],-1,0)
-					saveToUndoBuffer()
-					doRender = true
-					plc.changedImage = true
-				elseif key == keys.right then
-					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],1,0)
-					saveToUndoBuffer()
-					doRender = true
-					plc.changedImage = true
-				elseif key == keys.up then
-					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],0,-1)
-					saveToUndoBuffer()
-					doRender = true
-					plc.changedImage = true
-				elseif key == keys.down then
-					paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],0,1)
-					saveToUndoBuffer()
-					doRender = true
-					plc.changedImage = true
-				end
-			end
-			if keysDown[keys.leftAlt] then
-				if #paintEncoded > 1 then
-					if key == keys.equals and paintEncoded[frame+1] then --basically plus
-						local first = deepCopy(paintEncoded[frame])
-						local next = deepCopy(paintEncoded[frame+1])
-						paintEncoded[frame] = next
-						paintEncoded[frame+1] = first
-						frame = frame + 1
-						barmsg = "Swapped prev frame."
-						doRender = true
-						plc.changedImage = true
-						saveToUndoBuffer()
-					end
-					if key == keys.minus and paintEncoded[frame-1] then
-						local first = deepCopy(paintEncoded[frame])
-						local next = deepCopy(paintEncoded[frame-1])
-						paintEncoded[frame] = next
-						paintEncoded[frame-1] = first
-						frame = frame - 1
-						barmsg = "Swapped next frame."
-						doRender = true
-						plc.changedImage = true
-						saveToUndoBuffer()
-					end
-				end
-			elseif keysDown[keys.leftShift] then
-				if #paintEncoded > 1 then
-					if key == keys.equals and paintEncoded[frame+1] then --basically plus
-						for a = 1, #paintEncoded[frame] do
-							paintEncoded[frame+1][#paintEncoded[frame+1] + 1] = paintEncoded[frame][a]
-						end
-						table.remove(paintEncoded, frame)
-						paintEncoded = clearAllRedundant(paintEncoded)
-						barmsg = "Merged next frame."
-						doRender = true
-						plc.changedImage = true
-						saveToUndoBuffer()
-					end
-					if key == keys.minus and paintEncoded[frame-1] then
-						for a = 1, #paintEncoded[frame] do
-							paintEncoded[frame-1][#paintEncoded[frame-1] + 1] = paintEncoded[frame][a]
-						end
-						table.remove(paintEncoded, frame)
-						frame = frame - 1
-						paintEncoded = clearAllRedundant(paintEncoded)
-						barmsg = "Merged previous frame."
-						doRender = true
-						plc.changedImage = true
-						saveToUndoBuffer()
-					end
-				end
-			else
-				if key == keys.equals then --basically 'plus'
-					if plc.renderBlittle then
-						frame = frame + 1
-						if frame > #paintEncoded then frame = 1 end
-					else
-						if not paintEncoded[frame+1] then
-							paintEncoded[frame+1] = {}
-							local sheet = paintEncoded[frame]
-							if keysDown[keys.rightShift] then
-								paintEncoded[frame+1] = deepCopy(sheet)
-							end
-						end
-						frame = frame + 1
-					end
-					saveToUndoBuffer()
-					doRender = true
-					plc.changedImage = true
-				elseif key == keys.minus then
-					if plc.renderBlittle then
-						frame = frame - 1
-						if frame < 1 then frame = #paintEncoded end
-					else
-						if frame > 1 then
-							frame = frame - 1
-						end
-					end
-					saveToUndoBuffer()
-					doRender = true
-					plc.changedImage = true
-				end
-			end
-			if not plc.renderBlittle then
-				if key == keys.m then
-					local incum = bottomPrompt("Set meta: ",metaHistory)
-					paint.m = incum:gsub(" ","") ~= "" and incum or paint.m
-					if paint.m ~= metaHistory[#metaHistory] then
-						metaHistory[#metaHistory+1] = paint.m
-					end
-					doRender = true
-					isDragging = false
-				end
-				if key == keys.f7 then
-					plc.bepimode = not plc.bepimode
-					doRender = true
-				end
-				if key == keys.t then
-					renderBottomBar("Click to place text.")
-					local mevt
-					repeat
-						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-(plc.renderBlittle and 0 or doRenderBar))
-					if not (mevt[1] == "key" and mevt[2] == keys.x) then
-						local x,y = mevt[3],mevt[4]
-						if plc.renderBlittle then
-							x = 2*x
-							y = 3*y
-						end
+				linePoses = {{x=oldmx,y=oldmy},{x=x,y=y}}
+				miceDown[button] = true
+				if y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
+					if (button == 3) then
 						putDownText(x,y)
 						miceDown = {}
 						keysDown = {}
-					end
-					doRender = true
-					plc.changedImage = true
-					isDragging = false
-				end
-				if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) and (not plc.isCurrentlyFilling) then
-					renderBottomBar("Click to fill area.")
-					local mevt
-					repeat
-						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] <= 2 and (mevt[4] or scr_y) <= scr_y-(renderBlittle and 0 or doRenderBar))
-					if not (mevt[1] == "key" and mevt[2] == keys.x) then
-						local x,y = mevt[3],mevt[4]
-						if plc.renderBlittle then
-							x = 2*x
-							y = 3*y
+						doRender = true
+					elseif button == 1 then
+						if keysDown[keys.leftShift] and evt[1] == "mouse_click" then
+							isDragging = true
 						end
-						miceDown = {}
-						keysDown = {}
-						os.queueEvent("filltool_async", frame, x, y, paint, mevt[2] == 2)
-					end
-					doRender = true
-					plc.changedImage = true
-					isDragging = false
-				end
-				if key == keys.p then
-					renderBottomBar("Pick color with cursor:")
-					paintEncoded = clearAllRedundant(paintEncoded)
-					local mevt
-					repeat
-						mevt = {os.pullEvent()}
-					until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and mevt[4] <= scr_y)
-					if not (mevt[1] == "key" and mevt[2] == keys.x) then
-						local x, y = mevt[3]+paint.scrollX, mevt[4]+paint.scrollY
-						if plc.renderBlittle then
-							x = 2*x
-							y = 3*y
-						end
-						local p
-						for a = 1, #paintEncoded[frame] do
-							p = paintEncoded[frame][a]
-							if (p.x == x) and (p.y == y) then
-								paint.t = p.t or paint.t
-								paint.b = p.b or paint.b
-								paint.c = p.c or paint.c
-								paint.m = p.m or paint.m
-								miceDown = {}
-								keysDown = {}
-								doRender = true
-								isDragging = false
-								break
+						if isDragging then
+							if evt[1] == "mouse_click" or dontDragThisTime then
+								dragPoses[1] = {x=x,y=y}
 							end
+							dragPoses[2] = {x=x,y=y}
+							points = getDotsInLine(dragPoses[1].x,dragPoses[1].y,dragPoses[2].x,dragPoses[2].y)
+							renderAllPAIN()
+							for a = 1, #points do
+								term.setCursorPos(points[a].x, points[a].y)
+								term.blit(paint.c, CTB(paint.t), CTB(paint.b))
+							end
+						elseif (not dontDragThisTime) then
+							if evt[1] == "mouse_drag" then
+								points = getDotsInLine(linePoses[1].x,linePoses[1].y,linePoses[2].x,linePoses[2].y)
+								for a = 1, #points do
+									putDotDown({x=points[a].x, y=points[a].y})
+								end
+							else
+								putDotDown({x=x, y=y})
+							end
+							plc.changedImage = true
+							doRender = true
 						end
-						resetInputState()
+						dontDragThisTime = false
+					elseif button == 2 and y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
+						deleteDot(x+paint.scrollX,y+paint.scrollY)
+						plc.changedImage = true
+						doRender = true
 					end
-					doRender = true
-					isDragging = false
-				end
-				if (key == keys.leftCtrl or key == keys.rightCtrl) then
-					keysDown = {[207] = keysDown[207]}
+				elseif origy >= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
+					miceDown = {}
+					keysDown = {}
 					isDragging = false
 					local res = displayMenu()
-					paintEncoded = clearAllRedundant(paintEncoded)
 					if res == "exit" then break end
 					doRender = true
 				end
-			end
-			if (key == keys.f and keysDown[keys.leftShift]) then
-				local deredots = {}
-				plc.changedImage = true
-				for a = 1, #paintEncoded[frame] do
-					local dot = paintEncoded[frame][a]
-					if dot.x-paint.scrollX > 0 and dot.x-paint.scrollX <= scr_x then
-						if dot.y-paint.scrollY > 0 and dot.y-paint.scrollY <= scr_y then
-							deredots[#deredots+1] = {dot.x-paint.scrollX, dot.y-paint.scrollY}
-						end
+			elseif (evt[1] == "mouse_up") and (not viewing) and (not plc.isCurrentlyFilling) then
+				origx,origy = 0,0
+				button = evt[2]
+				miceDown[button] = false
+				oldmx,oldmy = nil,nil
+				lastMX, lastMY = nil,nil
+				if isDragging then
+					points = getDotsInLine(dragPoses[1].x,dragPoses[1].y,dragPoses[2].x,dragPoses[2].y)
+					for a = 1, #points do
+						putDotDown({x=points[a].x, y=points[a].y})
+					end
+					plc.changedImage = true
+					doRender = true
+				end
+				saveToUndoBuffer()
+				isDragging = false
+			elseif evt[1] == "key" then
+				key = evt[2]
+				if (isDragging or not keysDown[keys.leftShift]) and (keysDown[keys.tab]) then
+					if key == keys.right and (not keysDown[keys.right]) then
+						paint.scrollX = paint.scrollX + 1
+						doRender = true
+					elseif key == keys.left and (not keysDown[keys.left]) then
+						paint.scrollX = paint.scrollX - 1
+						doRender = true
+					end
+					if key == keys.down and (not keysDown[keys.down]) then
+						paint.scrollY = paint.scrollY + 1
+						doRender = true
+					elseif key == keys.up and (not keysDown[keys.up]) then
+						paint.scrollY = paint.scrollY - 1
+						doRender = true
 					end
 				end
-				for y = 1, scr_y do
-					for x = 1, scr_x do
-						local good = true
-						for a = 1, #deredots do
-							if (deredots[a][1] == x) and (deredots[a][2] == y) then
-								good = bad
-								break
+				keysDown[key] = true
+				if key == keys.space then
+					if keysDown[keys.leftShift] then
+						plc.evenDrawGrid = not plc.evenDrawGrid
+					else
+						doRenderBar = math.abs(doRenderBar-1)
+					end
+					doRender = true
+				end
+				if key == keys.b then
+					local blTerm, oldTerm = getBlittle()
+					plc.renderBlittle = not plc.renderBlittle
+					isDragging = false
+					term.setBackgroundColor(rendback.b)
+					term.clear()
+					if plc.renderBlittle then
+						term.redirect(blTerm)
+						blTerm.setVisible(true)
+					else
+						term.redirect(oldTerm)
+						blTerm.setVisible(false)
+					end
+					doRender = true
+					scr_x, scr_y = term.current().getSize()
+				end
+				if keysDown[keys.leftAlt] then
+					if (not plc.renderBlittle) then
+						if (key == keys.c) then
+							editFuncs.copy()
+						elseif (key == keys.x) then
+							editFuncs.cut()
+						elseif (key == keys.v) then
+							editFuncs.paste()
+						end
+					end
+				else
+					if (key == keys.c) and (not plc.renderBlittle) then
+						gotoCoords()
+						resetInputState()
+						doRender = true
+					end
+				end
+				if (keysDown[keys.leftShift]) and (not isDragging) then
+					if key == keys.left then
+						paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],-1,0)
+						saveToUndoBuffer()
+						doRender = true
+						plc.changedImage = true
+					elseif key == keys.right then
+						paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],1,0)
+						saveToUndoBuffer()
+						doRender = true
+						plc.changedImage = true
+					elseif key == keys.up then
+						paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],0,-1)
+						saveToUndoBuffer()
+						doRender = true
+						plc.changedImage = true
+					elseif key == keys.down then
+						paintEncoded[frame] = movePaintEncoded(paintEncoded[frame],0,1)
+						saveToUndoBuffer()
+						doRender = true
+						plc.changedImage = true
+					end
+				end
+				if keysDown[keys.leftAlt] then
+					if #paintEncoded > 1 then
+						if key == keys.equals and paintEncoded[frame+1] then --basically plus
+							local first = deepCopy(paintEncoded[frame])
+							local next = deepCopy(paintEncoded[frame+1])
+							paintEncoded[frame] = next
+							paintEncoded[frame+1] = first
+							frame = frame + 1
+							barmsg = "Swapped prev frame."
+							doRender = true
+							plc.changedImage = true
+							saveToUndoBuffer()
+						end
+						if key == keys.minus and paintEncoded[frame-1] then
+							local first = deepCopy(paintEncoded[frame])
+							local next = deepCopy(paintEncoded[frame-1])
+							paintEncoded[frame] = next
+							paintEncoded[frame-1] = first
+							frame = frame - 1
+							barmsg = "Swapped next frame."
+							doRender = true
+							plc.changedImage = true
+							saveToUndoBuffer()
+						end
+					end
+				elseif keysDown[keys.leftShift] then
+					if #paintEncoded > 1 then
+						if key == keys.equals and paintEncoded[frame+1] then --basically plus
+							for a = 1, #paintEncoded[frame] do
+								paintEncoded[frame+1][#paintEncoded[frame+1] + 1] = paintEncoded[frame][a]
+							end
+							table.remove(paintEncoded, frame)
+							paintEncoded = clearAllRedundant(paintEncoded)
+							barmsg = "Merged next frame."
+							doRender = true
+							plc.changedImage = true
+							saveToUndoBuffer()
+						end
+						if key == keys.minus and paintEncoded[frame-1] then
+							for a = 1, #paintEncoded[frame] do
+								paintEncoded[frame-1][#paintEncoded[frame-1] + 1] = paintEncoded[frame][a]
+							end
+							table.remove(paintEncoded, frame)
+							frame = frame - 1
+							paintEncoded = clearAllRedundant(paintEncoded)
+							barmsg = "Merged previous frame."
+							doRender = true
+							plc.changedImage = true
+							saveToUndoBuffer()
+						end
+					end
+				else
+					if key == keys.equals then --basically 'plus'
+						if plc.renderBlittle then
+							frame = frame + 1
+							if frame > #paintEncoded then frame = 1 end
+						else
+							if not paintEncoded[frame+1] then
+								paintEncoded[frame+1] = {}
+								local sheet = paintEncoded[frame]
+								if keysDown[keys.rightShift] then
+									paintEncoded[frame+1] = deepCopy(sheet)
+								end
+							end
+							frame = frame + 1
+						end
+						saveToUndoBuffer()
+						doRender = true
+						plc.changedImage = true
+					elseif key == keys.minus then
+						if plc.renderBlittle then
+							frame = frame - 1
+							if frame < 1 then frame = #paintEncoded end
+						else
+							if frame > 1 then
+								frame = frame - 1
 							end
 						end
-						if good then
-							putDotDown({x=x, y=y})
-						end
+						saveToUndoBuffer()
+						doRender = true
+						plc.changedImage = true
 					end
 				end
-				saveToUndoBuffer()
-				doRender = true
-			end
-			if key == keys.g then
-				paint.doGray = not paint.doGray
-				plc.changedImage = true
-				saveToUndoBuffer()
-				doRender = true
-			end
-			if key == keys.a then
-				paint.scrollX = 0
-				paint.scrollY = 0
-				doRender = true
-			end
-			if key == keys.n then
-				if keysDown[keys.leftShift] then
-					paint.c = specialCharSelector()
-				else
-					paint.c = boxCharSelector()
+				if not plc.renderBlittle then
+					if key == keys.m then
+						local incum = bottomPrompt("Set meta: ",metaHistory)
+						paint.m = incum:gsub(" ","") ~= "" and incum or paint.m
+						if paint.m ~= metaHistory[#metaHistory] then
+							metaHistory[#metaHistory+1] = paint.m
+						end
+						doRender = true
+						isDragging = false
+					end
+					if key == keys.f7 then
+						plc.bepimode = not plc.bepimode
+						doRender = true
+					end
+					if key == keys.t then
+						renderBottomBar("Click to place text.")
+						local mevt
+						repeat
+							mevt = {os.pullEvent()}
+						until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] == 1 and (mevt[4] or scr_y) <= scr_y-(plc.renderBlittle and 0 or doRenderBar))
+						if not (mevt[1] == "key" and mevt[2] == keys.x) then
+							local x,y = mevt[3],mevt[4]
+							if plc.renderBlittle then
+								x = 2*x
+								y = 3*y
+							end
+							putDownText(x,y)
+							miceDown = {}
+							keysDown = {}
+						end
+						doRender = true
+						plc.changedImage = true
+						isDragging = false
+					end
+					if key == keys.f and not (keysDown[keys.leftShift] or keysDown[keys.rightShift]) and (not plc.isCurrentlyFilling) then
+						renderBottomBar("Click to fill area.")
+						local mevt
+						repeat
+							mevt = {os.pullEvent()}
+						until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[1] == "mouse_click" and mevt[2] <= 2 and (mevt[4] or scr_y) <= scr_y-(renderBlittle and 0 or doRenderBar))
+						if not (mevt[1] == "key" and mevt[2] == keys.x) then
+							local x,y = mevt[3],mevt[4]
+							if plc.renderBlittle then
+								x = 2*x
+								y = 3*y
+							end
+							miceDown = {}
+							keysDown = {}
+							os.queueEvent("filltool_async", frame, x, y, paint, mevt[2] == 2)
+						end
+						doRender = true
+						plc.changedImage = true
+						isDragging = false
+					end
+					if key == keys.p then
+						renderBottomBar("Pick color with cursor:")
+						paintEncoded = clearAllRedundant(paintEncoded)
+						local mevt
+						repeat
+							mevt = {os.pullEvent()}
+						until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and mevt[4] <= scr_y)
+						if not (mevt[1] == "key" and mevt[2] == keys.x) then
+							local x, y = mevt[3]+paint.scrollX, mevt[4]+paint.scrollY
+							if plc.renderBlittle then
+								x = 2*x
+								y = 3*y
+							end
+							local p
+							for a = 1, #paintEncoded[frame] do
+								p = paintEncoded[frame][a]
+								if (p.x == x) and (p.y == y) then
+									paint.t = p.t or paint.t
+									paint.b = p.b or paint.b
+									paint.c = p.c or paint.c
+									paint.m = p.m or paint.m
+									miceDown = {}
+									keysDown = {}
+									doRender = true
+									isDragging = false
+									break
+								end
+							end
+							resetInputState()
+						end
+						doRender = true
+						isDragging = false
+					end
+					if (key == keys.leftCtrl or key == keys.rightCtrl) then
+						keysDown = {[207] = keysDown[207]}
+						isDragging = false
+						local res = displayMenu()
+						paintEncoded = clearAllRedundant(paintEncoded)
+						if res == "exit" then break end
+						doRender = true
+					end
 				end
-				resetInputState()
-				doRender = true
-			end
-			if key == keys.f1 then
-				guiHelp()
-				resetInputState()
-				isDragging = false
-			end
-			if key == keys.f3 then
-				listAllMonitors()
-				resetInputState()
-				isDragging = false
-			end
-			if key == keys.leftBracket then
-				os.queueEvent("mouse_scroll",2,1,1)
-			elseif key == keys.rightBracket then
-				os.queueEvent("mouse_scroll",1,1,1)
-			end
-			if key == keys.z then
-				if keysDown[keys.leftAlt] and plc.undoPos < #plc.undoBuffer then
-					doRedo()
-					barmsg = "Redood."
-					doRender = true
-				elseif plc.undoPos > 1 then
-					doUndo()
-					barmsg = "Undood."
+				if (key == keys.f and keysDown[keys.leftShift]) then
+					local deredots = {}
+					plc.changedImage = true
+					for a = 1, #paintEncoded[frame] do
+						local dot = paintEncoded[frame][a]
+						if dot.x-paint.scrollX > 0 and dot.x-paint.scrollX <= scr_x then
+							if dot.y-paint.scrollY > 0 and dot.y-paint.scrollY <= scr_y then
+								deredots[#deredots+1] = {dot.x-paint.scrollX, dot.y-paint.scrollY}
+							end
+						end
+					end
+					for y = 1, scr_y do
+						for x = 1, scr_x do
+							local good = true
+							for a = 1, #deredots do
+								if (deredots[a][1] == x) and (deredots[a][2] == y) then
+									good = bad
+									break
+								end
+							end
+							if good then
+								putDotDown({x=x, y=y})
+							end
+						end
+					end
+					saveToUndoBuffer()
 					doRender = true
 				end
+				if key == keys.g then
+					paint.doGray = not paint.doGray
+					plc.changedImage = true
+					saveToUndoBuffer()
+					doRender = true
+				end
+				if key == keys.a then
+					paint.scrollX = 0
+					paint.scrollY = 0
+					doRender = true
+				end
+				if key == keys.n then
+					if keysDown[keys.leftShift] then
+						paint.c = specialCharSelector()
+					else
+						paint.c = boxCharSelector()
+					end
+					resetInputState()
+					doRender = true
+				end
+				if key == keys.f1 then
+					guiHelp()
+					resetInputState()
+					isDragging = false
+				end
+				if key == keys.f3 then
+					listAllMonitors()
+					resetInputState()
+					isDragging = false
+				end
+				if key == keys.leftBracket then
+					os.queueEvent("mouse_scroll",2,1,1)
+				elseif key == keys.rightBracket then
+					os.queueEvent("mouse_scroll",1,1,1)
+				end
+				if key == keys.z then
+					if keysDown[keys.leftAlt] and plc.undoPos < #plc.undoBuffer then
+						doRedo()
+						barmsg = "Redood."
+						doRender = true
+					elseif plc.undoPos > 1 then
+						doUndo()
+						barmsg = "Undood."
+						doRender = true
+					end
+				end
+			elseif evt[1] == "key_up" then
+				local key = evt[2]
+				keysDown[key] = false
 			end
-		elseif evt[1] == "key_up" then
-			local key = evt[2]
-			keysDown[key] = false
-		end
-		if (oldx~=paint.scrollX) or (oldy~=paint.scrollY) then
-			doRender = true
-		end
-		if doRender then
-			renderAllPAIN()
-			doRender = false
+			if (oldx~=paint.scrollX) or (oldy~=paint.scrollY) then
+				doRender = true
+			end
 		end
 	end
+	parallel.waitForAny(doot, function()
+		while true do
+			sleep(0.05)
+			if doRender then
+				renderAllPAIN()
+				doRender = false
+			end
+		end
+	end)
 end
 
 runPainEditor = function(...) --needs to be cleaned up
