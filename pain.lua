@@ -2281,6 +2281,7 @@ local blockEnlargeFrame = function(frameNo)
 end
 
 local displayMenu = function()
+	doRender = false
 	menuOptions = {"File","Edit","Window","Set","About","Exit"}
 	local diss = " "..tableconcat(menuOptions," ")
 	local cleary = scr_y-math.floor(#diss/scr_x)
@@ -2291,7 +2292,6 @@ local displayMenu = function()
 		if paint.doGray then
 			output = convertToGrayscale(output)
 		end
-		doRender = true
 		if not plc.fileName then
 			renderBottomBar("Save as: ")
 			local fnguess = read()
@@ -2385,7 +2385,6 @@ local displayMenu = function()
 		else
 			exportMode = getRightToIt
 		end
-		doRender = true
 		if exportMode == false then return false end
 		local pe, exportName, writeIndent, result
 		if exportMode == 4 then
@@ -2464,12 +2463,10 @@ local displayMenu = function()
 			saveToUndoBuffer()
 			barmsg = "Cleared frame "..frame.."."
 		end
-		doRender = true
 	end
 
 	local editDelFrame = function()
 		local outcum = bottomPrompt("Thou art sure? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
-		doRender = true
 		if outcum == "y" then
 			if #paintEncoded == 1 then
 				return editClear(true)
@@ -2507,7 +2504,6 @@ local displayMenu = function()
 			saveToUndoBuffer()
 			barmsg = "Cropped frame."
 		end
-		doRender = true
 	end
 	local editBoxCharSelector = function()
 		paint.c = boxCharSelector()
@@ -2618,7 +2614,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 	local menuFunctions = {
 		[1] = function() --File
 			while true do
-				--renderAllPAIN()
 				local output, longestLen = makeSubMenu(1,cleary-1,{
 					"Save",
 					"Save As",
@@ -2626,7 +2621,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					"Open",
 					((peripheral.find("printer")) and "Print" or nil)
 				})
-				doRender = true
 				if output == 1 then -- Save
 					local _fname = fileExport(_,plc.defaultSaveFormat,plc.fileName)
 					if _fname then
@@ -2643,6 +2637,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 						plc.fileName = oldfilename
 					end
 					barmsg = "Saved as '"..plc.fileName.."'"
+					break
 				elseif output == 3 then --Export
 					local res = fileExport(longestLen+1)
 					if res then
@@ -2664,7 +2659,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 							plc.undoBuffer = {deepCopy(paintEncoded)}
 							barmsg = "Opened '" .. fs.getName(newPath) .. "'"
 							paint.scrollX, paint.scrollY, paint.doGray = 1, 1, false
-							doRender = true
 						end
 					end
 					break
@@ -2690,7 +2684,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				"Cut Region",
 				"Paste Region"
 			})
-			doRender = true
 			if output == 1 then
 				editDelFrame()
 			elseif output == 2 then
@@ -2720,7 +2713,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 						end
 					end
 					saveToUndoBuffer()
-					doRender = true
 					barmsg = "Shrunk image."
 				end
 			elseif output == 7 then
@@ -2741,7 +2733,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				"Set Scroll XY",
 				"Set Grid Colors"
 			})
-			doRender = true
 			if output == 1 then
 				windowSetScrSize()
 			elseif output == 2 then
@@ -2749,7 +2740,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			elseif output == 3 then
 				rendback.b = paint.b
 				rendback.t = paint.t
-				doRender = true
 			elseif output == false then
 				return "nobreak"
 			end
@@ -2794,14 +2784,12 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				"File Formats",
 				"Help!"
 			})
-			doRender = true
 			if output == 1 then
 				aboutPAIN()
 			elseif output == 2 then
 				aboutFileFormats()
 			elseif output == 3 then
 				guiHelp()
-				doRender = true
 			end
 		end,
 		[6] = function() --Exit
@@ -2811,7 +2799,6 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				if outcum == "y" then
 					return "exit"
 				else
-					doRender = true
 					return nil
 				end
 			else
@@ -2867,10 +2854,12 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 				local res = menuFunctions[cursor]()
 				resetInputState()
 				if res == "exit" then
+					doRender = true
 					return "exit"
 				elseif res == "nobreak" then
 					reRenderPAIN(true)
 				else
+					doRender = true
 					return
 				end
 			elseif key == keys.leftCtrl or key == keys.rightCtrl then
@@ -2887,8 +2876,8 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 			end
 		elseif event == "mouse_click" or event == "mouse_up" then
 			if y < cleary then
-				doRender = true
 				resetInputState()
+				doRender = true
 				return
 			elseif key == 1 and initial+clickdelay < os.time() then --key? more like button
 				for a = 1, #menuPoses do
@@ -2900,6 +2889,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 							os.queueEvent("queue")
 							os.pullEvent("queue")
 							resetInputState()
+							doRender = true
 							if res == "exit" then
 								return "exit"
 							else
@@ -3000,7 +2990,7 @@ local listAllMonitors = function()
 end
 
 local getInput = function() --gotta catch them all
-	
+	local drawEveryEvent = false
 	local doot = function()
 		local button, x, y, oldmx, oldmy, origx, origy
 		local isDragging = false
@@ -3463,17 +3453,25 @@ local getInput = function() --gotta catch them all
 			if (oldx~=paint.scrollX) or (oldy~=paint.scrollY) then
 				doRender = true
 			end
-		end
-	end
-	parallel.waitForAny(doot, function()
-		while true do
-			sleep(0.05)
-			if doRender then
+			if drawEveryEvent and doRender then
 				renderAllPAIN()
 				doRender = false
 			end
 		end
-	end)
+	end
+	if drawEveryEvent then
+		doot()
+	else
+		parallel.waitForAny(doot, function()
+			while true do
+				sleep(0.05)
+				if doRender then
+					renderAllPAIN()
+					doRender = false
+				end
+			end
+		end)
+	end
 end
 
 runPainEditor = function(...) --needs to be cleaned up
