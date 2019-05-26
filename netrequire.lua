@@ -13,12 +13,19 @@ local function netrequire(_name, alwaysDownload, ...)
 		local url = "https://github.com/LDDestroier/CC/raw/master/netrequire/" .. name
 		local net = http.get(url)
 		if net then
-			local contents = net.readAll()
+			url = net.readLine()
 			net.close()
-			local file = fs.open(fs.combine(DL_path, name), "w")
-			file.write(contents)
-			file.close()
-			return loadstring(contents)(...)
+			net = http.get(url)
+			if net then
+				local contents = net.readAll()
+				net.close()
+				local file = fs.open(fs.combine(DL_path, name), "w")
+				file.write(contents)
+				file.close()
+				return loadstring(contents)(...)
+			else
+				error("Couldn't connect to '" .. url .. "'")
+			end
 		else
 			error("Cannot find any such API '" .. name .. "'")
 		end
