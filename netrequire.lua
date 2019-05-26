@@ -3,8 +3,8 @@ local function netrequire(_name, alwaysDownload, ...)
 	local DL_path = ".netrequire_storage"
 	
 	local name
-	if _name:sub(-4, -1) ~= ".lua" then
-		name = _name .. ".lua"
+	if _name:sub(-4, -1) == ".lua" then
+		name = _name:sub(1, -5)
 	else
 		name = _name
 	end
