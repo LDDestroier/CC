@@ -2635,15 +2635,16 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 					local res = fileExport(_,plc.defaultSaveFormat)
 					if not res then
 						plc.fileName = oldfilename
+					else
+						barmsg = "Saved as '"..plc.fileName.."'"
 					end
-					barmsg = "Saved as '"..plc.fileName.."'"
 					break
 				elseif output == 3 then --Export
 					local res = fileExport(longestLen+1)
 					if res then
 						barmsg = "Exported as '"..res.."'"
-						break
 					end
+					break
 				elseif output == 4 then -- Open
 					renderBottomBar("Pick an image file.")
 					local newPath = lddfm.makeMenu(2, 2, scr_x-1, scr_y-2, fs.getDir(plc.fileName or plc.progname), false, false, false, true, false, nil, true)
