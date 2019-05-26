@@ -1,4 +1,3 @@
 https://github.com/LDDestroier/CC/raw/master/argparser.lua
-true
 
 This is an argument parsing function that can take flags (with or without type-checked parameters) and regular arguments in any order.
