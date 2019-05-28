@@ -2509,7 +2509,7 @@ local displayMenu = function()
 		paint.c = boxCharSelector()
 	end
 	local editSpecialCharSelector = function()
-		paint.c = boxCharSelector()
+		paint.c = specialCharSelector()
 	end
 
 	local windowSetScrSize = function()
