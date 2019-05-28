@@ -4,6 +4,7 @@ local scr_x, scr_y = term.getSize()
 local mx, my = scr_x/2, scr_y/2		-- midpoint of screen
 local keysDown = {}					-- list of all pushed keys
 local miceDown = {}					-- list of all clicked mice buttons
+local miceQueue = {}				-- queues all mouse events for use with tool engine
 local dragPoses = {{{},{}}, {{},{}}, {{},{}}}	-- records initial and current mouse position per button while scrolling
 
 local TICKNO = 0				-- iterates every time main() loops
@@ -36,6 +37,9 @@ local pain = {
 		width = scr_x,
 		height = scr_y
 	},
+	guideWidth = scr_x,
+	guideHeight = scr_y,
+	guideLeftAdj = 2,
 	dots = {
 		[0] = {
 			" ",
@@ -917,6 +921,54 @@ local control = {
 			[keys.leftShift] = true
 		},
 	},
+	adjustPaletteTextUp = {
+		mouse = "mouse_scroll",
+		direction = 1,
+		holdDown = true,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	adjustPaletteBackgroundUp = {
+		mouse = "mouse_scroll",
+		direction = 1,
+		holdDown = true,
+		modifiers = {},
+	},
+	adjustPaletteTextDown = {
+		mouse = "mouse_scroll",
+		direction = -1,
+		holdDown = true,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	adjustPaletteBackgroundDown = {
+		mouse = "mouse_scroll",
+		direction = -1,
+		holdDown = true,
+		modifiers = {},
+	},
+	adjustPaletteTextUp_Alt = {
+		key = keys.rightBracket,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	adjustPaletteBackgroundUp_Alt = {
+		key = keys.rightBracket,
+		modifiers = {},
+	},
+	adjustPaletteTextDown_Alt = {
+		key = keys.leftBracket,
+		modifiers = {
+			[keys.leftShift] = true
+		},
+	},
+	adjustPaletteBackgroundDown_Alt = {
+		key = keys.leftBracket,
+		modifiers = {},
+	},
 	selectPalette_0 = {
 		key = keys.zero,
 		holdDown = false,
@@ -970,12 +1022,16 @@ local control = {
 	selectNextPalette = {
 		key = keys.rightBracket,
 		holdDown = false,
-		modifiers = {},
+		modifiers = {
+			[keys.leftAlt] = true
+		},
 	},
 	selectPrevPalette = {
 		key = keys.leftBracket,
 		holdDown = false,
-		modifiers = {},
+		modifiers = {
+			[keys.leftAlt] = true
+		},
 	},
 }
 
@@ -999,18 +1055,36 @@ local checkControl = function(name)
 			end
 		end
 	end
-	if keysDown[control[name].key] then
-		if control[name].holdDown then
-			return true
-		else
-			if not controlHoldCheck[name] then
-				controlHoldCheck[name] = true
+	if control[name].key then
+		if keysDown[control[name].key] then
+			if control[name].holdDown then
 				return true
+			else
+				if not controlHoldCheck[name] then
+					controlHoldCheck[name] = true
+					return true
+				end
+			end
+		else
+			controlHoldCheck[name] = false
+			return false
+		end
+	elseif control[name].mouse then
+		if miceQueue[#miceQueue] then
+			if miceQueue[#miceQueue][1] == control[name].mouse and miceQueue[#miceQueue][2] == control[name].direction then
+				if control[name].holdDown then
+					return true
+				else
+					if not controlHoldCheck[name] then
+						controlHoldCheck[name] = true
+						return true
+					end
+				end
+			else
+				controlHoldCheck[name] = false
+				return false
 			end
 		end
-	else
-		controlHoldCheck[name] = false
-		return false
 	end
 end
 
@@ -1115,6 +1189,8 @@ end
 local dragPos = {}
 
 local getGridAtPos = function(x, y)
+	local guide1 = "SCREEN SIZE"
+	local guide2 = "BLITTLE SIZE"
 	local grid = {
 		"..%%",
 		"..%%",
@@ -1126,6 +1202,31 @@ local getGridAtPos = function(x, y)
 	if x < 1 or y < 1 then
 		return "/", "7", "f"
 	else
+		if y <= pain.guideHeight then
+			if x == 1 + (pain.guideWidth) or x == 1 + 2 * pain.guideWidth then
+				return "@", "7", "f"
+			end
+		elseif y == 1 + pain.guideHeight then
+			if x == 1 + 2 * pain.guideWidth then
+				return "@", "7", "f"
+			elseif x <= pain.guideWidth - #guide1 - pain.guideLeftAdj or (x >= pain.guideWidth - pain.guideLeftAdj + 1 and x <= 1 + pain.guideWidth) then
+				return "@", "7", "f"
+			elseif x <= pain.guideWidth then
+				local xx = x - (pain.guideWidth - #guide1 - pain.guideLeftAdj)
+				return guide1:sub(xx, xx), "7", "f"
+			end
+		elseif y <= pain.guideHeight * 3 then
+			if x == 1 + 2 * pain.guideWidth then
+				return "@", "7", "f"
+			end
+		elseif y == pain.guideHeight * 3 + 1 then
+			if x <= 2 * pain.guideWidth - #guide2 + -pain.guideLeftAdj or (x >= 2 * pain.guideWidth - pain.guideLeftAdj + 1 and x <= 1 + 2 * pain.guideWidth) then
+				return "@", "7", "f"
+			elseif x <= 2 * pain.guideWidth then
+				local xx = x - (2 * pain.guideWidth - #guide2 - pain.guideLeftAdj)
+				return guide2:sub(xx, xx), "7", "f"
+			end
+		end
 		local sx, sy = 1 + (1 + x) % #grid[1], 1 + (2 + y) % #grid
 		return grid[sy]:sub(sx,sx), "7", "f"
 	end
@@ -1320,7 +1421,9 @@ local tryTool = function()
 		swapArg = t.info.swapArg or {}
 		t = tools[t.info.swapTool]
 	end
+
 	swapArg.actButton = miceDown[3] and 1
+
 	for butt = 1, 3 do
 		if miceDown[butt] and t then
 			t.run({
@@ -1540,6 +1643,9 @@ local getInput = function()
 				dragPoses[evt[2]] = {{},{}}, {{},{}}, {{},{}}
 			end
 			miceDown[evt[2]] = false
+		elseif evt[1] == "mouse_scroll" then
+			-- capture scroll events for special use
+			miceQueue[#miceQueue + 1] = evt
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = false
 			keysDown[keySwapList[evt[2]] or evt[2]] = false
@@ -1547,114 +1653,151 @@ local getInput = function()
 	end
 end
 
+-- asynchronously renders the screen
+local asyncRender = function()
+	while true do
+		os.pullEvent("pain_main_looped")
+		if pain.doRender and not pain.paused then
+			render()
+			pain.doRender = false
+		end
+		sleep(0.05)
+		os.queueEvent("pain_render_looped")
+	end
+end
+
 -- executes everything that doesn't run asynchronously
 main = function()
-	while true do
+	local evt
+	parallel.waitForAny(asyncRender, function()
+		while true do
 
-		if not pain.paused then
+			if not pain.paused then
 
-			if pain.doRender then
-				render()
-				pain.doRender = false
-			end
+				if checkControl("quit") then
+					return true
+				end
 
-			if checkControl("quit") then
-				return true
-			end
-
-			-- handle scrolling
-			if checkControl("resetScroll") then
-				pain.scrollX = 0
-				pain.scrollY = 0
-				pain.doRender = true
-			else
-				if checkControl("increaseBrushSize") or checkControl("increaseBrushSize_Alt") then
-					pain.brushSize = math.min(pain.brushSize + 1, 16)
-					setBarMsg("Increased brush size to " .. pain.brushSize .. ".")
-				elseif checkControl("decreaseBrushSize") or checkControl("decreaseBrushSize_Alt") then
-					pain.brushSize = math.max(pain.brushSize - 1, 1)
-					setBarMsg("Decreased brush size to " .. pain.brushSize .. ".")
-				elseif checkControl("scrollLeft") then
-					pain.scrollX = pain.scrollX - 1
+				if checkControl("adjustPaletteTextDown") or checkControl("adjustPaletteTextDown_Alt") then
+					pain.dots[pain.dot][2] = to_blit[math.max(1, to_colors[pain.dots[pain.dot][2]] / 2)]
 					pain.doRender = true
 				end
-				if checkControl("scrollRight") then
-					pain.scrollX = pain.scrollX + 1
+
+				if checkControl("adjustPaletteTextUp") or checkControl("adjustPaletteTextUp_Alt") then
+					pain.dots[pain.dot][2] = to_blit[math.min(2^15, to_colors[pain.dots[pain.dot][2]] * 2)]
 					pain.doRender = true
 				end
-				if checkControl("scrollUp") then
-					pain.scrollY = pain.scrollY - 1
+
+				if checkControl("adjustPaletteBackgroundDown") or checkControl("adjustPaletteBackgroundDown_Alt") then
+					pain.dots[pain.dot][3] = to_blit[math.max(1, to_colors[pain.dots[pain.dot][3]] / 2)]
 					pain.doRender = true
 				end
-				if checkControl("scrollDown") then
-					pain.scrollY = pain.scrollY + 1
+
+				if checkControl("adjustPaletteBackgroundUp") or checkControl("adjustPaletteBackgroundUp_Alt") then
+					pain.dots[pain.dot][3] = to_blit[math.min(2^15, to_colors[pain.dots[pain.dot][3]] * 2)]
 					pain.doRender = true
 				end
-			end
-			if checkControl("selectNextPalette") then
-				if pain.dot < #pain.dots then
-					pain.dot = pain.dot + 1
-					flashPaletteOnBar = 6
-					setBarMsg("Switched to next palette " .. pain.dot .. ".")
+
+				-- handle scrolling
+				if checkControl("resetScroll") then
+					pain.scrollX = 0
+					pain.scrollY = 0
+					pain.doRender = true
 				else
-					setBarMsg("Reached end of palette list.")
-				end
-			end
-			if checkControl("selectPrevPalette") then
-				if pain.dot > 1 then
-					pain.dot = pain.dot - 1
-					flashPaletteOnBar = 6
-					setBarMsg("Switched to previous palette " .. pain.dot .. ".")
-				else
-					setBarMsg("Reached beginning of palette list.")
-				end
-			end
-			for i = 0, 9 do
-				if checkControl("selectPalette_" .. i) then
-					if pain.dots[i] then
-						pain.dot = i
-						flashPaletteOnBar = 6
-						setBarMsg("Selected palette " .. pain.dot .. ".")
-						break
-					else
-						setBarMsg("There is no palette " .. i .. ".")
-						break
+					if checkControl("increaseBrushSize") or checkControl("increaseBrushSize_Alt") then
+						pain.brushSize = math.min(pain.brushSize + 1, 16)
+						setBarMsg("Increased brush size to " .. pain.brushSize .. ".")
+					elseif checkControl("decreaseBrushSize") or checkControl("decreaseBrushSize_Alt") then
+						pain.brushSize = math.max(pain.brushSize - 1, 1)
+						setBarMsg("Decreased brush size to " .. pain.brushSize .. ".")
+					elseif checkControl("scrollLeft") then
+						pain.scrollX = pain.scrollX - 1
+						pain.doRender = true
+					end
+					if checkControl("scrollRight") then
+						pain.scrollX = pain.scrollX + 1
+						pain.doRender = true
+					end
+					if checkControl("scrollUp") then
+						pain.scrollY = pain.scrollY - 1
+						pain.doRender = true
+					end
+					if checkControl("scrollDown") then
+						pain.scrollY = pain.scrollY + 1
+						pain.doRender = true
 					end
 				end
-			end
-			if checkControl("pencilTool") then
-				pain.tool = "pencil"
-				setBarMsg("Selected pencil tool.")
-			elseif checkControl("textTool") then
-				pain.tool = "text"
-				setBarMsg("Selected text tool.")
-			elseif checkControl("brushTool") then
-				pain.tool = "brush"
-				setBarMsg("Selected brush tool.")
-			elseif checkControl("lineTool") then
-				pain.tool = "line"
-				setBarMsg("Selected line tool.")
+				if checkControl("selectNextPalette") then
+					if pain.dot < #pain.dots then
+						pain.dot = pain.dot + 1
+						flashPaletteOnBar = 6
+						setBarMsg("Switched to next palette " .. pain.dot .. ".")
+					else
+						setBarMsg("Reached end of palette list.")
+					end
+				end
+				if checkControl("selectPrevPalette") then
+					if pain.dot > 1 then
+						pain.dot = pain.dot - 1
+						flashPaletteOnBar = 6
+						setBarMsg("Switched to previous palette " .. pain.dot .. ".")
+					else
+						setBarMsg("Reached beginning of palette list.")
+					end
+				end
+				for i = 0, 9 do
+					if checkControl("selectPalette_" .. i) then
+						if pain.dots[i] then
+							pain.dot = i
+							flashPaletteOnBar = 6
+							setBarMsg("Selected palette " .. pain.dot .. ".")
+							break
+						else
+							setBarMsg("There is no palette " .. i .. ".")
+							break
+						end
+					end
+				end
+				if checkControl("pencilTool") then
+					pain.tool = "pencil"
+					setBarMsg("Selected pencil tool.")
+				elseif checkControl("textTool") then
+					pain.tool = "text"
+					setBarMsg("Selected text tool.")
+				elseif checkControl("brushTool") then
+					pain.tool = "brush"
+					setBarMsg("Selected brush tool.")
+				elseif checkControl("lineTool") then
+					pain.tool = "line"
+					setBarMsg("Selected line tool.")
+				end
+
+				-- decrement bar life and palette number indicator
+				-- if it's gonna hit zero, make sure it re-renders
+
+				if pain.barlife == 1 then
+					pain.doRender = true
+				end
+				pain.barlife = math.max(pain.barlife - 1, 0)
+
+				if flashPaletteOnBar == 1 then
+					pain.doRender = true
+				end
+				flashPaletteOnBar = math.max(flashPaletteOnBar - 1, 0)
+
 			end
 
-			-- decrement bar life and palette number indicator
-			-- if it's gonna hit zero, make sure it re-renders
-
-			if pain.barlife == 1 then
-				pain.doRender = true
+			if #miceQueue > 0 then
+				miceQueue[#miceQueue] = nil
 			end
-			pain.barlife = math.max(pain.barlife - 1, 0)
 
-			if flashPaletteOnBar == 1 then
-				pain.doRender = true
-			end
-			flashPaletteOnBar = math.max(flashPaletteOnBar - 1, 0)
+			TICKNO = TICKNO + 1
+
+			os.queueEvent("pain_main_looped")
+			os.pullEvent("pain_render_looped")
 
 		end
-
-		TICKNO = TICKNO + 1
-		sleep(0.05)
-
-	end
+	end)
 end
 
 local keepTryingTools = function()
