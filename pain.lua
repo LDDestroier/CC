@@ -2571,9 +2571,11 @@ Advanced Paint Program
 
 PAIN is a multi-frame paint program with the intention of becoming a stable, well-used, and mondo-useful CC drawing utility.
 
-The main focus during development is to add more functions that you might see in MSPAINT such as lines or a proper fill tool (which I don't have, grr hiss boo), as well as to export/import to and from as many image formats as possible.
+The main focus during development is to add many functions that you might see in real programs like MSPAINT, such as lines or a proper fill tool, as well as to export/import to and from as many image formats as possible.
 
-My ultimate goal is to have PAIN be the default paint program for most every operating system on the forums. In order to do this, I'll need to make sure that PAIN is stable, easy to use, and can be easily limited by an OS to work with more menial tasks like making a single icon or what have you.
+My ultimate goal is to have PAIN be the default paint program for most every operating system on the forums (for what it's worth). In order to do this, I'll need to make sure that PAIN is stable, easy to use, and can be easily limited by an OS to work with more menial tasks like making a single icon or what have you.
+		
+I hope my PAIN brings you joy.
 ]]
 		guiHelp(helpText)
 	end
