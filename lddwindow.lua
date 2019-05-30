@@ -190,9 +190,9 @@ lddwindow.newWindow = function(nativeTerm, x, y, width, height, visible)
 			for i = 1, #char do
 				cx = -1 + i + output.info.cursorX
 				if cx >= 1 and cx <= output.info.width then
-					output.info.buffer[1][cy][cx] = stringSub(char, i, i)
-					output.info.buffer[2][cy][cx] = stringSub(text, i, i)
-					output.info.buffer[3][cy][cx] = stringSub(back, i, i)
+					output.info.buffer[1][output.info.cursorY][cx] = stringSub(char, i, i)
+					output.info.buffer[2][output.info.cursorY][cx] = stringSub(text, i, i)
+					output.info.buffer[3][output.info.cursorY][cx] = stringSub(back, i, i)
 				end
 			end
 		end
