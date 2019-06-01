@@ -703,22 +703,20 @@ elseif trMode == "transmit" then
 		cPrint("good", colors.green)
 		sWrite("Sent '")
 		cWrite(fs.getName(inputPath), colors.yellow)
-		sWrite("' using Skynet.")
+		sPrint("' using Skynet.")
 	else
+		modem, grr = getModem()
 		if not modem then
-			modem, grr = getModem()
-			if not modem then
-				print(grr)
-				print("Abort.")
-				return false
-			end
+			print(grr)
+			print("Abort.")
+			return false
 		end
 		cWrite("Sending file...", colors.lightGray)
 		modem.transmit(progdor.channel, progdor.channel, output)
 		cPrint("good", colors.green)
 		sWrite("Sent '")
 		cWrite(fs.getName(inputPath), colors.yellow)
-		sWrite("' using modem.")
+		sPrint("' using modem.")
 	end
 
 elseif trMode == "receive" then
@@ -775,13 +773,12 @@ elseif trMode == "receive" then
 	else
 		modem, grr = getModem()
 		if not modem then
-			error("is it open? " .. modem.isOpen(progdor.channel))
 			print(grr)
 			print("Abort.")
 			sleep(0.05)
 			return false
 		end
-		--modem.open(progdor.channel)
+		modem.open(progdor.channel)
 		local evt
 		cWrite("Waiting for file...", colors.lightGray)
 		sleep(0.05)
@@ -884,7 +881,7 @@ elseif trMode == "receive" then
 			file.close()
 			sWrite("Wrote to '")
 			cWrite(writePath, colors.yellow)
-			sWrite("'")
+			sPrint("'")
 		end
 	elseif not didAbort then
 		print("fail!")
