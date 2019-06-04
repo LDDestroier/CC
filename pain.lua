@@ -230,7 +230,7 @@ local getEvents = function(...)
 					return {}
 				end
 			elseif output[1] == arg[a] then
-				return unpack(output)
+				return table.unpack(output)
 			end
 		end
 	end
