@@ -5,6 +5,37 @@ local tArg = {...}
 
 local instances = {}
 local configPath = ".workspace_config"	-- finish later
+
+-- a custom shell that records the last ran program
+local customShell = function()
+	local sHistory = {}
+	term.setTextColor(colors.yellow)
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	term.setCursorPos(1, 1)
+	term.write(os.version() .. " (Workspace)")
+	term.setCursorPos(1, 2)
+
+	-- some code is directly taken from rom/programs/shell.lua
+	-- oh well
+
+	local input
+	while true do
+		term.setTextColor(colors.yellow)
+		write( shell.dir() .. "> " )
+		term.setTextColor(colors.white)
+		if settings.get( "shell.autocomplete" ) then
+            input = read( nil, tCommandHistory, shell.complete )
+        else
+            input = read( nil, tCommandHistory )
+        end
+		if input:match("%S") and sHistory[#sHistory] ~= input then
+			sHistory[#sHistory + 1] = input
+		end
+		shell.run(input)
+	end
+end
+
 local config = {
 	workspaceMoveSpeed = 0.1,
 	defaultProgram = "rom/programs/shell.lua",
@@ -18,6 +49,9 @@ local config = {
 
 -- values determined after every new/removed workspace
 local gridWidth, gridHeight, gridMinX, gridMinY
+
+-- used by argument parser
+local argList, argErrors
 
 local getMapSize = function()
 	local xmax, xmin, ymax, ymin = -math.huge, math.huge, -math.huge, math.huge
@@ -626,16 +660,17 @@ local newInstance = function(x, y, program, initialStart)
 		x = x,
 		y = y,
 		active = initialStart,
+		program = program or config.defaultProgram,
 		co = coroutine.create(function()
 			term.redirect(window.handle)
 			local evt
 			while true do
 
 				if initialStart then
-					if not program or type(program) == "string" then
-						shell.run(program or config.defaultProgram)
-					elseif type(program) == "function" then
-						program()
+					if not instances[y][x].program or type(instances[y][x].program) == "string" then
+						shell.run(instances[y][x].program)
+					elseif type(instances[y][x].program) == "function" then
+						instances[y][x].program()
 					end
 				end
 
@@ -644,6 +679,7 @@ local newInstance = function(x, y, program, initialStart)
 				term.setCursorBlink(false)
 				cwrite("This workspace is inactive.", 0 + scr_y / 2)
 				cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
+				instances[y][x].program = config.defaultProgram
 				repeat
 					evt = {os.pullEventRaw()}
 				until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
@@ -660,10 +696,10 @@ local newInstance = function(x, y, program, initialStart)
 				instances[y][x].active = true
 
 				if not initialStart then
-					if not program or type(program) == "string" then
-						shell.run(program or config.defaultProgram)
-					elseif type(program) == "function" then
-						program()
+					if not instances[y][x].program or type(instances[y][x].program) == "string" then
+						shell.run(instances[y][x].program)
+					elseif type(instances[y][x].program) == "function" then
+						instances[y][x].program()
 					end
 				end
 
@@ -715,7 +751,7 @@ end
 local addWorkspace = function(xmod, ymod)
 	config.WSmap[focus[2] + ymod] = config.WSmap[focus[2] + ymod] or {}
 	if not config.WSmap[focus[2] + ymod][focus[1] + xmod] then
-		config.WSmap[focus[2] + ymod][focus[1] + xmod] = true
+		config.WSmap[focus[2] + ymod][focus[1] + xmod] = instances[focus[2] + ymod][focus[1] + xmod].program
 		newInstance(focus[1] + xmod, focus[2] + ymod, config.defaultProgram, false)
 		saveConfig()
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -771,6 +807,15 @@ local removeWorkspace = function(xmod, ymod)
 	end
 end
 
+local displayHelp = function()
+	cwrite("CTRL+SHIFT+ARROW to switch workspace.   ",	-2 + scr_y / 2)
+	cwrite("CTRL+SHIFT+TAB+ARROW to swap.           ",	-1 + scr_y / 2)
+	cwrite("CTRL+SHIFT+[WASD] to create a workspace ",	 0 + scr_y / 2)
+	cwrite("up/left/down/right respectively.        ",	 1 + scr_y / 2)
+	cwrite("CTRL+SHIFT+Q to delete a workspace.     ",	 2 + scr_y / 2)
+	cwrite("Terminate an inactive workspace to exit.",	 3 + scr_y / 2)
+end
+
 local inputEvt = {
 	key = true,
 	key_up = true,
@@ -783,27 +828,35 @@ local inputEvt = {
 	terminate = true
 }
 
-local displayHelp = function()
-	cwrite("CTRL+SHIFT+ARROW to switch workspace.   ",	-2 + scr_y / 2)
-	cwrite("CTRL+SHIFT+TAB+ARROW to swap.           ",	-1 + scr_y / 2)
-	cwrite("CTRL+SHIFT+[WASD] to create a workspace ",	 0 + scr_y / 2)
-	cwrite("up/left/down/right respectively.        ",	 1 + scr_y / 2)
-	cwrite("CTRL+SHIFT+Q to delete a workspace.     ",	 2 + scr_y / 2)
-	cwrite("Terminate an inactive workspace to exit.",	 3 + scr_y / 2)
+local checkIfCanRun = function(evt, x, y)
+	return (
+		(not inputEvt[evt[1]]) and
+		instances[y][x].active or (
+			x == focus[1] and
+			y == focus[2]
+		) and (
+			(not instances[y][x].eventFilter) or
+			instances[y][x].eventFilter == evt[1] or
+			evt[1] == "terminate"
+		)
+	)
 end
 
 local main = function()
 	local enteringCommand
 	local justStarted = true
 	local tID, wID
+	local pCounter, program = 0
 
 	for y, v in pairs(config.WSmap) do
 		for x, vv in pairs(v) do
+			pCounter = pCounter + 1
 			if vv then
 				if not focus[1] then
 					focus = {x, y}
 				end
-				newInstance(x, y, config.defaultProgram, x == focus[1] and y == focus[2])
+				program = (argList[pCounter] and fs.exists(argList[pCounter])) and argList[pCounter] or config.defaultProgram
+				newInstance(x, y, program, x == focus[1] and y == focus[2])
 			end
 		end
 	end
@@ -821,8 +874,8 @@ local main = function()
 
 	config.timesRan = config.timesRan + 1
 	saveConfig()
-	
-	local previousTerm
+
+	local previousTerm, cSuccess
 
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -969,9 +1022,9 @@ local main = function()
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
 
-							if justStarted or ((not inputEvt[evt[1]]) and instances[y][x].active or (x == focus[1] and y == focus[2])) then
+							if justStarted or checkIfCanRun(evt, x, y) then
 								previousTerm = term.redirect(instances[y][x].window.handle)
-								coroutine.resume(instances[y][x].co, table.unpack(evt))
+								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
 								term.redirect(previousTerm)
 							end
 
@@ -988,11 +1041,59 @@ local main = function()
 	end
 end
 
-if tArg[1] == "help" then
+local function interpretArgs(tInput, tArgs)
+	local output = {}
+	local errors = {}
+	local usedEntries = {}
+	for aName, aType in pairs(tArgs) do
+		output[aName] = false
+		for i = 1, #tInput do
+			if not usedEntries[i] then
+				if tInput[i] == aName and not output[aName] then
+					if aType then
+						usedEntries[i] = true
+						if type(tInput[i+1]) == aType or type(tonumber(tInput[i+1])) == aType then
+							usedEntries[i+1] = true
+							if aType == "number" then
+								output[aName] = tonumber(tInput[i+1])
+							else
+								output[aName] = tInput[i+1]
+							end
+						else
+							output[aName] = nil
+							errors[1] = errors[1] and (errors[1] + 1) or 1
+							errors[aName] = "expected " .. aType .. ", got " .. type(tInput[i+1])
+						end
+					else
+						usedEntries[i] = true
+						output[aName] = true
+					end
+				end
+			end
+		end
+	end
+	for i = 1, #tInput do
+		if not usedEntries[i] then
+			output[#output+1] = tInput[i]
+		end
+	end
+	return output, errors
+end
+
+local argData = {
+	["--help"] = false,
+	["-h"] = false,
+	["--config"] = false,
+	["-c"] = false
+}
+
+argList, argErrors = interpretArgs({...}, argData)
+
+if argList["--help"] or argList["-h"] then
 	displayHelp()
 	write("\n")
 	return
-elseif tArg[1] == "config" then
+elseif argList["--config"] or argList["-c"] then
 	shell.run("rom/programs/edit.lua", configPath)
 	return
 end
