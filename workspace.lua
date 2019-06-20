@@ -6,36 +6,6 @@ local tArg = {...}
 local instances = {}
 local configPath = ".workspace_config"	-- finish later
 
--- a custom shell that records the last ran program
-local customShell = function()
-	local sHistory = {}
-	term.setTextColor(colors.yellow)
-	term.setBackgroundColor(colors.black)
-	term.clear()
-	term.setCursorPos(1, 1)
-	term.write(os.version() .. " (Workspace)")
-	term.setCursorPos(1, 2)
-
-	-- some code is directly taken from rom/programs/shell.lua
-	-- oh well
-
-	local input
-	while true do
-		term.setTextColor(colors.yellow)
-		write( shell.dir() .. "> " )
-		term.setTextColor(colors.white)
-		if settings.get( "shell.autocomplete" ) then
-            input = read( nil, tCommandHistory, shell.complete )
-        else
-            input = read( nil, tCommandHistory )
-        end
-		if input:match("%S") and sHistory[#sHistory] ~= input then
-			sHistory[#sHistory + 1] = input
-		end
-		shell.run(input)
-	end
-end
-
 local config = {
 	workspaceMoveSpeed = 0.1,
 	defaultProgram = "rom/programs/shell.lua",
@@ -73,6 +43,13 @@ local getMapSize = function()
 	return xmax, ymax, xmin, ymin
 end
 
+local readFile = function(path)
+	local file = fs.open(path, "r")
+	local contents = file.readAll()
+	file.close()
+	return contents
+end
+
 local saveConfig = function()
 	local file = fs.open(configPath, "w")
 	file.write( textutils.serialize(config) )
@@ -81,9 +58,7 @@ end
 
 local loadConfig = function()
 	if fs.exists(configPath) then
-		local file = fs.open(configPath, "r")
-		local contents = file.readAll()
-		file.close()
+		local contents = readFile(configPath)
 		local newConfig = textutils.unserialize(contents)
 		for k,v in pairs(newConfig) do
 			config[k] = v
@@ -134,28 +109,46 @@ lddterm.adjustY = 0			-- moves entire screen Y
 lddterm.selectedWindow = 1		-- determines which window controls the cursor
 lddterm.windows = {}
 
-local drawWorkspaceIndicator = function(terminal)
+local drawWorkspaceIndicator = function(terminal, wType)
 	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 	terminal = terminal or lddterm.baseTerm
-	for y = gridMinY - 1, gridHeight + 1 do
-		for x = gridMinX - 1, gridWidth + 1 do
-			term.setCursorPos((x - gridMinX) + scr_x / 2 - (gridWidth - gridMinX) / 2, (y - gridMinY) + scr_y / 2 - (gridHeight - gridMinY) / 2)
-			if instances[y] then
-				if instances[y][x] then
-					if focus[1] == x and focus[2] == y then
-						term.blit(" ", "8", "8")
-					elseif instances[y][x].active then
-						term.blit(" ", "7", "7")
+	if wType == 1 then
+		for y = gridMinY - 1, gridHeight + 1 do
+			for x = gridMinX - 1, gridWidth + 1 do
+				terminal.setCursorPos((x - gridMinX) + scr_x / 2 - (gridWidth - gridMinX) / 2, (y - gridMinY) + scr_y / 2 - (gridHeight - gridMinY) / 2)
+				if instances[y] then
+					if instances[y][x] then
+						if focus[1] == x and focus[2] == y then
+							terminal.blit(" ", "8", "8")
+						elseif instances[y][x].active then
+							terminal.blit(" ", "7", "7")
+						else
+							terminal.blit(" ", "0", "f")
+						end
 					else
-						term.blit(" ", "f", "f")
+						terminal.blit(" ", "0", "0")
 					end
 				else
-					term.blit(" ", "0", "0")
+					terminal.blit(" ", "0", "0")
 				end
-			else
-				term.blit(" ", "0", "0")
 			end
 		end
+	elseif wType == 2 then
+		local msg = "PAUSED"
+		terminal.setCursorPos(scr_x / 2 - #msg / 2 - 2, scr_y / 2 - 1)
+		terminal.blit((" "):rep(#msg + 2), ("f"):rep(#msg + 2), ("0"):rep(#msg + 2))
+		terminal.setCursorPos(scr_x / 2 - #msg / 2 - 2, scr_y / 2)
+		terminal.blit(" " .. msg .. " ", ("f"):rep(#msg + 2), ("0"):rep(#msg + 2))
+		terminal.setCursorPos(scr_x / 2 - #msg / 2 - 2, scr_y / 2 + 1)
+		terminal.blit((" "):rep(#msg + 2), ("f"):rep(#msg + 2), ("0"):rep(#msg + 2))
+	elseif wType == 3 then
+		local msg = "UNPAUSED"
+		terminal.setCursorPos(scr_x / 2 - #msg / 2 - 2, scr_y / 2 - 1)
+		terminal.blit((" "):rep(#msg + 2), ("f"):rep(#msg + 2), ("0"):rep(#msg + 2))
+		terminal.setCursorPos(scr_x / 2 - #msg / 2 - 2, scr_y / 2)
+		terminal.blit(" " .. msg .. " ", ("f"):rep(#msg + 2), ("0"):rep(#msg + 2))
+		terminal.setCursorPos(scr_x / 2 - #msg / 2 - 2, scr_y / 2 + 1)
+		terminal.blit((" "):rep(#msg + 2), ("f"):rep(#msg + 2), ("0"):rep(#msg + 2))
 	end
 end
 
@@ -273,7 +266,7 @@ lddterm.render = function(transformation, drawFunction)
 		end
 	end
 	if doDrawWorkspaceIndicator then
-		drawWorkspaceIndicator()
+		drawWorkspaceIndicator(nil, doDrawWorkspaceIndicator)
 	end
 	fixCursorPos()
 end
@@ -656,64 +649,83 @@ local newInstance = function(x, y, program, initialStart)
 		instances[y][xx] = instances[y][xx] or false
 	end
 	local window = lddterm.newWindow(windowWidth, windowHeight, 1, 1)
+
+	local func = function()
+		term.redirect(window.handle)
+
+		local runProgram = function()
+			instances[y][x].paused = false
+			if not instances[y][x].program or type(instances[y][x].program) == "string" then
+				pcall(loadfile(instances[y][x].program, nil, nil, instances[y][x].env))
+			elseif type(instances[y][x].program) == "function" then
+				pcall(function() load(instances[y][x].program, nil, nil, instances[y][x].env) end)
+			end
+		end
+
+		local evt
+		while true do
+
+			if initialStart then
+				runProgram()
+			end
+
+			instances[y][x].active = false
+			instances[y][x].paused = false
+			instances[y][x].program = config.defaultProgram
+
+			term.clear()
+			term.setCursorBlink(false)
+			cwrite("This workspace is inactive.", 0 + scr_y / 2)
+			cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
+
+			coroutine.yield()
+
+			repeat
+				evt = {os.pullEventRaw()}
+			until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
+			sleep(0)
+			if evt[1] == "terminate" then
+				isRunning = false
+				return
+			end
+
+			term.setCursorPos(1,1)
+			term.clear()
+			term.setCursorBlink(true)
+
+			instances[y][x].active = true
+
+			if not initialStart then
+				runProgram()
+			end
+
+		end
+	end
+
 	instances[y][x] = {
 		x = x,
 		y = y,
 		active = initialStart,
 		program = program or config.defaultProgram,
-		co = coroutine.create(function()
-			term.redirect(window.handle)
-			local evt
-			while true do
-
-				if initialStart then
-					if not instances[y][x].program or type(instances[y][x].program) == "string" then
-						shell.run(instances[y][x].program)
-					elseif type(instances[y][x].program) == "function" then
-						instances[y][x].program()
-					end
-				end
-
-				instances[y][x].active = false
-				term.clear()
-				term.setCursorBlink(false)
-				cwrite("This workspace is inactive.", 0 + scr_y / 2)
-				cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
-				instances[y][x].program = config.defaultProgram
-				repeat
-					evt = {os.pullEventRaw()}
-				until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
-				sleep(0)
-				if evt[1] == "terminate" then
-					isRunning = false
-					return
-				end
-
-				term.setCursorPos(1,1)
-				term.clear()
-				term.setCursorBlink(true)
-
-				instances[y][x].active = true
-
-				if not initialStart then
-					if not instances[y][x].program or type(instances[y][x].program) == "string" then
-						shell.run(instances[y][x].program)
-					elseif type(instances[y][x].program) == "function" then
-						instances[y][x].program()
-					end
-				end
-
-			end
-		end),
-		window = window
+		runningProgram = program or config.defaultProgram,
+		window = window,
+		timer = {},
+		extraEvents = {},
+		paused = false
 	}
+
+	instances[y][x].env = {}
+	setmetatable(instances[y][x].env, {__index = _ENV})
+
+	instances[y][x].co = coroutine.create(func)
 end
 
 -- prevents wiseassed-ness
 config.workspaceMoveSpeed = math.min(math.max(config.workspaceMoveSpeed, 0.001), 1)
 
-local scrollWindows = function()
+local scrollWindows = function(tickDownTimers)
 	local changed = false
+	local timersToDelete = {}
 	if realScroll[1] < scroll[1] then
 		realScroll[1] = math.min(realScroll[1] + config.workspaceMoveSpeed, scroll[1])
 		changed = true
@@ -733,8 +745,25 @@ local scrollWindows = function()
 		if instances[y] then
 			for x = gridMinX, gridWidth do
 				if instances[y][x] then
+
 					instances[y][x].window.x = math.floor(1 + (instances[y][x].x + realScroll[1] - 1) * scr_x)
 					instances[y][x].window.y = math.floor(1 + (instances[y][x].y + realScroll[2] - 1) * scr_y)
+
+					if tickDownTimers and (not instances[y][x].paused) then
+						timersToDelete = {}
+						for id, duration in pairs(instances[y][x].timer) do
+							if duration <= 0 then
+								instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {"timer", id}
+								timersToDelete[#timersToDelete + 1] = id
+							else
+								instances[y][x].timer[id] = duration - 0.05
+							end
+						end
+						for i = 1, #timersToDelete do
+							instances[y][x].timer[timersToDelete[i]] = nil
+						end
+					end
+
 				end
 			end
 		end
@@ -743,9 +772,10 @@ local scrollWindows = function()
 end
 
 local swapInstances = function(xmod, ymod)
-	instances[focus[2]][focus[1]].co, 	instances[focus[2] + ymod][focus[1] + xmod].co 		= instances[focus[2] + ymod][focus[1] + xmod].co, 	instances[focus[2]][focus[1]].co
+	instances[focus[2]][focus[1]].co, 		instances[focus[2] + ymod][focus[1] + xmod].co 		= instances[focus[2] + ymod][focus[1] + xmod].co, 		instances[focus[2]][focus[1]].co
 	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window 	= instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
 	instances[focus[2]][focus[1]].active, 	instances[focus[2] + ymod][focus[1] + xmod].active 	= instances[focus[2] + ymod][focus[1] + xmod].active, 	instances[focus[2]][focus[1]].active
+	instances[focus[2]][focus[1]].env, 		instances[focus[2] + ymod][focus[1] + xmod].env 	= instances[focus[2] + ymod][focus[1] + xmod].env, 		instances[focus[2]][focus[1]].env
 end
 
 local addWorkspace = function(xmod, ymod)
@@ -830,14 +860,19 @@ local inputEvt = {
 
 local checkIfCanRun = function(evt, x, y)
 	return (
-		(not inputEvt[evt[1]]) and
-		instances[y][x].active or (
-			x == focus[1] and
-			y == focus[2]
-		) and (
-			(not instances[y][x].eventFilter) or
-			instances[y][x].eventFilter == evt[1] or
-			evt[1] == "terminate"
+		justStarted or (
+			(not instances[y][x].paused) and (
+				not instances[y][x].eventFilter or
+				instances[y][x].eventFilter == evt[1] or
+				evt[1] == "terminate"
+			) and (
+				(not inputEvt[evt[1]]) and
+				instances[y][x].active or (
+					x == focus[1] and
+					y == focus[2]
+				) or
+				evt[1] == "terminate"
+			)
 		)
 	)
 end
@@ -847,6 +882,7 @@ local main = function()
 	local justStarted = true
 	local tID, wID
 	local pCounter, program = 0
+	local oldOSreplace = {}	-- used when replacing certain os functions per-instance
 
 	for y, v in pairs(config.WSmap) do
 		for x, vv in pairs(v) do
@@ -877,6 +913,25 @@ local main = function()
 
 	local previousTerm, cSuccess
 
+	local setInstanceSpecificFunctions = function(x, y)
+		os.startTimer = function(duration)
+			local t
+			while true do
+				t = math.random(1, 2^30)
+				if not instances[y][x].timer[t] then
+					instances[y][x].timer[t] = math.floor(duration * 20) / 20
+					return t
+				end
+			end
+		end
+		os.cancelTimer = function(id)
+			instances[y][x].timer[id] = nil
+		end
+	end
+
+	-- timer for instance timers and window scrolling
+	tID = os.startTimer(0.05)
+
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 		local evt = {os.pullEventRaw()}
@@ -890,15 +945,21 @@ local main = function()
 				enteringCommand = true
 				doDrawWorkspaceIndicator = false
 			elseif evt[2] == tID then
-				enteringCommand = true
+				scrollWindows(true)
+				--enteringCommand = true
+				tID = os.startTimer(0.05)
 			end
 		end
 
-		if scrollWindows() then
-			tID = os.startTimer(0.05)
-		end
-
 		if (keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]) and (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
+			if evt[1] == "key" and evt[2] == keys.p then
+				if instances[focus[2]][focus[1]].active then
+					instances[focus[2]][focus[1]].paused = not instances[focus[2]][focus[1]].paused
+					enteringCommand = true
+					doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
+					wID = os.startTimer(workspaceIndicatorDuration)
+				end
+			end
 			if keysDown[keys.left] then
 				if instances[focus[2]][focus[1] - 1] then
 					if keysDown[swapKey] then
@@ -907,10 +968,10 @@ local main = function()
 					focus[1] = focus[1] - 1
 					scroll[1] = scroll[1] + 1
 					keysDown[keys.left] = false
-					enteringCommand = true
-					doDrawWorkspaceIndicator = true
-					wID = os.startTimer(workspaceIndicatorDuration)
 				end
+				doDrawWorkspaceIndicator = 1
+				wID = os.startTimer(workspaceIndicatorDuration)
+				enteringCommand = true
 			end
 			if keysDown[keys.right] then
 				if instances[focus[2]][focus[1] + 1] then
@@ -920,10 +981,10 @@ local main = function()
 					focus[1] = focus[1] + 1
 					scroll[1] = scroll[1] - 1
 					keysDown[keys.right] = false
-					enteringCommand = true
-					doDrawWorkspaceIndicator = true
-					wID = os.startTimer(workspaceIndicatorDuration)
 				end
+				doDrawWorkspaceIndicator = 1
+				wID = os.startTimer(workspaceIndicatorDuration)
+				enteringCommand = true
 			end
 			if keysDown[keys.up] then
 				if instances[focus[2] - 1] then
@@ -934,11 +995,11 @@ local main = function()
 						focus[2] = focus[2] - 1
 						scroll[2] = scroll[2] + 1
 						keysDown[keys.up] = false
-						enteringCommand = true
-						doDrawWorkspaceIndicator = true
-						wID = os.startTimer(workspaceIndicatorDuration)
 					end
 				end
+				doDrawWorkspaceIndicator = 1
+				wID = os.startTimer(workspaceIndicatorDuration)
+				enteringCommand = true
 			end
 			if keysDown[keys.down] then
 				if instances[focus[2] + 1] then
@@ -949,43 +1010,43 @@ local main = function()
 						focus[2] = focus[2] + 1
 						scroll[2] = scroll[2] - 1
 						keysDown[keys.down] = false
-						enteringCommand = true
-						doDrawWorkspaceIndicator = true
-						wID = os.startTimer(workspaceIndicatorDuration)
 					end
 				end
+				doDrawWorkspaceIndicator = 1
+				wID = os.startTimer(workspaceIndicatorDuration)
+				enteringCommand = true
 			end
 			if keysDown[keys.w] then
 				addWorkspace(0, -1)
-				doDrawWorkspaceIndicator = true
+				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.w] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.s] then
 				addWorkspace(0, 1)
-				doDrawWorkspaceIndicator = true
+				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.s] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.a] then
 				addWorkspace(-1, 0)
-				doDrawWorkspaceIndicator = true
+				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.a] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.d] then
 				addWorkspace(1, 0)
-				doDrawWorkspaceIndicator = true
+				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.d] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.q] then
 				removeWorkspace(0, 0)
-				doDrawWorkspaceIndicator = true
+				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.q] = false
 				local good = false
@@ -1017,13 +1078,32 @@ local main = function()
 		end
 
 		if not enteringCommand then
+
+			oldOSreplace.startTimer = os.startTimer
+			oldOSreplace.cancelTimer = os.cancelTimer
+
 			for y = gridMinY, gridHeight do
 				if instances[y] then
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
 
-							if justStarted or checkIfCanRun(evt, x, y) then
+							if #instances[y][x].extraEvents ~= 0 then
+								for i = 1, #instances[y][x].extraEvents do
+									if checkIfCanRun(instances[y][x].extraEvents[i], x, y) then
+										previousTerm = term.redirect(instances[y][x].window.handle)
+										setInstanceSpecificFunctions(x, y)
+										cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[i]))
+										term.redirect(previousTerm)
+									else
+										break
+									end
+								end
+								instances[y][x].extraEvents = {}
+							end
+
+							if justStarted or (checkIfCanRun(evt, x, y) and evt[1] ~= "timer") then
 								previousTerm = term.redirect(instances[y][x].window.handle)
+								setInstanceSpecificFunctions(x, y)
 								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
 								term.redirect(previousTerm)
 							end
@@ -1032,6 +1112,9 @@ local main = function()
 					end
 				end
 			end
+
+			os.startTimer = oldOSreplace.startTimer
+			os.cancelTimer = oldOSreplace.cancelTimer
 		end
 
 		lddterm.selectedWindow = instances[focus[2]][focus[1]].window.layer
@@ -1104,6 +1187,8 @@ if _G.currentlyRunningWorkspace then
 else
 	_G.currentlyRunningWorkspace = true
 end
+
+_G.instances = instances
 
 local result, message = pcall(main)
 
