@@ -728,22 +728,39 @@ end
 -- prevents wiseassed-ness
 config.workspaceMoveSpeed = math.min(math.max(config.workspaceMoveSpeed, 0.001), 1)
 
-local scrollWindows = function(tickDownTimers)
+local tickDownInstanceTimers = function(x, y)
+	timersToDelete = {}
+	for id, duration in pairs(instances[y][x].timer) do
+		if duration <= 0.05 then
+			instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {"timer", id}
+			timersToDelete[#timersToDelete + 1] = id
+		else
+			instances[y][x].timer[id] = duration - 0.05
+		end
+	end
+	for i = 1, #timersToDelete do
+		instances[y][x].timer[timersToDelete[i]] = nil
+	end
+end
+
+local scrollWindows = function(doScrollWindows, tickDownTimers)
 	local changed = false
 	local timersToDelete = {}
-	if realScroll[1] < scroll[1] then
-		realScroll[1] = math.min(realScroll[1] + config.workspaceMoveSpeed, scroll[1])
-		changed = true
-	elseif realScroll[1] > scroll[1] then
-		realScroll[1] = math.max(realScroll[1] - config.workspaceMoveSpeed, scroll[1])
-		changed = true
-	end
-	if realScroll[2] < scroll[2] then
-		realScroll[2] = math.min(realScroll[2] + config.workspaceMoveSpeed, scroll[2])
-		changed = true
-	elseif realScroll[2] > scroll[2] then
-		realScroll[2] = math.max(realScroll[2] - config.workspaceMoveSpeed, scroll[2])
-		changed = true
+	if doScrollWindows then
+		if realScroll[1] < scroll[1] then
+			realScroll[1] = math.min(realScroll[1] + config.workspaceMoveSpeed, scroll[1])
+			changed = true
+		elseif realScroll[1] > scroll[1] then
+			realScroll[1] = math.max(realScroll[1] - config.workspaceMoveSpeed, scroll[1])
+			changed = true
+		end
+		if realScroll[2] < scroll[2] then
+			realScroll[2] = math.min(realScroll[2] + config.workspaceMoveSpeed, scroll[2])
+			changed = true
+		elseif realScroll[2] > scroll[2] then
+			realScroll[2] = math.max(realScroll[2] - config.workspaceMoveSpeed, scroll[2])
+			changed = true
+		end
 	end
 	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 	for y = gridMinY, gridHeight do
@@ -753,20 +770,8 @@ local scrollWindows = function(tickDownTimers)
 
 					instances[y][x].window.x = math.floor(1 + (instances[y][x].x + realScroll[1] - 1) * scr_x)
 					instances[y][x].window.y = math.floor(1 + (instances[y][x].y + realScroll[2] - 1) * scr_y)
-
-					if tickDownTimers and (not instances[y][x].paused) then
-						timersToDelete = {}
-						for id, duration in pairs(instances[y][x].timer) do
-							if duration <= 0 then
-								instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {"timer", id}
-								timersToDelete[#timersToDelete + 1] = id
-							else
-								instances[y][x].timer[id] = duration - 0.05
-							end
-						end
-						for i = 1, #timersToDelete do
-							instances[y][x].timer[timersToDelete[i]] = nil
-						end
+					if not instances[y][x].paused then
+						tickDownInstanceTimers(x, y)
 					end
 
 				end
@@ -786,7 +791,7 @@ end
 local addWorkspace = function(xmod, ymod)
 	config.WSmap[focus[2] + ymod] = config.WSmap[focus[2] + ymod] or {}
 	if not config.WSmap[focus[2] + ymod][focus[1] + xmod] then
-		config.WSmap[focus[2] + ymod][focus[1] + xmod] = instances[focus[2] + ymod][focus[1] + xmod].program
+		config.WSmap[focus[2] + ymod][focus[1] + xmod] = true
 		newInstance(focus[1] + xmod, focus[2] + ymod, config.defaultProgram, false)
 		saveConfig()
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -903,7 +908,7 @@ local main = function()
 		end
 	end
 
-	scrollWindows()
+	scrollWindows(true, false)
 
 	term.clear()
 	if config.timesRan <= 0 then
@@ -938,6 +943,9 @@ local main = function()
 	-- timer for instance timers and window scrolling
 	tID = os.startTimer(0.05)
 
+	-- if true, timer events won't be accepted by instances (unless it's an extraEvent)
+	local banTimerEvent
+
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 		local evt = {os.pullEventRaw()}
@@ -950,9 +958,16 @@ local main = function()
 			if evt[2] == wID then
 				enteringCommand = true
 				doDrawWorkspaceIndicator = false
-			elseif evt[2] == tID then
-				scrollWindows(true)
-				tID = os.startTimer(0.05)
+				banTimerEvent = true
+			else
+				if evt[2] == tID then
+					banTimerEvent = true
+					tID = os.startTimer(0.05)
+					scrollWindows(true, true)
+				else
+					banTimerEvent = false
+					scrollWindows(false, true)
+				end
 			end
 		end
 
@@ -1091,7 +1106,6 @@ local main = function()
 				if instances[y] then
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
-
 							if #instances[y][x].extraEvents ~= 0 then
 								for i = 1, #instances[y][x].extraEvents do
 									if checkIfCanRun(instances[y][x].extraEvents[i], x, y) then
@@ -1106,7 +1120,7 @@ local main = function()
 								instances[y][x].extraEvents = {}
 							end
 
-							if justStarted or (checkIfCanRun(evt, x, y) and evt[1] ~= "timer") then
+							if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
 								previousTerm = term.redirect(instances[y][x].window.handle)
 								setInstanceSpecificFunctions(x, y)
 								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
