@@ -4,7 +4,7 @@
 local tArg = {...}
 
 local instances = {}
-local configPath = ".workspace_config"	-- finish later
+local configPath = ".workspace_config"
 
 local config = {
 	workspaceMoveSpeed = 0.1,
@@ -69,6 +69,7 @@ end
 loadConfig()
 saveConfig()
 
+-- lists all keys currently pressed
 local keysDown = {}
 
 -- amount of time (seconds) until workspace indicator disappears
@@ -96,19 +97,23 @@ local cwrite = function(text, y, terminal)
 	terminal.write(text)
 end
 
--- start up lddterm
+-- start up lddterm (I'm starting to think I should've used window API)
 local lddterm = {}
 lddterm.alwaysRender = false		-- renders after any and all screen-changing functions.
-lddterm.useColors = true		-- normal computers do not allow color, but this variable doesn't do anything yet
+lddterm.useColors = true			-- normal computers do not allow color, but this variable doesn't do anything yet
 lddterm.baseTerm = term.current()	-- will draw to this terminal
 lddterm.transformation = nil		-- will modify the current buffer as an NFT image before rendering
 lddterm.cursorTransformation = nil	-- will modify the cursor position
-lddterm.drawFunction = nil		-- will draw using this function instead of basic NFT drawing
-lddterm.adjustX = 0			-- moves entire screen X
-lddterm.adjustY = 0			-- moves entire screen Y
-lddterm.selectedWindow = 1		-- determines which window controls the cursor
-lddterm.windows = {}
+lddterm.drawFunction = nil			-- will draw using this function instead of basic NFT drawing
+lddterm.adjustX = 0					-- moves entire screen X
+lddterm.adjustY = 0					-- moves entire screen Y
+lddterm.selectedWindow = 1			-- determines which window controls the cursor
+lddterm.windows = {}				-- internal list of all lddterm windows
 
+-- draws one of three things:
+--  1. workspace grid indicator
+--  2. "PAUSED" screen
+--  3. "UNPAUSED" screen
 local drawWorkspaceIndicator = function(terminal, wType)
 	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 	terminal = terminal or lddterm.baseTerm
@@ -152,7 +157,7 @@ local drawWorkspaceIndicator = function(terminal, wType)
 	end
 end
 
--- converts hex colors to colors api, and back
+-- converts blit colors to colors api, and back
 local to_colors, to_blit = {
 	[' '] = 0,
 	['0'] = 1,
@@ -838,10 +843,11 @@ local removeWorkspace = function(xmod, ymod)
 end
 
 local displayHelp = function()
-	cwrite("CTRL+SHIFT+ARROW to switch workspace.   ",	-2 + scr_y / 2)
-	cwrite("CTRL+SHIFT+TAB+ARROW to swap.           ",	-1 + scr_y / 2)
-	cwrite("CTRL+SHIFT+[WASD] to create a workspace ",	 0 + scr_y / 2)
-	cwrite("up/left/down/right respectively.        ",	 1 + scr_y / 2)
+	cwrite("CTRL+SHIFT+ARROW to switch workspace.   ",	-3 + scr_y / 2)
+	cwrite("CTRL+SHIFT+TAB+ARROW to swap.           ",	-2 + scr_y / 2)
+	cwrite("CTRL+SHIFT+[WASD] to create a workspace ",	-1 + scr_y / 2)
+	cwrite(" up/left/down/right respectively.       ",	 0 + scr_y / 2)
+	cwrite("CTRL+SHIFT+P to pause a workspace.      ",	 1 + scr_y / 2)
 	cwrite("CTRL+SHIFT+Q to delete a workspace.     ",	 2 + scr_y / 2)
 	cwrite("Terminate an inactive workspace to exit.",	 3 + scr_y / 2)
 end
@@ -946,7 +952,6 @@ local main = function()
 				doDrawWorkspaceIndicator = false
 			elseif evt[2] == tID then
 				scrollWindows(true)
-				--enteringCommand = true
 				tID = os.startTimer(0.05)
 			end
 		end
