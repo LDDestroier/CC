@@ -712,7 +712,6 @@ local newInstance = function(x, y, program, initialStart)
 		y = y,
 		active = initialStart,
 		program = program or config.defaultProgram,
-		runningProgram = program or config.defaultProgram,
 		window = window,
 		timer = {},
 		extraEvents = {},
@@ -782,11 +781,11 @@ local scrollWindows = function(doScrollWindows, tickDownTimers)
 end
 
 local swapInstances = function(xmod, ymod)
-	instances[focus[2]][focus[1]].co, 	instances[focus[2] + ymod][focus[1] + xmod].co 		= instances[focus[2] + ymod][focus[1] + xmod].co, 	instances[focus[2]][focus[1]].co
-	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window 	= instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
-	instances[focus[2]][focus[1]].active, 	instances[focus[2] + ymod][focus[1] + xmod].active 	= instances[focus[2] + ymod][focus[1] + xmod].active, 	instances[focus[2]][focus[1]].active
-	instances[focus[2]][focus[1]].env, 	instances[focus[2] + ymod][focus[1] + xmod].env 	= instances[focus[2] + ymod][focus[1] + xmod].env, 	instances[focus[2]][focus[1]].env
-	instances[focus[2]][focus[1]].timer, 	instances[focus[2] + ymod][focus[1] + xmod].timer 	= instances[focus[2] + ymod][focus[1] + xmod].timer, 	instances[focus[2]][focus[1]].timer
+	for k,v in pairs(instances[focus[2]][focus[1]]) do
+		if k ~= "x" and k ~= "y" then
+			instances[focus[2]][focus[1]][k], instances[focus[2] + ymod][focus[1] + xmod][k] = instances[focus[2] + ymod][focus[1] + xmod][k], instances[focus[2]][focus[1]][k]
+		end
+	end
 end
 
 local addWorkspace = function(xmod, ymod)
