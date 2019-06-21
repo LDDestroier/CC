@@ -928,26 +928,38 @@ local main = function()
 
 	local setInstanceSpecificFunctions = function(x, y)
 		os.startTimer = function(duration)
-			local t
-			while true do
-				t = math.random(1, 2^30)
-				if not instances[y][x].timer[t] then
-					instances[y][x].timer[t] = math.floor(duration * 20) / 20
-					return t
+			if type(duration) == "number" then
+				local t
+				while true do
+					t = math.random(1, 2^30)
+					if not instances[y][x].timer[t] then
+						instances[y][x].timer[t] = math.floor(duration * 20) / 20
+						return t
+					end
 				end
+			else
+				error("bad argument #1 (number expected, got " .. type(duration) .. ")")
 			end
 		end
 		os.cancelTimer = function(id)
-			instances[y][x].timer[id] = nil
+			if type(id) == "number" then
+				instances[y][x].timer[id] = nil
+			else
+				error("bad argument #1 (number expected, got " .. type(id) .. ")")
+			end
 		end
 		os.clock = function()
 			return oldOSreplace.clock() + instances[y][x].clockMod
 		end
 		os.queueEvent = function(evt, ...)
-			if instances[y][x].paused then
-				instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
+			if type(evt) == "string" then
+				if instances[y][x].paused then
+					instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
+				else
+					oldOSreplace.queueEvent(evt, ...)
+				end
 			else
-				oldOSreplace.queueEvent(evt, ...)
+				error("bad argument #1 (number expected, got " .. type(evt) .. ")")
 			end
 		end
 	end
