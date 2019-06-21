@@ -943,17 +943,26 @@ local main = function()
 		os.clock = function()
 			return oldOSreplace.clock() + instances[y][x].clockMod
 		end
+		os.queueEvent = function(evt, ...)
+			if instances[y][x].paused then
+				instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
+			else
+				oldOSreplace.queueEvent(evt, ...)
+			end
+		end
 	end
-
+	
 	-- timer for instance timers and window scrolling
 	tID = os.startTimer(0.05)
 
 	-- if true, timer events won't be accepted by instances (unless it's an extraEvent)
-	local banTimerEvent
+	local banTimerEvent, evt
 
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
-		local evt = {os.pullEventRaw()}
+		
+		evt = {os.pullEventRaw()}
+		
 		enteringCommand = false
 		if evt[1] == "key" then
 			keysDown[evt[2]] = true
@@ -1112,11 +1121,20 @@ local main = function()
 			oldOSreplace.startTimer = os.startTimer
 			oldOSreplace.cancelTimer = os.cancelTimer
 			oldOSreplace.clock = os.clock
+			oldOSreplace.queueEvent = os.queueEvent
 
 			for y = gridMinY, gridHeight do
 				if instances[y] then
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
+						
+							if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
+								previousTerm = term.redirect(instances[y][x].window.handle)
+								setInstanceSpecificFunctions(x, y)
+								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
+								term.redirect(previousTerm)
+							end
+						
 							if #instances[y][x].extraEvents ~= 0 then
 								for i = 1, #instances[y][x].extraEvents do
 									if checkIfCanRun(instances[y][x].extraEvents[i], x, y) then
@@ -1131,13 +1149,6 @@ local main = function()
 								instances[y][x].extraEvents = {}
 							end
 
-							if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
-								previousTerm = term.redirect(instances[y][x].window.handle)
-								setInstanceSpecificFunctions(x, y)
-								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
-								term.redirect(previousTerm)
-							end
-
 						end
 					end
 				end
@@ -1146,6 +1157,8 @@ local main = function()
 			os.startTimer = oldOSreplace.startTimer
 			os.cancelTimer = oldOSreplace.cancelTimer
 			os.clock = oldOSreplace.clock
+			os.queueEvent = oldOSreplace.queueEvent
+			
 		end
 
 		lddterm.selectedWindow = instances[focus[2]][focus[1]].window.layer
