@@ -782,10 +782,11 @@ local scrollWindows = function(doScrollWindows, tickDownTimers)
 end
 
 local swapInstances = function(xmod, ymod)
-	instances[focus[2]][focus[1]].co, 		instances[focus[2] + ymod][focus[1] + xmod].co 		= instances[focus[2] + ymod][focus[1] + xmod].co, 		instances[focus[2]][focus[1]].co
+	instances[focus[2]][focus[1]].co, 	instances[focus[2] + ymod][focus[1] + xmod].co 		= instances[focus[2] + ymod][focus[1] + xmod].co, 	instances[focus[2]][focus[1]].co
 	instances[focus[2]][focus[1]].window, 	instances[focus[2] + ymod][focus[1] + xmod].window 	= instances[focus[2] + ymod][focus[1] + xmod].window, 	instances[focus[2]][focus[1]].window
 	instances[focus[2]][focus[1]].active, 	instances[focus[2] + ymod][focus[1] + xmod].active 	= instances[focus[2] + ymod][focus[1] + xmod].active, 	instances[focus[2]][focus[1]].active
-	instances[focus[2]][focus[1]].env, 		instances[focus[2] + ymod][focus[1] + xmod].env 	= instances[focus[2] + ymod][focus[1] + xmod].env, 		instances[focus[2]][focus[1]].env
+	instances[focus[2]][focus[1]].env, 	instances[focus[2] + ymod][focus[1] + xmod].env 	= instances[focus[2] + ymod][focus[1] + xmod].env, 	instances[focus[2]][focus[1]].env
+	instances[focus[2]][focus[1]].timer, 	instances[focus[2] + ymod][focus[1] + xmod].timer 	= instances[focus[2] + ymod][focus[1] + xmod].timer, 	instances[focus[2]][focus[1]].timer
 end
 
 local addWorkspace = function(xmod, ymod)
