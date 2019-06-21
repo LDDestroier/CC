@@ -714,6 +714,8 @@ local newInstance = function(x, y, program, initialStart)
 		program = program or config.defaultProgram,
 		window = window,
 		timer = {},
+		clockMod = 0,
+		lastClock = 0,
 		extraEvents = {},
 		paused = false
 	}
@@ -938,6 +940,9 @@ local main = function()
 		os.cancelTimer = function(id)
 			instances[y][x].timer[id] = nil
 		end
+		os.clock = function()
+			return oldOSreplace.clock() + instances[y][x].clockMod
+		end
 	end
 
 	-- timer for instance timers and window scrolling
@@ -978,6 +983,11 @@ local main = function()
 					enteringCommand = true
 					doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
 					wID = os.startTimer(workspaceIndicatorDuration)
+					if instances[focus[2]][focus[1]].paused then
+						instances[focus[2]][focus[1]].lastClock = os.clock() + instances[focus[2]][focus[1]].clockMod
+					else
+						instances[focus[2]][focus[1]].clockMod = instances[focus[2]][focus[1]].lastClock - os.clock()
+					end
 				end
 			end
 			if keysDown[keys.left] then
@@ -1101,6 +1111,7 @@ local main = function()
 
 			oldOSreplace.startTimer = os.startTimer
 			oldOSreplace.cancelTimer = os.cancelTimer
+			oldOSreplace.clock = os.clock
 
 			for y = gridMinY, gridHeight do
 				if instances[y] then
@@ -1134,6 +1145,7 @@ local main = function()
 
 			os.startTimer = oldOSreplace.startTimer
 			os.cancelTimer = oldOSreplace.cancelTimer
+			os.clock = oldOSreplace.clock
 		end
 
 		lddterm.selectedWindow = instances[focus[2]][focus[1]].window.layer
