@@ -938,14 +938,14 @@ local main = function()
 					end
 				end
 			else
-				error("bad argument #1 (number expected, got " .. type(duration) .. ")")
+				error("bad argument #1 (number expected, got " .. type(duration) .. ")", 2)
 			end
 		end
 		os.cancelTimer = function(id)
 			if type(id) == "number" then
 				instances[y][x].timer[id] = nil
 			else
-				error("bad argument #1 (number expected, got " .. type(id) .. ")")
+				error("bad argument #1 (number expected, got " .. type(id) .. ")", 2)
 			end
 		end
 		os.clock = function()
@@ -959,7 +959,7 @@ local main = function()
 					oldOSreplace.queueEvent(evt, ...)
 				end
 			else
-				error("bad argument #1 (number expected, got " .. type(evt) .. ")")
+				error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
 			end
 		end
 	end
