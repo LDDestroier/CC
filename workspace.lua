@@ -10,6 +10,11 @@ local config = {
 	workspaceMoveSpeed = 0.1,
 	defaultProgram = "rom/programs/shell.lua",
 	timesRan = 0,
+	useDefaultProgramWhenStarting = true,
+	doPauseClockAndTime = true,
+	skipAcrossEmptyWorkspaces = true,
+	showInactiveFrame = true,
+	doTrippyVoid = true,
 	WSmap = {
 		{true,true,true},
 		{true,true,true},
@@ -109,6 +114,7 @@ lddterm.adjustX = 0					-- moves entire screen X
 lddterm.adjustY = 0					-- moves entire screen Y
 lddterm.selectedWindow = 1			-- determines which window controls the cursor
 lddterm.windows = {}				-- internal list of all lddterm windows
+lddterm.backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
 
 -- draws one of three things:
 --  1. workspace grid indicator
@@ -605,9 +611,16 @@ lddterm.screenshot = function(window)
 			line = {"","",""}
 			for x = 1, scr_x do
 
-				c = " "
 				lt, lb = t, b
-				t, b = "0", "f"
+				if config.doTrippyVoid then
+					c = string.char(math.random(128, 159))
+					t = lddterm.backdropColors[1 + math.floor((y - realScroll[2] * scr_y) % #lddterm.backdropColors)]
+					b = lddterm.backdropColors[1 + math.floor((x - realScroll[1] * scr_x) % #lddterm.backdropColors)]
+				else
+					c = string.char( math.max(128, math.random(-5000, 159)) )
+					t = ({"7", "8"})[math.random(1, 2)]
+					b = "f"
+				end
 				for l, v in pairs(lddterm.windows) do
 					if lddterm.windows[l] then
 						if lddterm.windows[l].visible then
@@ -654,19 +667,72 @@ local newInstance = function(x, y, program, initialStart)
 		instances[y][xx] = instances[y][xx] or false
 	end
 	local window = lddterm.newWindow(windowWidth, windowHeight, 1, 1)
+	
+	local instance = {
+		x = x,
+		y = y,
+		active = initialStart,
+		program = program or config.defaultProgram,
+		window = window,
+		timer = {},
+		clockMod = 0,
+		lastClock = 0,
+		timeMod = 0,
+		lastTime = 0,
+		extraEvents = {},
+		paused = false
+	}
 
 	local func = function()
 		term.redirect(window.handle)
 
 		local runProgram = function()
-			instances[y][x].paused = false
-			if not instances[y][x].program or type(instances[y][x].program) == "string" then
-				pcall(loadfile(instances[y][x].program, nil, nil, instances[y][x].env))
-			elseif type(instances[y][x].program) == "function" then
-				pcall(function() load(instances[y][x].program, nil, nil, instances[y][x].env) end)
+			instance.paused = false
+			term.setCursorBlink(false)
+			if not instance.program or type(instance.program) == "string" then
+				--pcall(loadfile(instances[y][x].program, nil, nil, instance.env))
+				--load(function() pcall(function() shell.run(instance.program) end) end, nil, nil, instance.env)
+				pcall(shell.run, instance.program)
+			elseif type(instance.program) == "function" then
+				pcall(function() load(instance.program, nil, nil, instance.env) end)
 			end
 		end
-
+		
+		local drawInactiveScreen = function()
+			term.setTextColor(colors.white)
+			term.setBackgroundColor(colors.black)
+			term.clear()
+			term.setCursorBlink(false)
+			
+			if config.showInactiveFrame then
+				if (instance.y + instance.x) % 2 == 0 then
+					term.setTextColor(colors.lightGray)
+				else
+					term.setTextColor(colors.gray)
+				end
+				for y = 1, scr_y do
+					for x = 1, scr_x do
+						if y == 1 or y == scr_y then
+							if x <= 3 or x > scr_x - 3 then
+								term.setCursorPos(x, y)
+								term.write("\127")
+							end
+						elseif y <= 3 or y > scr_y - 3 then
+							if x == 1 or x == scr_x then
+								term.setCursorPos(x, y)
+								term.write("\127")
+							end
+						end
+					end
+				end
+				term.setTextColor(colors.white)
+			end
+			
+			cwrite("This workspace is inactive.", 0 + scr_y / 2)
+			cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
+			cwrite("(" .. tostring(instance.x) .. ", " .. tostring(instance.y) .. ")", 3 + scr_y / 2)
+		end
+		
 		local evt
 		while true do
 
@@ -674,19 +740,21 @@ local newInstance = function(x, y, program, initialStart)
 				runProgram()
 			end
 
-			instances[y][x].active = false
-			instances[y][x].paused = false
-			instances[y][x].program = config.defaultProgram
+			instance.active = false
+			instance.paused = false
+			if config.useDefaultProgramWhenStarting then
+				instance.program = config.defaultProgram
+			end
 
-			term.clear()
-			term.setCursorBlink(false)
-			cwrite("This workspace is inactive.", 0 + scr_y / 2)
-			cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
+			drawInactiveScreen()
 
 			coroutine.yield()
 
 			repeat
 				evt = {os.pullEventRaw()}
+				if evt[1] == "workspace_swap" then
+					drawInactiveScreen()
+				end
 			until (evt[1] == "key" and evt[2] == keys.space) or evt[1] == "terminate"
 			sleep(0)
 			if evt[1] == "terminate" then
@@ -698,7 +766,7 @@ local newInstance = function(x, y, program, initialStart)
 			term.clear()
 			term.setCursorBlink(true)
 
-			instances[y][x].active = true
+			instance.active = true
 
 			if not initialStart then
 				runProgram()
@@ -707,18 +775,7 @@ local newInstance = function(x, y, program, initialStart)
 		end
 	end
 
-	instances[y][x] = {
-		x = x,
-		y = y,
-		active = initialStart,
-		program = program or config.defaultProgram,
-		window = window,
-		timer = {},
-		clockMod = 0,
-		lastClock = 0,
-		extraEvents = {},
-		paused = false
-	}
+	instances[y][x] = instance
 
 	instances[y][x].env = {}
 	setmetatable(instances[y][x].env, {__index = _ENV})
@@ -769,8 +826,8 @@ local scrollWindows = function(doScrollWindows, tickDownTimers)
 			for x = gridMinX, gridWidth do
 				if instances[y][x] then
 
-					instances[y][x].window.x = math.floor(1 + (instances[y][x].x + realScroll[1] - 1) * scr_x)
-					instances[y][x].window.y = math.floor(1 + (instances[y][x].y + realScroll[2] - 1) * scr_y)
+					instances[y][x].window.x = math.floor(1 + (x + realScroll[1] - 1) * scr_x)
+					instances[y][x].window.y = math.floor(1 + (y + realScroll[2] - 1) * scr_y)
 					if not instances[y][x].paused then
 						tickDownInstanceTimers(x, y)
 					end
@@ -783,10 +840,14 @@ local scrollWindows = function(doScrollWindows, tickDownTimers)
 end
 
 local swapInstances = function(xmod, ymod)
-	for k,v in pairs(instances[focus[2]][focus[1]]) do
-		if k ~= "x" and k ~= "y" then
-			instances[focus[2]][focus[1]][k], instances[focus[2] + ymod][focus[1] + xmod][k] = instances[focus[2] + ymod][focus[1] + xmod][k], instances[focus[2]][focus[1]][k]
-		end
+	instances[focus[2]][focus[1]], instances[focus[2] + ymod][focus[1] + xmod] = instances[focus[2] + ymod][focus[1] + xmod], instances[focus[2]][focus[1]]
+	instances[focus[2]][focus[1]].x, instances[focus[2] + ymod][focus[1] + xmod].x = instances[focus[2] + ymod][focus[1] + xmod].x, instances[focus[2]][focus[1]].x
+	instances[focus[2]][focus[1]].y, instances[focus[2] + ymod][focus[1] + xmod].y = instances[focus[2] + ymod][focus[1] + xmod].y, instances[focus[2]][focus[1]].y
+	if not instances[focus[2]][focus[1]].active then
+		table.insert(instances[focus[2]][focus[1]].extraEvents, {"workspace_swap"})
+	end
+	if not instances[focus[2] + ymod][focus[1] + xmod].active then
+		table.insert(instances[focus[2] + ymod][focus[1] + xmod].extraEvents, {"workspace_swap"})
 	end
 end
 
@@ -797,29 +858,34 @@ local addWorkspace = function(xmod, ymod)
 		newInstance(focus[1] + xmod, focus[2] + ymod, config.defaultProgram, false)
 		saveConfig()
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
-	else
---		print("There's already a workspace there.")
 	end
 end
 
 local removeWorkspace = function(xmod, ymod)
 	if config.WSmap[focus[2] + ymod][focus[1] + xmod] then
 		local good = false
-		for y = -1, 1 do
-			for x = -1, 1 do
-				if math.abs(x) + math.abs(y) == 1 then
-					if instances[focus[2] + y] then
-						if instances[focus[2] + y][focus[1] + x] then
-							good = true
-							break
+		
+		for m = 1, math.max(gridHeight, gridWidth) do
+			for y = -1, 1 do
+				for x = -1, 1 do
+					if math.abs(x) + math.abs(y) == 1 then
+						if instances[focus[2] + y * m] then
+							if instances[focus[2] + y * m][focus[1] + x * m] then
+								good = true
+								break
+							end
 						end
 					end
+				end
+				if good then
+					break
 				end
 			end
 			if good then
 				break
 			end
 		end
+		
 		if good then
 			lddterm.windows[instances[focus[2] + ymod][focus[1] + xmod].window.layer] = nil
 			config.WSmap[focus[2] + ymod][focus[1] + xmod] = nil
@@ -884,7 +950,8 @@ local checkIfCanRun = function(evt, x, y)
 					x == focus[1] and
 					y == focus[2]
 				) or
-				evt[1] == "terminate"
+				evt[1] == "terminate" or
+				evt[1] == "workspace_swap"
 			)
 		)
 	)
@@ -899,14 +966,29 @@ local main = function()
 
 	for y, v in pairs(config.WSmap) do
 		for x, vv in pairs(v) do
-			pCounter = pCounter + 1
 			if vv then
-				if not focus[1] then
-					focus = {x, y}
+				pCounter = pCounter + 1
+				program = (argList[pCounter] and fs.exists(argList[pCounter])) and argList[pCounter]
+				if not program then
+					program = (argList[pCounter] and fs.exists(argList[pCounter] .. ".lua")) and (argList[pCounter] .. ".lua")
 				end
-				program = (argList[pCounter] and fs.exists(argList[pCounter])) and argList[pCounter] or config.defaultProgram
-				newInstance(x, y, program, x == focus[1] and y == focus[2])
+				newInstance(
+					x, y,
+					program or config.defaultProgram,
+					program and true or (pCounter == 1)
+				)
 			end
+		end
+	end
+	
+	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+	focus[2] = gridMinY
+	for x = gridMinX, gridWidth do
+		if instances[focus[2]][x] then
+			focus[1] = x
+			realScroll = {-x + 1, -gridMinY + 1}
+			scroll = {-x + 1, -gridMinY + 1}
+			break
 		end
 	end
 
@@ -948,8 +1030,13 @@ local main = function()
 				error("bad argument #1 (number expected, got " .. type(id) .. ")", 2)
 			end
 		end
-		os.clock = function()
-			return oldOSreplace.clock() + instances[y][x].clockMod
+		if config.doPauseClockAndTime then
+			os.clock = function()
+				return oldOSreplace.clock() + instances[y][x].clockMod
+			end
+			os.time = function()
+				return oldOSreplace.time() + instances[y][x].timeMod
+			end
 		end
 		os.queueEvent = function(evt, ...)
 			if type(evt) == "string" then
@@ -1004,10 +1091,14 @@ local main = function()
 					enteringCommand = true
 					doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
 					wID = os.startTimer(workspaceIndicatorDuration)
-					if instances[focus[2]][focus[1]].paused then
-						instances[focus[2]][focus[1]].lastClock = os.clock() + instances[focus[2]][focus[1]].clockMod
-					else
-						instances[focus[2]][focus[1]].clockMod = instances[focus[2]][focus[1]].lastClock - os.clock()
+					if config.doPauseClockAndTime then
+						if instances[focus[2]][focus[1]].paused then
+							instances[focus[2]][focus[1]].lastClock = os.clock() + instances[focus[2]][focus[1]].clockMod
+							instances[focus[2]][focus[1]].lastTime = os.time() + instances[focus[2]][focus[1]].timeMod
+						else
+							instances[focus[2]][focus[1]].clockMod = instances[focus[2]][focus[1]].lastClock - os.clock()
+							instances[focus[2]][focus[1]].timeMod = instances[focus[2]][focus[1]].lastTime - os.time()
+						end
 					end
 				end
 			end
@@ -1016,9 +1107,14 @@ local main = function()
 					if keysDown[swapKey] then
 						swapInstances(-1, 0)
 					end
-					focus[1] = focus[1] - 1
-					scroll[1] = scroll[1] + 1
-					keysDown[keys.left] = false
+				end
+				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (focus[1] - gridMinX + 1) do
+					if instances[focus[2]][focus[1] - i] then
+						focus[1] = focus[1] - i
+						scroll[1] = scroll[1] + i
+						keysDown[keys.left] = false
+						break
+					end
 				end
 				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
@@ -1029,9 +1125,14 @@ local main = function()
 					if keysDown[swapKey] then
 						swapInstances(1, 0)
 					end
-					focus[1] = focus[1] + 1
-					scroll[1] = scroll[1] - 1
-					keysDown[keys.right] = false
+				end
+				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (gridWidth - focus[1]) do
+					if instances[focus[2]][focus[1] + i] then
+						focus[1] = focus[1] + i
+						scroll[1] = scroll[1] - i
+						keysDown[keys.right] = false
+						break
+					end
 				end
 				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
@@ -1043,9 +1144,16 @@ local main = function()
 						if keysDown[swapKey] then
 							swapInstances(0, -1)
 						end
-						focus[2] = focus[2] - 1
-						scroll[2] = scroll[2] + 1
-						keysDown[keys.up] = false
+					end
+				end
+				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (focus[2] - gridMinY + 1) do
+					if instances[focus[2] - i] then
+						if instances[focus[2] - i][focus[1]] then
+							focus[2] = focus[2] - i
+							scroll[2] = scroll[2] + i
+							keysDown[keys.up] = false
+							break
+						end
 					end
 				end
 				doDrawWorkspaceIndicator = 1
@@ -1058,9 +1166,16 @@ local main = function()
 						if keysDown[swapKey] then
 							swapInstances(0, 1)
 						end
-						focus[2] = focus[2] + 1
-						scroll[2] = scroll[2] - 1
-						keysDown[keys.down] = false
+					end
+				end
+				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (gridHeight - focus[2]) do
+					if instances[focus[2] + i] then
+						if instances[focus[2] + i][focus[1]] then
+							focus[2] = focus[2] + i
+							scroll[2] = scroll[2] - i
+							keysDown[keys.down] = false
+							break
+						end
 					end
 				end
 				doDrawWorkspaceIndicator = 1
@@ -1096,28 +1211,33 @@ local main = function()
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.q] then
-				removeWorkspace(0, 0)
 				doDrawWorkspaceIndicator = 1
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.q] = false
 				local good = false
-				for y = -1, 1 do
-					for x = -1, 1 do
-						if math.abs(x) + math.abs(y) == 1 then
-							if instances[focus[2] + y] then
-								if instances[focus[2] + y][focus[1] + x] then
-									focus = {
-										focus[1] + x,
-										focus[2] + y
-									}
-									scroll = {
-										scroll[1] - x,
-										scroll[2] - y
-									}
-									good = true
-									break
+				for m = 1, math.max(gridHeight, gridWidth) do
+					for y = -1, 1 do
+						for x = -1, 1 do
+							if math.abs(x) + math.abs(y) == 1 then
+								if instances[focus[2] + y * m] then
+									if instances[focus[2] + y * m][focus[1] + x * m] then
+										removeWorkspace(0, 0)
+										focus = {
+											focus[1] + x * m,
+											focus[2] + y * m
+										}
+										scroll = {
+											scroll[1] - x * m,
+											scroll[2] - y * m
+										}
+										good = true
+										break
+									end
 								end
 							end
+						end
+						if good then
+							break
 						end
 					end
 					if good then
@@ -1132,7 +1252,10 @@ local main = function()
 
 			oldOSreplace.startTimer = os.startTimer
 			oldOSreplace.cancelTimer = os.cancelTimer
-			oldOSreplace.clock = os.clock
+			if config.doPauseClockAndTime then
+				oldOSreplace.clock = os.clock
+				oldOSreplace.time = os.time
+			end
 			oldOSreplace.queueEvent = os.queueEvent
 
 			for y = gridMinY, gridHeight do
@@ -1168,7 +1291,10 @@ local main = function()
 
 			os.startTimer = oldOSreplace.startTimer
 			os.cancelTimer = oldOSreplace.cancelTimer
-			os.clock = oldOSreplace.clock
+			if config.doPauseClockAndTime then
+				os.clock = oldOSreplace.clock
+				os.time = oldOSreplace.time
+			end
 			os.queueEvent = oldOSreplace.queueEvent
 			
 		end
