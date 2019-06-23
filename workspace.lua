@@ -691,7 +691,7 @@ local newInstance = function(x, y, program, initialStart)
 			instance.paused = false
 			term.setCursorBlink(false)
 			if not instance.program or type(instance.program) == "string" then
-				load(function() pcall(function() shell.run(instance.program) end) end, nil, nil, instance.env)
+				pcall(load(function() shell.run(instance.program) end, nil, nil, instance.env))
 			elseif type(instance.program) == "function" then
 				pcall(function() load(instance.program, nil, nil, instance.env) end)
 			end
