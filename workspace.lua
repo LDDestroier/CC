@@ -7,14 +7,14 @@ local instances = {}
 local configPath = ".workspace_config"
 
 local config = {
-	workspaceMoveSpeed = 0.1,
+	workspaceMoveSpeed = 0.15,
 	defaultProgram = "rom/programs/shell.lua",
 	timesRan = 0,
 	useDefaultProgramWhenStarting = true,
 	doPauseClockAndTime = true,
 	skipAcrossEmptyWorkspaces = true,
 	showInactiveFrame = true,
-	doTrippyVoid = true,
+	doTrippyVoid = false,
 	WSmap = {
 		{true,true,true},
 		{true,true,true},
@@ -126,7 +126,7 @@ local drawWorkspaceIndicator = function(terminal, wType)
 	if wType == 1 then
 		for y = gridMinY - 1, gridHeight + 1 do
 			for x = gridMinX - 1, gridWidth + 1 do
-				terminal.setCursorPos((x - gridMinX) + scr_x / 2 - (gridWidth - gridMinX) / 2, (y - gridMinY) + scr_y / 2 - (gridHeight - gridMinY) / 2)
+				terminal.setCursorPos((x - gridMinX) + scr_x / 2 - (gridWidth - gridMinX) / 2, (y - gridMinY) + math.ceil(scr_y / 2) - (gridHeight - gridMinY) / 2)
 				if instances[y] then
 					if instances[y][x] then
 						if focus[1] == x and focus[2] == y then
@@ -865,7 +865,7 @@ local removeWorkspace = function(xmod, ymod)
 	if config.WSmap[focus[2] + ymod][focus[1] + xmod] then
 		local good = false
 		
-		for m = 1, math.max(gridHeight, gridWidth) do
+		for m = 1, math.max(gridHeight - gridMinY + 1, gridWidth - gridMinX + 1) do
 			for y = -1, 1 do
 				for x = -1, 1 do
 					if math.abs(x) + math.abs(y) == 1 then
@@ -1215,7 +1215,7 @@ local main = function()
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.q] = false
 				local good = false
-				for m = 1, math.max(gridHeight, gridWidth) do
+				for m = 1, math.max(gridHeight - gridMinY + 1, gridWidth - gridMinX + 1) do
 					for y = -1, 1 do
 						for x = -1, 1 do
 							if math.abs(x) + math.abs(y) == 1 then
