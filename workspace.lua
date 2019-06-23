@@ -114,6 +114,7 @@ lddterm.adjustX = 0					-- moves entire screen X
 lddterm.adjustY = 0					-- moves entire screen Y
 lddterm.selectedWindow = 1			-- determines which window controls the cursor
 lddterm.windows = {}				-- internal list of all lddterm windows
+-- backdropColors used for the void outside of windows, if using rainbow void
 lddterm.backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
 
 -- draws one of three things:
@@ -690,9 +691,7 @@ local newInstance = function(x, y, program, initialStart)
 			instance.paused = false
 			term.setCursorBlink(false)
 			if not instance.program or type(instance.program) == "string" then
-				--pcall(loadfile(instances[y][x].program, nil, nil, instance.env))
-				--load(function() pcall(function() shell.run(instance.program) end) end, nil, nil, instance.env)
-				pcall(shell.run, instance.program)
+				load(function() pcall(function() shell.run(instance.program) end) end, nil, nil, instance.env)
 			elseif type(instance.program) == "function" then
 				pcall(function() load(instance.program, nil, nil, instance.env) end)
 			end
@@ -962,7 +961,7 @@ local main = function()
 	local justStarted = true
 	local tID, wID
 	local pCounter, program = 0
-	local oldOSreplace = {}	-- used when replacing certain os functions per-instance
+	local oldFuncReplace = {os = {}, term = {}}	-- used when replacing certain os functions per-instance
 
 	for y, v in pairs(config.WSmap) do
 		for x, vv in pairs(v) do
@@ -1032,10 +1031,10 @@ local main = function()
 		end
 		if config.doPauseClockAndTime then
 			os.clock = function()
-				return oldOSreplace.clock() + instances[y][x].clockMod
+				return oldFuncReplace.os.clock() + instances[y][x].clockMod
 			end
 			os.time = function()
-				return oldOSreplace.time() + instances[y][x].timeMod
+				return oldFuncReplace.os.time() + instances[y][x].timeMod
 			end
 		end
 		os.queueEvent = function(evt, ...)
@@ -1043,11 +1042,14 @@ local main = function()
 				if instances[y][x].paused then
 					instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
 				else
-					oldOSreplace.queueEvent(evt, ...)
+					oldFuncReplace.os.queueEvent(evt, ...)
 				end
 			else
 				error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
 			end
+		end
+		term.native = function()
+			return instances[y][x].window.handle
 		end
 	end
 	
@@ -1103,13 +1105,11 @@ local main = function()
 				end
 			end
 			if keysDown[keys.left] then
-				if instances[focus[2]][focus[1] - 1] then
-					if keysDown[swapKey] then
-						swapInstances(-1, 0)
-					end
-				end
-				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (focus[1] - gridMinX + 1) do
+				for i = 1, (not config.skipAcrossEmptyWorkspaces) and 1 or (focus[1] - gridMinX + 1) do
 					if instances[focus[2]][focus[1] - i] then
+						if keysDown[swapKey] then
+							swapInstances(-i, 0)
+						end
 						focus[1] = focus[1] - i
 						scroll[1] = scroll[1] + i
 						keysDown[keys.left] = false
@@ -1121,13 +1121,11 @@ local main = function()
 				enteringCommand = true
 			end
 			if keysDown[keys.right] then
-				if instances[focus[2]][focus[1] + 1] then
-					if keysDown[swapKey] then
-						swapInstances(1, 0)
-					end
-				end
-				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (gridWidth - focus[1]) do
+				for i = 1, (not config.skipAcrossEmptyWorkspaces) and 1 or (gridWidth - focus[1]) do
 					if instances[focus[2]][focus[1] + i] then
+						if keysDown[swapKey] then
+							swapInstances(i, 0)
+						end
 						focus[1] = focus[1] + i
 						scroll[1] = scroll[1] - i
 						keysDown[keys.right] = false
@@ -1139,16 +1137,12 @@ local main = function()
 				enteringCommand = true
 			end
 			if keysDown[keys.up] then
-				if instances[focus[2] - 1] then
-					if instances[focus[2] - 1][focus[1]] then
-						if keysDown[swapKey] then
-							swapInstances(0, -1)
-						end
-					end
-				end
-				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (focus[2] - gridMinY + 1) do
+				for i = 1, (not config.skipAcrossEmptyWorkspaces) and 1 or (focus[2] - gridMinY + 1) do
 					if instances[focus[2] - i] then
 						if instances[focus[2] - i][focus[1]] then
+							if keysDown[swapKey] then
+								swapInstances(0, -i)
+							end
 							focus[2] = focus[2] - i
 							scroll[2] = scroll[2] + i
 							keysDown[keys.up] = false
@@ -1161,16 +1155,12 @@ local main = function()
 				enteringCommand = true
 			end
 			if keysDown[keys.down] then
-				if instances[focus[2] + 1] then
-					if instances[focus[2] + 1][focus[1]] then
-						if keysDown[swapKey] then
-							swapInstances(0, 1)
-						end
-					end
-				end
-				for i = 1, (keysDown[swapKey] or not config.skipAcrossEmptyWorkspaces) and 1 or (gridHeight - focus[2]) do
+				for i = 1, (not config.skipAcrossEmptyWorkspaces) and 1 or (gridHeight - focus[2]) do
 					if instances[focus[2] + i] then
 						if instances[focus[2] + i][focus[1]] then
+							if keysDown[swapKey] then
+								swapInstances(0, i)
+							end
 							focus[2] = focus[2] + i
 							scroll[2] = scroll[2] - i
 							keysDown[keys.down] = false
@@ -1250,13 +1240,14 @@ local main = function()
 
 		if not enteringCommand then
 
-			oldOSreplace.startTimer = os.startTimer
-			oldOSreplace.cancelTimer = os.cancelTimer
+			oldFuncReplace.os.startTimer = os.startTimer
+			oldFuncReplace.os.cancelTimer = os.cancelTimer
 			if config.doPauseClockAndTime then
-				oldOSreplace.clock = os.clock
-				oldOSreplace.time = os.time
+				oldFuncReplace.os.clock = os.clock
+				oldFuncReplace.os.time = os.time
 			end
-			oldOSreplace.queueEvent = os.queueEvent
+			oldFuncReplace.os.queueEvent = os.queueEvent
+			term.native = oldFuncReplace.term.native
 
 			for y = gridMinY, gridHeight do
 				if instances[y] then
@@ -1289,13 +1280,14 @@ local main = function()
 				end
 			end
 
-			os.startTimer = oldOSreplace.startTimer
-			os.cancelTimer = oldOSreplace.cancelTimer
+			os.startTimer = oldFuncReplace.os.startTimer
+			os.cancelTimer = oldFuncReplace.os.cancelTimer
 			if config.doPauseClockAndTime then
-				os.clock = oldOSreplace.clock
-				os.time = oldOSreplace.time
+				os.clock = oldFuncReplace.os.clock
+				os.time = oldFuncReplace.os.time
 			end
-			os.queueEvent = oldOSreplace.queueEvent
+			os.queueEvent = oldFuncReplace.os.queueEvent
+			term.native = oldFuncReplace.term.termNative
 			
 		end
 
