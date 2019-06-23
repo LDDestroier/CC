@@ -427,7 +427,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
-	window.handle.blit = function(char, textCol, backCol, x, y)
+	window.handle.blit = function(char, textCol, backCol)
 		if type(char) == "number" then
 			char = tostring(char)
 		end
@@ -438,8 +438,8 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			backCol = tostring(backCol)
 		end
 		assert(char ~= nil, "expected string 'char'")
-		local cx = math.floor(tonumber(x) or window.cursor[1])
-		local cy = math.floor(tonumber(y) or window.cursor[2])
+		local cx = math.floor(window.cursor[1])
+		local cy = math.floor(window.cursor[2])
 		char = char:sub(math.max(0, -cx - 1))
 		for i = 1, #char do
 			if cx >= 1 and cx <= window.width and cy >= 1 and cy <= window.height then
@@ -454,7 +454,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
-	window.handle.print = function(text, x, y)
+	window.handle.print = function(text)
 		text = text and tostring(text)
 		window.handle.write(text, x, y, true)
 		window.cursor[1] = 1
@@ -691,7 +691,7 @@ local newInstance = function(x, y, program, initialStart)
 			instance.paused = false
 			term.setCursorBlink(false)
 			if not instance.program or type(instance.program) == "string" then
-				pcall(load(function() shell.run(instance.program) end, nil, nil, instance.env))
+				setfenv(function() pcall(shell.run, instance.program) end, instance.env)()
 			elseif type(instance.program) == "function" then
 				pcall(function() load(instance.program, nil, nil, instance.env) end)
 			end
@@ -1048,9 +1048,6 @@ local main = function()
 				error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
 			end
 		end
---		term.native = function()
---			return instances[y][x].window.handle
---		end
 	end
 	
 	-- timer for instance timers and window scrolling
@@ -1247,7 +1244,6 @@ local main = function()
 				oldFuncReplace.os.time = os.time
 			end
 			oldFuncReplace.os.queueEvent = os.queueEvent
---			term.native = oldFuncReplace.term.native
 
 			for y = gridMinY, gridHeight do
 				if instances[y] then
@@ -1287,7 +1283,6 @@ local main = function()
 				os.time = oldFuncReplace.os.time
 			end
 			os.queueEvent = oldFuncReplace.os.queueEvent
---			term.native = oldFuncReplace.term.termNative
 			
 		end
 
