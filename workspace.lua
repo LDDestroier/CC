@@ -356,43 +356,11 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
-	window.handle.scrollX = function(amount)
-		if amount > 0 then
-			for i = 1, amount do
-				for c = 1, 3 do
-					for y = 1, window.height do
-						table.remove(window.buffer[c][y], 1)
-						window.buffer[c][y][window.width] = (
-							c == 1 and window.clearChar or
-							c == 2 and window.colors[1] or
-							c == 3 and window.colors[2]
-						)
-					end
-				end
-			end
-		elseif amount < 0 then
-			for i = 1, -amount do
-				for c = 1, 3 do
-					for y = 1, window.height do
-						window.buffer[c][y][window.width] = nil
-						table.insert(window.buffer[c][y], 1, (
-							c == 1 and window.clearChar or
-							c == 2 and window.colors[1] or
-							c == 3 and window.colors[2]
-						))
-					end
-				end
-			end
-		end
-		if lddterm.alwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
-		end
-	end
-	window.handle.write = function(text, x, y, ignoreAlwaysRender)
+	window.handle.write = function(text)
 		assert(text ~= nil, "expected string 'text'")
 		text = tostring(text)
-		local cx = math.floor(tonumber(x) or window.cursor[1])
-		local cy = math.floor(tonumber(y) or window.cursor[2])
+		local cx = math.floor(window.cursor[1])
+		local cy = math.floor(window.cursor[2])
 		text = text:sub(math.max(0, -cx - 1))
 		for i = 1, #text do
 			if cx >= 1 and cx <= window.width and cy >= 1 and cy <= window.height then
@@ -403,27 +371,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			cx = math.min(cx + 1, window.width + 1)
 		end
 		window.cursor = {cx, cy}
-		if lddterm.alwaysRender and not ignoreAlwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
-		end
-	end
-	window.handle.writeWrap = function(text, x, y, ignoreAlwaysRender)
-		local words = explode(" ", text, nil, true)
-		local cx, cy = x or window.cursor[1], y or window.cursor[2]
-		for i = 1, #words do
-			if cx + #words[i] > window.width + 1 then
-				cx = 1
-				if cy >= window.height then
-					window.handle.scroll(1)
-					cy = window.height
-				else
-					cy = cy + 1
-				end
-			end
-			window.handle.write(words[i], cx, cy, true)
-			cx = cx + #words[i]
-		end
-		if lddterm.alwaysRender and not ignoreAlwaysRender then
+		if lddterm.alwaysRender then
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
@@ -450,25 +398,13 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			cx = cx + 1
 		end
 		window.cursor = {cx, cy}
-		if lddterm.alwaysRender and not ignoreAlwaysRender then
+		if lddterm.alwaysRender then
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
-	window.handle.print = function(text)
-		text = text and tostring(text)
-		window.handle.write(text, x, y, true)
-		window.cursor[1] = 1
-		if window.cursor[2] >= window.height then
-			window.handle.scroll(1)
-		else
-			window.cursor[2] = window.cursor[2] + 1
-			if lddterm.alwaysRender then
-				lddterm.render(lddterm.transformation, lddterm.drawFunction)
-			end
-		end
-	end
-	window.handle.clear = function(char, ignoreAlwaysRender)
+	window.handle.clear = function(char)
 		local cx = 1
+		char = type(char) == "string" and char or " "
 		for y = 1, window.height do
 			for x = 1, window.width do
 				if char then
@@ -479,12 +415,13 @@ lddterm.newWindow = function(width, height, x, y, meta)
 				window.buffer[3][y][x] = window.colors[2]
 			end
 		end
-		if lddterm.alwaysRender and not ignoreAlwaysRender then
+		if lddterm.alwaysRender then
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
-	window.handle.clearLine = function(cy, char, ignoreAlwaysRender)
+	window.handle.clearLine = function(cy, char)
 		cy = math.floor(cy or window.cursor[2])
+		char = type(char) == "string" and char or " "
 		local cx = 1
 		for x = 1, window.width do
 			if char then
@@ -494,19 +431,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			window.buffer[2][cy or window.cursor[2]][x] = window.colors[1]
 			window.buffer[3][cy or window.cursor[2]][x] = window.colors[2]
 		end
-		if lddterm.alwaysRender and not ignoreAlwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
-		end
-	end
-	window.handle.clearColumn = function(cx, char, ignoreAlwaysRender)
-		cx = math.floor(cx)
-		char = char and char:sub(1,1)
-		for y = 1, window.height do
-			window.buffer[1][y][cx or window.cursor[1]] = char and char or window.clearChar
-			window.buffer[2][y][cx or window.cursor[1]] = window.colors[1]
-			window.buffer[3][y][cx or window.cursor[1]] = window.colors[2]
-		end
-		if lddterm.alwaysRender and not ignoreAlwaysRender then
+		if lddterm.alwaysRender then
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
@@ -695,6 +620,12 @@ local newInstance = function(x, y, program, initialStart)
 			elseif type(instance.program) == "function" then
 				pcall(function() load(instance.program, nil, nil, instance.env) end)
 			end
+			instance.extraEvents = {}
+			instance.timer = {}
+			instance.clockMod = 0
+			instance.lastClock = 0
+			instance.timeMod = 0
+			instance.lastTime = 0
 		end
 		
 		local drawInactiveScreen = function()
@@ -747,7 +678,7 @@ local newInstance = function(x, y, program, initialStart)
 
 			drawInactiveScreen()
 
-			coroutine.yield()
+			--coroutine.yield()
 
 			repeat
 				evt = {os.pullEventRaw()}
@@ -839,15 +770,16 @@ local scrollWindows = function(doScrollWindows, tickDownTimers)
 end
 
 local swapInstances = function(xmod, ymod)
-	instances[focus[2]][focus[1]], instances[focus[2] + ymod][focus[1] + xmod] = instances[focus[2] + ymod][focus[1] + xmod], instances[focus[2]][focus[1]]
-	instances[focus[2]][focus[1]].x, instances[focus[2] + ymod][focus[1] + xmod].x = instances[focus[2] + ymod][focus[1] + xmod].x, instances[focus[2]][focus[1]].x
-	instances[focus[2]][focus[1]].y, instances[focus[2] + ymod][focus[1] + xmod].y = instances[focus[2] + ymod][focus[1] + xmod].y, instances[focus[2]][focus[1]].y
 	if not instances[focus[2]][focus[1]].active then
 		table.insert(instances[focus[2]][focus[1]].extraEvents, {"workspace_swap"})
 	end
 	if not instances[focus[2] + ymod][focus[1] + xmod].active then
 		table.insert(instances[focus[2] + ymod][focus[1] + xmod].extraEvents, {"workspace_swap"})
 	end
+	
+	instances[focus[2]][focus[1]], instances[focus[2] + ymod][focus[1] + xmod] = instances[focus[2] + ymod][focus[1] + xmod], instances[focus[2]][focus[1]]
+	instances[focus[2]][focus[1]].x, instances[focus[2] + ymod][focus[1] + xmod].x = instances[focus[2] + ymod][focus[1] + xmod].x, instances[focus[2]][focus[1]].x
+	instances[focus[2]][focus[1]].y, instances[focus[2] + ymod][focus[1] + xmod].y = instances[focus[2] + ymod][focus[1] + xmod].y, instances[focus[2]][focus[1]].y
 end
 
 local addWorkspace = function(xmod, ymod)
@@ -948,9 +880,12 @@ local checkIfCanRun = function(evt, x, y)
 				instances[y][x].active or (
 					x == focus[1] and
 					y == focus[2]
-				) or
-				evt[1] == "terminate" or
-				evt[1] == "workspace_swap"
+				) or (
+					x == focus[1] and
+					y == focus[2]
+				) and (
+					evt[1] == "terminate"
+				) or evt[1] == "workspace_swap"
 			)
 		)
 	)
@@ -1055,9 +990,11 @@ local main = function()
 
 	-- if true, timer events won't be accepted by instances (unless it's an extraEvent)
 	local banTimerEvent, evt
+	local doRedraw = false
 
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
+		doRedraw = false
 		
 		evt = {os.pullEventRaw()}
 		
@@ -1073,6 +1010,7 @@ local main = function()
 				banTimerEvent = true
 			else
 				if evt[2] == tID then
+					doRedraw = true
 					banTimerEvent = true
 					tID = os.startTimer(0.05)
 					scrollWindows(true, true)
@@ -1296,8 +1234,11 @@ local main = function()
 			
 		end
 
+		if doRedraw then
+			lddterm.render()
+		end
+
 		lddterm.selectedWindow = instances[focus[2]][focus[1]].window.layer
-		lddterm.render()
 		justStarted = false
 
 	end
