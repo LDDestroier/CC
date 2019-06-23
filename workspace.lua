@@ -1048,9 +1048,9 @@ local main = function()
 				error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
 			end
 		end
-		term.native = function()
-			return instances[y][x].window.handle
-		end
+--		term.native = function()
+--			return instances[y][x].window.handle
+--		end
 	end
 	
 	-- timer for instance timers and window scrolling
@@ -1247,7 +1247,7 @@ local main = function()
 				oldFuncReplace.os.time = os.time
 			end
 			oldFuncReplace.os.queueEvent = os.queueEvent
-			term.native = oldFuncReplace.term.native
+--			term.native = oldFuncReplace.term.native
 
 			for y = gridMinY, gridHeight do
 				if instances[y] then
@@ -1287,7 +1287,7 @@ local main = function()
 				os.time = oldFuncReplace.os.time
 			end
 			os.queueEvent = oldFuncReplace.os.queueEvent
-			term.native = oldFuncReplace.term.termNative
+--			term.native = oldFuncReplace.term.termNative
 			
 		end
 
