@@ -115,7 +115,7 @@ lddterm.adjustY = 0					-- moves entire screen Y
 lddterm.selectedWindow = 1			-- determines which window controls the cursor
 lddterm.windows = {}				-- internal list of all lddterm windows
 -- backdropColors used for the void outside of windows, if using rainbow void
-lddterm.backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
+local backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
 
 -- draws one of three things:
 --  1. workspace grid indicator
@@ -123,7 +123,7 @@ lddterm.backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d
 --  3. "UNPAUSED" screen
 local drawWorkspaceIndicator = function(terminal, wType)
 	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
-	terminal = terminal or lddterm.baseTerm
+	terminal = terminal or term.current()
 	if wType == 1 then
 		for y = gridMinY - 1, gridHeight + 1 do
 			for x = gridMinX - 1, gridWidth + 1 do
@@ -959,7 +959,7 @@ end
 local main = function()
 	local enteringCommand
 	local justStarted = true
-	local tID, wID
+	local tID, wID = 0, 0
 	local pCounter, program = 0
 	local oldFuncReplace = {os = {}, term = {}}	-- used when replacing certain os functions per-instance
 
@@ -1089,6 +1089,7 @@ local main = function()
 					instances[focus[2]][focus[1]].paused = not instances[focus[2]][focus[1]].paused
 					enteringCommand = true
 					doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
+					os.cancelTimer(wID)
 					wID = os.startTimer(workspaceIndicatorDuration)
 					if config.doPauseClockAndTime then
 						if instances[focus[2]][focus[1]].paused then
@@ -1114,6 +1115,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				enteringCommand = true
 			end
@@ -1130,6 +1132,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				enteringCommand = true
 			end
@@ -1148,6 +1151,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				enteringCommand = true
 			end
@@ -1166,12 +1170,14 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				enteringCommand = true
 			end
 			if keysDown[keys.w] then
 				addWorkspace(0, -1)
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.w] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -1179,6 +1185,7 @@ local main = function()
 			if keysDown[keys.s] then
 				addWorkspace(0, 1)
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.s] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -1186,6 +1193,7 @@ local main = function()
 			if keysDown[keys.a] then
 				addWorkspace(-1, 0)
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.a] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -1193,12 +1201,14 @@ local main = function()
 			if keysDown[keys.d] then
 				addWorkspace(1, 0)
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.d] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.q] then
 				doDrawWorkspaceIndicator = 1
+				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.q] = false
 				local good = false
