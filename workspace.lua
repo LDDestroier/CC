@@ -361,7 +361,6 @@ lddterm.newWindow = function(width, height, x, y, meta)
 		text = tostring(text)
 		local cx = math.floor(window.cursor[1])
 		local cy = math.floor(window.cursor[2])
-		text = text:sub(math.max(0, -cx - 1))
 		for i = 1, #text do
 			if cx >= 1 and cx <= window.width and cy >= 1 and cy <= window.height then
 				window.buffer[1][cy][cx] = text:sub(i,i)
@@ -388,7 +387,6 @@ lddterm.newWindow = function(width, height, x, y, meta)
 		assert(char ~= nil, "expected string 'char'")
 		local cx = math.floor(window.cursor[1])
 		local cy = math.floor(window.cursor[2])
-		char = char:sub(math.max(0, -cx - 1))
 		for i = 1, #char do
 			if cx >= 1 and cx <= window.width and cy >= 1 and cy <= window.height then
 				window.buffer[1][cy][cx] = char:sub(i,i)
@@ -423,16 +421,18 @@ lddterm.newWindow = function(width, height, x, y, meta)
 		cy = math.floor(cy or window.cursor[2])
 		char = type(char) == "string" and char or " "
 		local cx = 1
-		for x = 1, window.width do
-			if char then
-				cx = (x % #char) + 1
+		if window.buffer[1][cy or window.cursor[2]] then
+			for x = 1, window.width do
+				if char then
+					cx = (x % #char) + 1
+				end
+				window.buffer[1][cy or window.cursor[2]][x] = char and char:sub(cx, cx) or window.clearChar
+				window.buffer[2][cy or window.cursor[2]][x] = window.colors[1]
+				window.buffer[3][cy or window.cursor[2]][x] = window.colors[2]
 			end
-			window.buffer[1][cy or window.cursor[2]][x] = char and char:sub(cx, cx) or window.clearChar
-			window.buffer[2][cy or window.cursor[2]][x] = window.colors[1]
-			window.buffer[3][cy or window.cursor[2]][x] = window.colors[2]
-		end
-		if lddterm.alwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
+			if lddterm.alwaysRender then
+				lddterm.render(lddterm.transformation, lddterm.drawFunction)
+			end
 		end
 	end
 	window.handle.getSize = function()
@@ -593,7 +593,7 @@ local newInstance = function(x, y, program, initialStart)
 		instances[y][xx] = instances[y][xx] or false
 	end
 	local window = lddterm.newWindow(windowWidth, windowHeight, 1, 1)
-	
+
 	local instance = {
 		x = x,
 		y = y,
@@ -627,13 +627,13 @@ local newInstance = function(x, y, program, initialStart)
 			instance.timeMod = 0
 			instance.lastTime = 0
 		end
-		
+
 		local drawInactiveScreen = function()
 			term.setTextColor(colors.white)
 			term.setBackgroundColor(colors.black)
 			term.clear()
 			term.setCursorBlink(false)
-			
+
 			if config.showInactiveFrame then
 				if (instance.y + instance.x) % 2 == 0 then
 					term.setTextColor(colors.lightGray)
@@ -657,12 +657,12 @@ local newInstance = function(x, y, program, initialStart)
 				end
 				term.setTextColor(colors.white)
 			end
-			
+
 			cwrite("This workspace is inactive.", 0 + scr_y / 2)
 			cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
 			cwrite("(" .. tostring(instance.x) .. ", " .. tostring(instance.y) .. ")", 3 + scr_y / 2)
 		end
-		
+
 		local evt
 		while true do
 
@@ -776,7 +776,7 @@ local swapInstances = function(xmod, ymod)
 	if not instances[focus[2] + ymod][focus[1] + xmod].active then
 		table.insert(instances[focus[2] + ymod][focus[1] + xmod].extraEvents, {"workspace_swap"})
 	end
-	
+
 	instances[focus[2]][focus[1]], instances[focus[2] + ymod][focus[1] + xmod] = instances[focus[2] + ymod][focus[1] + xmod], instances[focus[2]][focus[1]]
 	instances[focus[2]][focus[1]].x, instances[focus[2] + ymod][focus[1] + xmod].x = instances[focus[2] + ymod][focus[1] + xmod].x, instances[focus[2]][focus[1]].x
 	instances[focus[2]][focus[1]].y, instances[focus[2] + ymod][focus[1] + xmod].y = instances[focus[2] + ymod][focus[1] + xmod].y, instances[focus[2]][focus[1]].y
@@ -795,7 +795,7 @@ end
 local removeWorkspace = function(xmod, ymod)
 	if config.WSmap[focus[2] + ymod][focus[1] + xmod] then
 		local good = false
-		
+
 		for m = 1, math.max(gridHeight - gridMinY + 1, gridWidth - gridMinX + 1) do
 			for y = -1, 1 do
 				for x = -1, 1 do
@@ -816,7 +816,7 @@ local removeWorkspace = function(xmod, ymod)
 				break
 			end
 		end
-		
+
 		if good then
 			lddterm.windows[instances[focus[2] + ymod][focus[1] + xmod].window.layer] = nil
 			config.WSmap[focus[2] + ymod][focus[1] + xmod] = nil
@@ -914,7 +914,7 @@ local main = function()
 			end
 		end
 	end
-	
+
 	gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 	focus[2] = gridMinY
 	for x = gridMinX, gridWidth do
@@ -974,17 +974,13 @@ local main = function()
 		end
 		os.queueEvent = function(evt, ...)
 			if type(evt) == "string" then
-				if instances[y][x].paused then
-					instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
-				else
-					oldFuncReplace.os.queueEvent(evt, ...)
-				end
+				instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
 			else
 				error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
 			end
 		end
 	end
-	
+
 	-- timer for instance timers and window scrolling
 	tID = os.startTimer(0.05)
 
@@ -992,12 +988,27 @@ local main = function()
 	local banTimerEvent, evt
 	local doRedraw = false
 
+	local checkIfExtraEvents = function()
+		for y = gridMinY, gridHeight do
+			if instances[y] then
+				for x = gridMinX, gridWidth do
+					if instances[y][x] then
+						if #instances[y][x].extraEvents ~= 0 then
+							return true
+						end
+					end
+				end
+			end
+		end
+		return false
+	end
+
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 		doRedraw = false
-		
+
 		evt = {os.pullEventRaw()}
-		
+
 		enteringCommand = false
 		if evt[1] == "key" then
 			keysDown[evt[2]] = true
@@ -1008,6 +1019,7 @@ local main = function()
 				enteringCommand = true
 				doDrawWorkspaceIndicator = false
 				banTimerEvent = true
+				doRedraw = true
 			else
 				if evt[2] == tID then
 					doRedraw = true
@@ -1197,27 +1209,26 @@ local main = function()
 				if instances[y] then
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
-						
+
+							setInstanceSpecificFunctions(x, y)
+							previousTerm = term.redirect(instances[y][x].window.handle)
+
 							if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
-								previousTerm = term.redirect(instances[y][x].window.handle)
-								setInstanceSpecificFunctions(x, y)
 								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
-								term.redirect(previousTerm)
 							end
-						
-							if #instances[y][x].extraEvents ~= 0 then
+
+							if #instances[y][x].extraEvents ~= 0 and not instances[y][x].paused then
 								for i = 1, #instances[y][x].extraEvents do
 									if checkIfCanRun(instances[y][x].extraEvents[i], x, y) then
-										previousTerm = term.redirect(instances[y][x].window.handle)
-										setInstanceSpecificFunctions(x, y)
 										cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[i]))
-										term.redirect(previousTerm)
 									else
 										break
 									end
 								end
 								instances[y][x].extraEvents = {}
 							end
+
+							term.redirect(previousTerm)
 
 						end
 					end
@@ -1231,7 +1242,7 @@ local main = function()
 				os.time = oldFuncReplace.os.time
 			end
 			os.queueEvent = oldFuncReplace.os.queueEvent
-			
+
 		end
 
 		if doRedraw then
