@@ -541,8 +541,8 @@ lddterm.screenshot = function(window)
 				lt, lb = t, b
 				if config.doTrippyVoid then
 					c = string.char(math.random(128, 159))
-					t = lddterm.backdropColors[1 + math.floor((y - realScroll[2] * scr_y) % #lddterm.backdropColors)]
-					b = lddterm.backdropColors[1 + math.floor((x - realScroll[1] * scr_x) % #lddterm.backdropColors)]
+					t = backdropColors[1 + math.floor((y - realScroll[2] * scr_y) % #backdropColors)]
+					b = backdropColors[1 + math.floor((x - realScroll[1] * scr_x) % #backdropColors)]
 				else
 					c = string.char( math.max(128, math.random(-5000, 159)) )
 					t = ({"7", "8"})[math.random(1, 2)]
