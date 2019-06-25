@@ -15,6 +15,7 @@ local config = {
 	skipAcrossEmptyWorkspaces = true,
 	showInactiveFrame = true,
 	doTrippyVoid = false,
+	flipTheFuckOut = false,
 	WSmap = {
 		{true,true,true},
 		{true,true,true},
@@ -734,19 +735,23 @@ end
 local scrollWindows = function(doScrollWindows, tickDownTimers)
 	local changed = false
 	local timersToDelete = {}
+	local xrand, yrand = 0, 0
+	if config.flipTheFuckOut then
+		xrand, yrand = math.random(-5, 5) / 60, math.random(-5, 5) / 60
+	end
 	if doScrollWindows then
-		if realScroll[1] < scroll[1] then
-			realScroll[1] = math.min(realScroll[1] + config.workspaceMoveSpeed, scroll[1])
+		if realScroll[1] < scroll[1] + xrand then
+			realScroll[1] = math.min(realScroll[1] + config.workspaceMoveSpeed, scroll[1] + xrand)
 			changed = true
-		elseif realScroll[1] > scroll[1] then
-			realScroll[1] = math.max(realScroll[1] - config.workspaceMoveSpeed, scroll[1])
+		elseif realScroll[1] > scroll[1] + xrand then
+			realScroll[1] = math.max(realScroll[1] - config.workspaceMoveSpeed, scroll[1] + xrand)
 			changed = true
 		end
-		if realScroll[2] < scroll[2] then
-			realScroll[2] = math.min(realScroll[2] + config.workspaceMoveSpeed, scroll[2])
+		if realScroll[2] < scroll[2] + yrand then
+			realScroll[2] = math.min(realScroll[2] + config.workspaceMoveSpeed, scroll[2] + yrand)
 			changed = true
-		elseif realScroll[2] > scroll[2] then
-			realScroll[2] = math.max(realScroll[2] - config.workspaceMoveSpeed, scroll[2])
+		elseif realScroll[2] > scroll[2] + yrand then
+			realScroll[2] = math.max(realScroll[2] - config.workspaceMoveSpeed, scroll[2] + yrand)
 			changed = true
 		end
 	end
@@ -1034,22 +1039,26 @@ local main = function()
 		end
 
 		if (keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]) and (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
-			if evt[1] == "key" and evt[2] == keys.p then
-				if instances[focus[2]][focus[1]].active then
-					instances[focus[2]][focus[1]].paused = not instances[focus[2]][focus[1]].paused
-					enteringCommand = true
-					doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
-					os.cancelTimer(wID)
-					wID = os.startTimer(workspaceIndicatorDuration)
-					if config.doPauseClockAndTime then
-						if instances[focus[2]][focus[1]].paused then
-							instances[focus[2]][focus[1]].lastClock = os.clock() + instances[focus[2]][focus[1]].clockMod
-							instances[focus[2]][focus[1]].lastTime = os.time() + instances[focus[2]][focus[1]].timeMod
-						else
-							instances[focus[2]][focus[1]].clockMod = instances[focus[2]][focus[1]].lastClock - os.clock()
-							instances[focus[2]][focus[1]].timeMod = instances[focus[2]][focus[1]].lastTime - os.time()
+			if evt[1] == "key" then
+				if evt[2] == keys.p then
+					if instances[focus[2]][focus[1]].active then
+						instances[focus[2]][focus[1]].paused = not instances[focus[2]][focus[1]].paused
+						enteringCommand = true
+						doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
+						os.cancelTimer(wID)
+						wID = os.startTimer(workspaceIndicatorDuration)
+						if config.doPauseClockAndTime then
+							if instances[focus[2]][focus[1]].paused then
+								instances[focus[2]][focus[1]].lastClock = os.clock() + instances[focus[2]][focus[1]].clockMod
+								instances[focus[2]][focus[1]].lastTime = os.time() + instances[focus[2]][focus[1]].timeMod
+							else
+								instances[focus[2]][focus[1]].clockMod = instances[focus[2]][focus[1]].lastClock - os.clock()
+								instances[focus[2]][focus[1]].timeMod = instances[focus[2]][focus[1]].lastTime - os.time()
+							end
 						end
 					end
+				elseif evt[2] == keys.o then
+					loadConfig()
 				end
 			end
 			if keysDown[keys.left] then
