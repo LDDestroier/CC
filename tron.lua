@@ -1311,9 +1311,9 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 			end
 		end
 	end
-	local gstID, evt = mathrandom(1,65535)
+	local gstID, evt
 	if doAnimate then
-		os.queueEvent("timer", gstID)
+		gstID = os.startTimer(0.05)
 	end
 	rend()
 	local tID = os.startTimer(0.05)
