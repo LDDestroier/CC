@@ -35,7 +35,7 @@ while true do
 					key = key,
 					side = side,
 				})
-			elseif redstone.getOutput(side) == false and (inputSides[side] or netInputSides[side]) then
+			elseif redstone.getOutput(side) == false and inputSides[side] then
 				inputSides[side] = false
 				occupiedSides[side] = false
 				occupiedSides[oSide] = false
