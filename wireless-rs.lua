@@ -51,12 +51,12 @@ while true do
 			if msg.key == key and msg.cmd and oppositeSides[msg.side or false] then
 
 				if msg.cmd == "turnOn" then
-					inputSides[msg.side] = true
+					--inputSides[msg.side] = true
 					occupiedSides[msg.side] = true
 					occupiedSides[oppositeSides[msg.side]] = true
 					redstone.setOutput(oppositeSides[msg.side], true)
 				elseif msg.cmd == "turnOff" then
-					inputSides[msg.side] = false
+					--inputSides[msg.side] = false
 					occupiedSides[msg.side] = false
 					occupiedSides[oppositeSides[msg.side]] = false
 					redstone.setOutput(oppositeSides[msg.side], false)
