@@ -284,6 +284,21 @@ lddterm.render = function(transformation, drawFunction)
 	fixCursorPos()
 end
 
+-- sets term palette to that of instance (x, y)'s
+local correctPalette = function(x, y)
+	if instances[y] then
+		if instances[y][x] then
+			for i = 0, 15 do
+				lddterm.baseTerm.setPaletteColor(2^i, table.unpack(instances[y][x].window.palette[2^i]))
+			end
+			return
+		end
+	end
+	for i = 0, 15 do
+		lddterm.baseTerm.setPaletteColor(2^i, term.nativePalette(2^i))
+	end
+end
+
 lddterm.newWindow = function(width, height, x, y, meta)
 	meta = meta or {}
 	local window = {
@@ -297,6 +312,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 		x = math.floor(x) or 1,
 		y = math.floor(y) or 1,
 		buffer = {{},{},{}},
+		palette = {}
 	}
 	for y = 1, height do
 		window.buffer[1][y] = {}
@@ -307,6 +323,9 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			window.buffer[2][y][x] = window.colors[1]
 			window.buffer[3][y][x] = window.colors[2]
 		end
+	end
+	for i = 0, 15 do
+		window.palette[2^i] = {term.nativePaletteColor(2^i)}
 	end
 
 	window.handle = {}
@@ -470,12 +489,29 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			lddterm.render(lddterm.transformation, lddterm.drawFunction)
 		end
 	end
-	window.handle.setPaletteColor = function(...)
-		return lddterm.baseTerm.setPaletteColor(...)
+	window.handle.setPaletteColor = function(slot, r, g, b)
+		assert(type(slot) == "number", "bad argument #1 to 'setPaletteColor' (expected number, got " .. type(slot) .. ")")
+		assert(to_blit[slot], "Invalid color (got " .. tostring(slot) .. ")")
+		if g then	-- individual color values
+			assert(type(r) == "number", "bad argument #2 to 'setPaletteColor' (expected number, got " .. type(r) .. ")")
+			assert(type(g) == "number", "bad argument #3 to 'setPaletteColor' (expected number, got " .. type(g) .. ")")
+			assert(type(b) == "number", "bad argument #4 to 'setPaletteColor' (expected number, got " .. type(b) .. ")")
+			window.palette[slot] = {
+				math.min(1, math.max(0, r)),
+				math.min(1, math.max(0, g)),
+				math.min(1, math.max(0, b)),
+			}
+		else	-- using HEX
+			assert(type(r) == "number", "bad argument #2 to 'setPaletteColor' (expected number, got " .. type(r) .. ")")
+			window.palette[slot] = {colors.unpackRGB(r)}
+		end
+		correctPalette(window.x, window.y)
 	end
 	window.handle.setPaletteColour = window.handle.setPaletteColor
-	window.handle.getPaletteColor = function(...)
-		return lddterm.baseTerm.getPaletteColor(...)
+	window.handle.getPaletteColor = function(slot)
+		assert(type(slot) == "number", "bad argument #1 to 'setPaletteColor' (expected number, got " .. type(slot) .. ")")
+		assert(to_blit[slot], "Invalid color (got " .. tostring(slot) .. ")")
+		return table.unpack(window.palette[slot])
 	end
 	window.handle.getPaletteColour = window.handle.getPaletteColor
 	window.handle.getPosition = function()
@@ -492,7 +528,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 	end
 
 	window.handle.redraw = lddterm.render
-	window.handle.current = window.handle
+--	window.handle.current = window.handle
 
 	window.layer = #lddterm.windows + 1
 	lddterm.windows[window.layer] = window
@@ -662,6 +698,7 @@ local newInstance = function(x, y, program, initialStart)
 			cwrite("This workspace is inactive.", 0 + scr_y / 2)
 			cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
 			cwrite("(" .. tostring(instance.x) .. ", " .. tostring(instance.y) .. ")", 3 + scr_y / 2)
+			
 		end
 
 		local evt
@@ -679,7 +716,12 @@ local newInstance = function(x, y, program, initialStart)
 
 			drawInactiveScreen()
 
-			--coroutine.yield()
+			coroutine.yield()
+			
+			for i = 0, 15 do
+				window.palette[2^i] = {term.nativePaletteColor(2^i)}
+			end
+			correctPalette(window.x, window.y)
 
 			repeat
 				evt = {os.pullEventRaw()}
@@ -874,26 +916,30 @@ local inputEvt = {
 }
 
 local checkIfCanRun = function(evt, x, y)
-	return (
-		justStarted or (
-			(not instances[y][x].paused) and (
-				not instances[y][x].eventFilter or
-				instances[y][x].eventFilter == evt[1] or
-				evt[1] == "terminate"
-			) and (
-				(not inputEvt[evt[1]]) and
-				instances[y][x].active or (
-					x == focus[1] and
-					y == focus[2]
-				) or (
-					x == focus[1] and
-					y == focus[2]
-				) and (
+	if evt then
+		return (
+			justStarted or (
+				(not instances[y][x].paused) and (
+					not instances[y][x].eventFilter or
+					instances[y][x].eventFilter == evt[1] or
 					evt[1] == "terminate"
-				) or evt[1] == "workspace_swap"
+				) and (
+					(not inputEvt[evt[1]]) and
+					instances[y][x].active or (
+						x == focus[1] and
+						y == focus[2]
+					) or (
+						x == focus[1] and
+						y == focus[2]
+					) and (
+						evt[1] == "terminate"
+					) or evt[1] == "workspace_swap"
+				)
 			)
 		)
-	)
+	else
+		return false
+	end
 end
 
 local main = function()
@@ -991,7 +1037,8 @@ local main = function()
 
 	-- if true, timer events won't be accepted by instances (unless it's an extraEvent)
 	local banTimerEvent, evt
-	local doRedraw = false
+	local doRedraw = false		-- redraw screen after resuming every instance
+	local doTick = true			-- check for key inputs and whatnot
 
 	local checkIfExtraEvents = function()
 		for y = gridMinY, gridHeight do
@@ -1011,6 +1058,7 @@ local main = function()
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 		doRedraw = false
+		doTick = true
 
 		evt = {os.pullEventRaw()}
 
@@ -1036,9 +1084,43 @@ local main = function()
 					scrollWindows(false, true)
 				end
 			end
+		elseif evt[1] == "resume_instance" then
+			local x, y = evt[2], evt[3]
+			
+			oldFuncReplace.os.startTimer = os.startTimer
+			oldFuncReplace.os.cancelTimer = os.cancelTimer
+			if config.doPauseClockAndTime then
+				oldFuncReplace.os.clock = os.clock
+				oldFuncReplace.os.time = os.time
+			end
+			oldFuncReplace.os.queueEvent = os.queueEvent
+			
+			setInstanceSpecificFunctions(x, y)
+			previousTerm = term.redirect(instances[y][x].window.handle)
+			
+			if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
+				cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[1]))
+			end
+			table.remove(instances[y][x].extraEvents, 1)
+			
+			if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
+				oldFuncReplace.os.queueEvent("resume_instance", x, y)
+			end
+			
+			term.redirect(previousTerm)
+
+			os.startTimer = oldFuncReplace.os.startTimer
+			os.cancelTimer = oldFuncReplace.os.cancelTimer
+			if config.doPauseClockAndTime then
+				os.clock = oldFuncReplace.os.clock
+				os.time = oldFuncReplace.os.time
+			end
+			os.queueEvent = oldFuncReplace.os.queueEvent
+			
+			doTick = false
 		end
 
-		if (keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]) and (keysDown[keys.leftShift] or keysDown[keys.rightShift]) then
+		if doTick and ((keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]) and (keysDown[keys.leftShift] or keysDown[keys.rightShift])) then
 			if evt[1] == "key" then
 				if evt[2] == keys.p then
 					if instances[focus[2]][focus[1]].active then
@@ -1076,6 +1158,7 @@ local main = function()
 				doDrawWorkspaceIndicator = 1
 				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
+				correctPalette(focus[1], focus[2])
 				enteringCommand = true
 			end
 			if keysDown[keys.right] then
@@ -1093,6 +1176,7 @@ local main = function()
 				doDrawWorkspaceIndicator = 1
 				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
+				correctPalette(focus[1], focus[2])
 				enteringCommand = true
 			end
 			if keysDown[keys.up] then
@@ -1112,6 +1196,7 @@ local main = function()
 				doDrawWorkspaceIndicator = 1
 				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
+				correctPalette(focus[1], focus[2])
 				enteringCommand = true
 			end
 			if keysDown[keys.down] then
@@ -1131,6 +1216,7 @@ local main = function()
 				doDrawWorkspaceIndicator = 1
 				os.cancelTimer(wID)
 				wID = os.startTimer(workspaceIndicatorDuration)
+				correctPalette(focus[1], focus[2])
 				enteringCommand = true
 			end
 			if keysDown[keys.w] then
@@ -1200,11 +1286,12 @@ local main = function()
 						break
 					end
 				end
+				correctPalette(focus[1], focus[2])
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 		end
 
-		if not enteringCommand then
+		if doTick and (not enteringCommand) then
 
 			oldFuncReplace.os.startTimer = os.startTimer
 			oldFuncReplace.os.cancelTimer = os.cancelTimer
@@ -1222,19 +1309,21 @@ local main = function()
 							setInstanceSpecificFunctions(x, y)
 							previousTerm = term.redirect(instances[y][x].window.handle)
 
-							if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
-								cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
-							end
-
-							if #instances[y][x].extraEvents ~= 0 and not instances[y][x].paused then
-								for i = 1, #instances[y][x].extraEvents do
-									if checkIfCanRun(instances[y][x].extraEvents[i], x, y) then
-										cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[i]))
-									else
-										break
-									end
+							if not (evt[1] == "resume_instance" and evt[2] == x and evt[3] == y) then
+								if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
+									cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
 								end
-								instances[y][x].extraEvents = {}
+							
+								if #instances[y][x].extraEvents ~= 0 and not instances[y][x].paused then
+									if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
+										cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[1]))
+									end
+									table.remove(instances[y][x].extraEvents, 1)
+								end
+								
+								if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
+									oldFuncReplace.os.queueEvent("resume_instance", x, y)
+								end
 							end
 
 							term.redirect(previousTerm)
