@@ -115,6 +115,10 @@ lddterm.adjustX = 0					-- moves entire screen X
 lddterm.adjustY = 0					-- moves entire screen Y
 lddterm.selectedWindow = 1			-- determines which window controls the cursor
 lddterm.windows = {}				-- internal list of all lddterm windows
+lddterm.nativePalettes = {}			-- native palette colors
+for i = 0, 15 do
+	lddterm.nativePalettes[2^i] = {term.nativePaletteColor(2^i)}
+end
 -- backdropColors used for the void outside of windows, if using rainbow void
 local backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
 
@@ -286,16 +290,19 @@ end
 
 -- sets term palette to that of instance (x, y)'s
 local correctPalette = function(x, y)
+	local exists = false
 	if instances[y] then
 		if instances[y][x] then
 			for i = 0, 15 do
 				lddterm.baseTerm.setPaletteColor(2^i, table.unpack(instances[y][x].window.palette[2^i]))
 			end
-			return
+			exists = true
 		end
 	end
-	for i = 0, 15 do
-		lddterm.baseTerm.setPaletteColor(2^i, term.nativePalette(2^i))
+	if not exists then
+		for i = 0, 15 do
+			lddterm.baseTerm.setPaletteColor(2^i, table.unpack(lddterm.nativePalettes[2^i]))
+		end
 	end
 end
 
@@ -664,6 +671,8 @@ local newInstance = function(x, y, program, initialStart)
 			instance.timeMod = 0
 			instance.lastTime = 0
 		end
+	
+		local cx, cy
 
 		local drawInactiveScreen = function()
 			term.setTextColor(colors.white)
@@ -698,7 +707,6 @@ local newInstance = function(x, y, program, initialStart)
 			cwrite("This workspace is inactive.", 0 + scr_y / 2)
 			cwrite("Press SPACE to start the workspace.", 1 + scr_y / 2)
 			cwrite("(" .. tostring(instance.x) .. ", " .. tostring(instance.y) .. ")", 3 + scr_y / 2)
-			
 		end
 
 		local evt
@@ -722,7 +730,7 @@ local newInstance = function(x, y, program, initialStart)
 				window.palette[2^i] = {term.nativePaletteColor(2^i)}
 			end
 			correctPalette(window.x, window.y)
-
+			
 			repeat
 				evt = {os.pullEventRaw()}
 				if evt[1] == "workspace_swap" then
@@ -915,31 +923,150 @@ local inputEvt = {
 	terminate = true
 }
 
+-- what a mess! this needs serious rewriting with if statements
+
+--local checkIfCanRun = function(evt, x, y)
+--	if evt then
+--		return (
+--			justStarted or (
+--				(not instances[y][x].paused) and (
+--					not instances[y][x].eventFilter or
+--					instances[y][x].eventFilter == evt[1] or
+--					evt[1] == "terminate"
+--				) and (
+--					(not inputEvt[evt[1]]) and
+--					instances[y][x].active or (
+--						x == focus[1] and
+--						y == focus[2]
+--					) or (
+--						x == focus[1] and
+--						y == focus[2]
+--					) and (
+--						evt[1] == "terminate"
+--					) or evt[1] == "workspace_swap"
+--				)
+--			)
+--		)
+--	else
+--		return false
+--	end
+--end
+
+
 local checkIfCanRun = function(evt, x, y)
+	if not instances[y] then
+		return false
+	elseif not instances[y][x] then
+		return false
+	end
+	
+	local instance = instances[y][x]
+	local focused = (focus[1] == x and focus[2] == y)
+	
 	if evt then
-		return (
-			justStarted or (
-				(not instances[y][x].paused) and (
-					not instances[y][x].eventFilter or
-					instances[y][x].eventFilter == evt[1] or
-					evt[1] == "terminate"
-				) and (
-					(not inputEvt[evt[1]]) and
-					instances[y][x].active or (
-						x == focus[1] and
-						y == focus[2]
-					) or (
-						x == focus[1] and
-						y == focus[2]
-					) and (
-						evt[1] == "terminate"
-					) or evt[1] == "workspace_swap"
-				)
-			)
-		)
+		if justStarted then
+			return true
+		else
+			if instance.paused then
+				return false
+			else
+				
+				if evt[1] == "workspace_swap" then
+					return true
+				elseif evt[1] == "terminate" and focused then
+					return true
+				else
+					if instance.active then
+						if focused then
+							return true
+						elseif inputEvt[evt[1]] then
+							return false
+						else
+							return true
+						end
+					else
+						return focused
+					end
+				end
+				
+			end
+		end
 	else
 		return false
 	end
+end
+
+local oldFuncReplace = {os = {}, term = {}}	-- used when replacing certain os functions per-instance
+
+local setInstanceSpecificFunctions = function(x, y)
+	os.startTimer = function(duration)
+		if type(duration) == "number" then
+			local t
+			while true do
+				t = math.random(1, 2^30)
+				if not instances[y][x].timer[t] then
+					instances[y][x].timer[t] = math.floor(duration * 20) / 20
+					return t
+				end
+			end
+		else
+			error("bad argument #1 (number expected, got " .. type(duration) .. ")", 2)
+		end
+	end
+	os.cancelTimer = function(id)
+		if type(id) == "number" then
+			instances[y][x].timer[id] = nil
+		else
+			error("bad argument #1 (number expected, got " .. type(id) .. ")", 2)
+		end
+	end
+	if config.doPauseClockAndTime then
+		os.clock = function()
+			return oldFuncReplace.os.clock() + instances[y][x].clockMod
+		end
+		os.time = function()
+			return oldFuncReplace.os.time() + instances[y][x].timeMod
+		end
+	end
+	os.queueEvent = function(evt, ...)
+		if type(evt) == "string" then
+			instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
+		else
+			error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
+		end
+	end
+end
+
+local resumeInstance = function(evt, x, y)
+	setInstanceSpecificFunctions(x, y)
+	previousTerm = term.redirect(instances[y][x].window.handle)
+
+	if not (evt[1] == "resume_instance" and evt[2] == x and evt[3] == y) then
+		if checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer") then
+			cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
+		end
+
+		if #instances[y][x].extraEvents ~= 0 and not instances[y][x].paused then
+			if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
+				cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[1]))
+			end
+			table.remove(instances[y][x].extraEvents, 1)
+		end
+		
+		if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
+			oldFuncReplace.os.queueEvent("resume_instance", x, y, instances[y][x].extraEvents[1])
+		end
+	end
+
+	term.redirect(previousTerm)
+	
+	os.startTimer = oldFuncReplace.os.startTimer
+	os.cancelTimer = oldFuncReplace.os.cancelTimer
+	if config.doPauseClockAndTime then
+		os.clock = oldFuncReplace.os.clock
+		os.time = oldFuncReplace.os.time
+	end
+	os.queueEvent = oldFuncReplace.os.queueEvent
 end
 
 local main = function()
@@ -947,7 +1074,6 @@ local main = function()
 	local justStarted = true
 	local tID, wID = 0, 0
 	local pCounter, program = 0
-	local oldFuncReplace = {os = {}, term = {}}	-- used when replacing certain os functions per-instance
 
 	for y, v in pairs(config.WSmap) do
 		for x, vv in pairs(v) do
@@ -992,45 +1118,6 @@ local main = function()
 	saveConfig()
 
 	local previousTerm, cSuccess
-
-	local setInstanceSpecificFunctions = function(x, y)
-		os.startTimer = function(duration)
-			if type(duration) == "number" then
-				local t
-				while true do
-					t = math.random(1, 2^30)
-					if not instances[y][x].timer[t] then
-						instances[y][x].timer[t] = math.floor(duration * 20) / 20
-						return t
-					end
-				end
-			else
-				error("bad argument #1 (number expected, got " .. type(duration) .. ")", 2)
-			end
-		end
-		os.cancelTimer = function(id)
-			if type(id) == "number" then
-				instances[y][x].timer[id] = nil
-			else
-				error("bad argument #1 (number expected, got " .. type(id) .. ")", 2)
-			end
-		end
-		if config.doPauseClockAndTime then
-			os.clock = function()
-				return oldFuncReplace.os.clock() + instances[y][x].clockMod
-			end
-			os.time = function()
-				return oldFuncReplace.os.time() + instances[y][x].timeMod
-			end
-		end
-		os.queueEvent = function(evt, ...)
-			if type(evt) == "string" then
-				instances[y][x].extraEvents[#instances[y][x].extraEvents + 1] = {evt, ...}
-			else
-				error("bad argument #1 (number expected, got " .. type(evt) .. ")", 2)
-			end
-		end
-	end
 
 	-- timer for instance timers and window scrolling
 	tID = os.startTimer(0.05)
@@ -1085,37 +1172,8 @@ local main = function()
 				end
 			end
 		elseif evt[1] == "resume_instance" then
-			local x, y = evt[2], evt[3]
-			
-			oldFuncReplace.os.startTimer = os.startTimer
-			oldFuncReplace.os.cancelTimer = os.cancelTimer
-			if config.doPauseClockAndTime then
-				oldFuncReplace.os.clock = os.clock
-				oldFuncReplace.os.time = os.time
-			end
-			oldFuncReplace.os.queueEvent = os.queueEvent
-			
-			setInstanceSpecificFunctions(x, y)
-			previousTerm = term.redirect(instances[y][x].window.handle)
-			
-			if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
-				cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[1]))
-			end
-			table.remove(instances[y][x].extraEvents, 1)
-			
-			if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
-				oldFuncReplace.os.queueEvent("resume_instance", x, y)
-			end
-			
-			term.redirect(previousTerm)
-
-			os.startTimer = oldFuncReplace.os.startTimer
-			os.cancelTimer = oldFuncReplace.os.cancelTimer
-			if config.doPauseClockAndTime then
-				os.clock = oldFuncReplace.os.clock
-				os.time = oldFuncReplace.os.time
-			end
-			os.queueEvent = oldFuncReplace.os.queueEvent
+		
+			resumeInstance(evt[4], evt[2], evt[3])
 			
 			doTick = false
 		end
@@ -1306,40 +1364,12 @@ local main = function()
 					for x = gridMinX, gridWidth do
 						if instances[y][x] then
 
-							setInstanceSpecificFunctions(x, y)
-							previousTerm = term.redirect(instances[y][x].window.handle)
-
-							if not (evt[1] == "resume_instance" and evt[2] == x and evt[3] == y) then
-								if justStarted or (checkIfCanRun(evt, x, y) and not (banTimerEvent and evt[1] == "timer")) then
-									cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(evt))
-								end
-							
-								if #instances[y][x].extraEvents ~= 0 and not instances[y][x].paused then
-									if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
-										cSuccess, instances[y][x].eventFilter = coroutine.resume(instances[y][x].co, table.unpack(instances[y][x].extraEvents[1]))
-									end
-									table.remove(instances[y][x].extraEvents, 1)
-								end
-								
-								if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
-									oldFuncReplace.os.queueEvent("resume_instance", x, y)
-								end
-							end
-
-							term.redirect(previousTerm)
+							resumeInstance(evt, x, y)
 
 						end
 					end
 				end
 			end
-
-			os.startTimer = oldFuncReplace.os.startTimer
-			os.cancelTimer = oldFuncReplace.os.cancelTimer
-			if config.doPauseClockAndTime then
-				os.clock = oldFuncReplace.os.clock
-				os.time = oldFuncReplace.os.time
-			end
-			os.queueEvent = oldFuncReplace.os.queueEvent
 
 		end
 
