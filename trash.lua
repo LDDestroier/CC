@@ -1106,3 +1106,4 @@ end
 sleep(0.5)
 
 term.redirect(tOriginal)
+term.setCursorPos(1, scr_y)
