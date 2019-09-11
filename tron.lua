@@ -2012,11 +2012,12 @@ local helpScreen = function()
 	termclear()
 	termsetCursorPos(1,2)
 	print([[
-	Move your lightcycle with WASD
-	 or by tapping left click.
+	Move your lightcycle with the
+	 arrow keys or by tapping
+	 left click.
 
-	Pan the camera with arrows
-	 or by holding middle click.
+	Pan the camera with WASD or
+	 by holding middle click.
 
 	Release the trail with spacebar
 	 or by holding right click.
