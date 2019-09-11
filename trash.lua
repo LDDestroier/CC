@@ -959,10 +959,9 @@ tWindow.blink = false
 local tOriginal = term.redirect(tWindow.handle)
 
 local program = tArg[1] or "/rom/programs/shell.lua"
-table.remove(tArg, 1)
 
 local rendTimer = os.startTimer(0.05)
-
+table.remove(tArg, 1)
 parallel.waitForAny(function()
 	shell.run(program, table.unpack(tArg))
 end, function()
@@ -1060,11 +1059,8 @@ for i = 1, 41 do
 	term.clear()
 	rImage, rX, rY = nfte.rotateImage(screenshot, imageRotate)
 	nfte.drawImage(rImage, scrollX + imageX, scrollY + imageY)
-	if i < 25 then
-		nfte.drawImageTransparent(images.handOpen, scrollX + handX, scrollY + handY)
-	else
-		nfte.drawImageTransparent(images.trashCan, scrollX - 150, scrollY + 32)
-	end
+	nfte.drawImageTransparent(images.handOpen, scrollX + handX, scrollY + handY)
+	nfte.drawImageTransparent(images.trashCan, scrollX - (150 - (scr_x - 51)), scrollY + 32)
 	lddterm.render()
 
 	sleep(0.05)
@@ -1088,7 +1084,7 @@ local scene = lddterm.screenshot()
 
 for i = 1, 5 do
 	nfte.drawImage(scene, 1, 1)
-	nfte.drawImageTransparent(images.trashLid, (scr_x/2) - 4, i - 4)
+	nfte.drawImageTransparent(images.trashLid, scrollX - (154 - (scr_x - 51)), i - 4)
 	lddterm.render()
 	sleep(0.05)
 end
@@ -1099,7 +1095,7 @@ for i = 1, 10 do
 	lidAngle = lidAngle + 0.053
 	rotLid = nfte.rotateImage(images.trashLid, lidAngle)
 	nfte.drawImage(scene, 1, 1)
-	nfte.drawImageTransparent(rotLid, (scr_x/2) - 4, 1)
+	nfte.drawImageTransparent(rotLid, scrollX - (154 - (scr_x - 51)), 1)
 	lddterm.render()
 	sleep(0.05)
 end
