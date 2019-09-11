@@ -959,11 +959,12 @@ tWindow.blink = false
 local tOriginal = term.redirect(tWindow.handle)
 
 local program = tArg[1] or "/rom/programs/shell.lua"
+table.remove(tArg, 1)
 
 local rendTimer = os.startTimer(0.05)
 
 parallel.waitForAny(function()
-	shell.run(program)
+	shell.run(program, table.unpack(tArg))
 end, function()
 	local evt
 	local keysDown = {}
