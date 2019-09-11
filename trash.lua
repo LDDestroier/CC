@@ -1084,7 +1084,7 @@ local scene = lddterm.screenshot()
 
 for i = 1, 5 do
 	nfte.drawImage(scene, 1, 1)
-	nfte.drawImageTransparent(images.trashLid, scrollX - (154 - (scr_x - 51)), i - 4)
+	nfte.drawImageTransparent(images.trashLid, scrollX - (153 - (scr_x - 51)), i - 4)
 	lddterm.render()
 	sleep(0.05)
 end
@@ -1095,7 +1095,7 @@ for i = 1, 10 do
 	lidAngle = lidAngle + 0.053
 	rotLid = nfte.rotateImage(images.trashLid, lidAngle)
 	nfte.drawImage(scene, 1, 1)
-	nfte.drawImageTransparent(rotLid, scrollX - (154 - (scr_x - 51)), 1)
+	nfte.drawImageTransparent(rotLid, scrollX - (153 - (scr_x - 51)), 1)
 	lddterm.render()
 	sleep(0.05)
 end
