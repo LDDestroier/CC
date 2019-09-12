@@ -1,12 +1,35 @@
+-- TRASH by LDDestroier
+-- Syntax:
+--  > trash.lua [program] [arg1] [arg2] ...
+--
+--   Close the program or use LeftCTRL + LeftSHIFT + Backspace
+-- to throw it in the traaaaaaaaash
+
 local tArg = {...}
 
 local scr_x, scr_y = term.getSize()
 
 local images = {
-	handOpen = {  {    "     ",    "",    "",    "",    "  ",    "       ",    "         ",  },  {    "  00ffff   ",    "fffff000000",    "ffff0000000",    "  ff0000000",    "     f000  ",    "    f000   ",    "    00     ",  },  {    "  f00000   ",    "0000000000f",    "0000000000f",    "  0000000ff",    "     000f  ",    "    00ff   ",    "    ff     ",  }},
-	handClosed = {  {    "      ",    " ",    " ",    " ",    "    ",    "       ",  },  {    "   fffff   ",    " fff0000000",    " ff00000000",    " ff00000000",    " 0fff000   ",    "   0000    ",  },  {    "   00000   ",    " 000000000f",    " 000000000f",    " 0000000fff",    " f00000f   ",    "   ffff    ",  }},
-	trashCan = {  {    "",    "",    " ",    "  ",    "   ",    "    ",    "    ",    "     ",    "      ",  },  {    "888ffffffff888",    "f8877787778788",    "8878888788878 ",    " f88788788788 ",    " f8878878878  ",    "  8878878788  ",    "  f887878788  ",    "  887787778   ",    "   88888888   ",  },  {    "7788888888887f",    "8878887888788f",    " 887887888788 ",    " 88788788788f ",    " 88788788788  ",    "  887878878f  ",    "  887878788f  ",    "  f8887888f   ",    "   ffffffff   ",  }},
-	trashLid = {  {    "   ",    "",  },  {    "   fffffff8",    "f888877778888f",  },  {    "   8888888f",    "88888888888888",  }}
+	handOpen = {
+		{"     ","","","","  ","       ","         ",},
+		{"  00ffff   ","fffff000000","ffff0000000","  ff0000000","     f000  ","    f000   ","    00     ",},
+		{"  f00000   ","0000000000f","0000000000f","  0000000ff","     000f  ","    00ff   ","    ff     ",}
+	},
+	handClosed = {
+		{"      "," "," "," ","    ","       "},
+		{"   fffff   "," fff0000000"," ff00000000"," ff00000000"," 0fff000   ","   0000    "},
+		{"   00000   "," 000000000f"," 000000000f"," 0000000fff"," f00000f   ","   ffff    "}
+	},
+	trashCan = {
+		{"",""," ","  ","   ","    ","    ","     ","      "},
+		{"888ffffffff888","f8877787778788","8878888788878 "," f88788788788 "," f8878878878  ","  8878878788  ","  f887878788  ","  887787778   ","   88888888   "},
+		{"7788888888887f","8878887888788f"," 887887888788 "," 88788788788f "," 88788788788  ","  887878878f  ","  887878788f  ","  f8887888f   ","   ffffffff   ",  }
+	},
+	trashLid = {
+		{"           ","           ","   ","",  },
+		{"fffffffffff","fffffffffff","ffffffffff8","f888877778888f"},
+		{"fffffffffff","fffffffffff","fff8888888f","88888888888888"}
+	}
 }
 
 -- start up lddterm
@@ -555,75 +578,6 @@ local checkIfANFT = function(image)
 	end
 end
 
-local bl = {	-- blit
-	[' '] = 0,
-	['0'] = 1,
-	['1'] = 2,
-	['2'] = 4,
-	['3'] = 8,
-	['4'] = 16,
-	['5'] = 32,
-	['6'] = 64,
-	['7'] = 128,
-	['8'] = 256,
-	['9'] = 512,
-	['a'] = 1024,
-	['b'] = 2048,
-	['c'] = 4096,
-	['d'] = 8192,
-	['e'] = 16384,
-	['f'] = 32768,
-}
-local lb = {} 	-- tilb
-for k,v in pairs(bl) do
-	lb[v] = k
-end
-
-local ldchart = {	-- converts colors into a lighter shade
-	["0"] = "0",
-	["1"] = "4",
-	["2"] = "6",
-	["3"] = "0",
-	["4"] = "0",
-	["5"] = "0",
-	["6"] = "0",
-	["7"] = "8",
-	["8"] = "0",
-	["9"] = "3",
-	["a"] = "2",
-	["b"] = "9",
-	["c"] = "1",
-	["d"] = "5",
-	["e"] = "2",
-	["f"] = "7"
-}
-
-local dlchart = {	-- converts colors into a darker shade
-	["0"] = "8",
-	["1"] = "c",
-	["2"] = "a",
-	["3"] = "9",
-	["4"] = "1",
-	["5"] = "d",
-	["6"] = "2",
-	["7"] = "f",
-	["8"] = "7",
-	["9"] = "b",
-	["a"] = "7",
-	["b"] = "7",
-	["c"] = "7",
-	["d"] = "7",
-	["e"] = "7",
-	["f"] = "f"
-}
-
-local getSizeNFP = function(image)
-	local xsize = 0
-	if type(image) ~= "table" then return 0,0 end
-	for y = 1, #image do xsize = math.max(xsize, #image[y]) end
-	return xsize, #image
-end
-
 -- returns (x, y) size of a loaded NFT image
 nfte.getSize = function(image)
 	assert(checkValid(image), "Invalid image.")
@@ -991,7 +945,7 @@ local screenshot_X, screenshot_Y = nfte.getSize(fullScreenshot)
 
 term.setBackgroundColor(colors.black)
 
-for i = screenshot_X, math.floor(screenshot_X / 4), -2 do
+for i = screenshot_X, math.floor(math.sqrt(scr_x * 3)), -2 do
 	screenshot = nfte.stretchImage(fullScreenshot, i, i / (screenshot_X / screenshot_Y))
 	term.clear()
 	nfte.drawImageCenter(screenshot)
@@ -999,15 +953,15 @@ for i = screenshot_X, math.floor(screenshot_X / 4), -2 do
 	sleep(0.05)
 end
 
-local handX, handY = scr_x, -5
-for x = scr_x, math.floor(scr_x / 2) + 1, -2 do
+local handX, handY = scr_x + 4, -5
+for x = handX, math.floor(scr_x / 2) + 1, -2 do
 	term.clear()
 	nfte.drawImageCenter(screenshot)
 	nfte.drawImageTransparent(images.handOpen, handX, handY)
 	lddterm.render()
 	sleep(0.05)
 	handX = handX - 2.0
-	handY = handY + 1
+	handY = handY + (scr_y / scr_x) * 2
 end
 
 handX, handY = math.floor(handX), math.floor(handY)
@@ -1060,7 +1014,10 @@ for i = 1, 41 do
 	rImage, rX, rY = nfte.rotateImage(screenshot, imageRotate)
 	nfte.drawImage(rImage, scrollX + imageX, scrollY + imageY)
 	nfte.drawImageTransparent(images.handOpen, scrollX + handX, scrollY + handY)
-	nfte.drawImageTransparent(images.trashCan, scrollX - (150 - (scr_x - 51)), scrollY + 32)
+	nfte.drawImageTransparent(images.trashCan, (scr_x / 2) - (177 - scrollX), scrollY + 32 + (scr_y - 19) / 2 + (scr_x - 51) / 10)
+	term.setCursorPos(1,1)
+	term.setTextColor(colors.white)
+	term.write(scrollX)
 	lddterm.render()
 
 	sleep(0.05)
@@ -1082,9 +1039,9 @@ sleep(0.5)
 
 local scene = lddterm.screenshot()
 
-for i = 1, 5 do
+for i = 1, 6 do
 	nfte.drawImage(scene, 1, 1)
-	nfte.drawImageTransparent(images.trashLid, scrollX - (153 - (scr_x - 51)), i - 4)
+	nfte.drawImageTransparent(images.trashLid, (scr_x / 2) - (179 - scrollX), ((scr_y - 19) / 4) + i - 3)
 	lddterm.render()
 	sleep(0.05)
 end
@@ -1092,10 +1049,10 @@ end
 local lidAngle, rotLid = 0
 
 for i = 1, 10 do
-	lidAngle = lidAngle + 0.053
+	lidAngle = lidAngle + 0.0371
 	rotLid = nfte.rotateImage(images.trashLid, lidAngle)
 	nfte.drawImage(scene, 1, 1)
-	nfte.drawImageTransparent(rotLid, scrollX - (153 - (scr_x - 51)), 1)
+	nfte.drawImageTransparent(rotLid, (scr_x / 2) - (179 - scrollX), 1 + ((scr_y - 19) / 4))
 	lddterm.render()
 	sleep(0.05)
 end
