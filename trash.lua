@@ -1015,9 +1015,6 @@ for i = 1, 41 do
 	nfte.drawImage(rImage, scrollX + imageX, scrollY + imageY)
 	nfte.drawImageTransparent(images.handOpen, scrollX + handX, scrollY + handY)
 	nfte.drawImageTransparent(images.trashCan, (scr_x / 2) - (177 - scrollX), scrollY + 32 + (scr_y - 19) / 2 + (scr_x - 51) / 10)
-	term.setCursorPos(1,1)
-	term.setTextColor(colors.white)
-	term.write(scrollX)
 	lddterm.render()
 
 	sleep(0.05)
