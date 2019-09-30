@@ -1311,12 +1311,10 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 			end
 		end
 	end
-	local gstID, evt
-	if doAnimate then
-		gstID = os.startTimer(0.05)
-	end
+
 	rend()
 	local tID = os.startTimer(0.05)
+
 	while true do
 		evt = {os.pullEvent()}
 		if evt[1] == "key" then
@@ -1345,8 +1343,8 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 				end
 			end
 		elseif evt[1] == "timer" then
-			if evt[2] == gstID then
-				gstID = os.startTimer(0.05)
+			if evt[2] == tID then
+				tID = os.startTimer(0.05)
 				drawGrid(gsX, gsY, true)
 				step = step + 1
 				if mathceil(step / 100) % 2 == 1 then
@@ -1354,16 +1352,11 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 				else
 					gsY = gsY - 1
 				end
-				doRend = true
-			elseif evt[2] == tID then
+
 				if x > fromX and xmod < x - fromX then
 					xmod = math.min(xmod + 1, x - fromX)
-					drawGrid(gsX, gsY, true)
-					tID = os.startTimer(0.05)
 				elseif xmod > x - fromX then
 					xmod = math.max(xmod - 1, x - fromX)
-					drawGrid(gsX, gsY, true)
-					tID = os.startTimer(0.05)
 				end
 				doRend = true
 			end
