@@ -104,7 +104,10 @@ local cwrite = function(text, y, terminal)
 end
 
 -- start up lddterm (I'm starting to think I should've used window API)
-local lddterm = {}
+local lddterm = {
+	FULL_IMAGE = false,
+	OLD_IMAGE = false,
+}
 lddterm.alwaysRender = false		-- renders after any and all screen-changing functions.
 lddterm.useColors = true			-- normal computers do not allow color, but this variable doesn't do anything yet
 lddterm.baseTerm = term.current()	-- will draw to this terminal
@@ -263,23 +266,26 @@ local fixCursorPos = function()
 end
 
 -- renders the screen with optional transformation function
-lddterm.render = function(transformation, drawFunction)
+lddterm.render = function(transformation, drawFunction, forceDraw)
 	-- determine new screen size and change lddterm screen to fit
 	old_scr_x, old_scr_y = scr_x, scr_y
 	determineScreenSize()
 	if old_scr_x ~= scr_x or old_scr_y ~= scr_y then
 		lddterm.baseTerm.clear()
 	end
-	local image = lddterm.screenshot()
+	lddterm.OLD_IMAGE = lddterm.FULL_IMAGE or {{},{},{}}
+	lddterm.FULL_IMAGE = lddterm.screenshot()
 	if type(transformation) == "function" then
-		image = transformation(image)
+		lddterm.FULL_IMAGE = transformation(lddterm.FULL_IMAGE)
 	end
 	if drawFunction then
-		drawFunction(image, lddterm.baseTerm)
+		drawFunction(lddterm.FULL_IMAGE, lddterm.baseTerm)
 	else
-		for y = 1, #image[1] do
-			lddterm.baseTerm.setCursorPos(1 + lddterm.adjustX, y + lddterm.adjustY)
-			lddterm.baseTerm.blit(image[1][y], image[2][y], image[3][y])
+		for y = 1, #lddterm.FULL_IMAGE[1] do
+			if forceDraw or (lddterm.FULL_IMAGE[1][y] ~= lddterm.OLD_IMAGE[1][y]) or (lddterm.FULL_IMAGE[2][y] ~= lddterm.OLD_IMAGE[2][y]) or (lddterm.FULL_IMAGE[3][y] ~= lddterm.OLD_IMAGE[3][y]) then
+				lddterm.baseTerm.setCursorPos(1 + lddterm.adjustX, y + lddterm.adjustY)
+				lddterm.baseTerm.blit(lddterm.FULL_IMAGE[1][y], lddterm.FULL_IMAGE[2][y], lddterm.FULL_IMAGE[3][y])
+			end
 		end
 	end
 	if doDrawWorkspaceIndicator then
@@ -493,7 +499,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 		window.x = math.floor(x or window.x)
 		window.y = math.floor(y or window.y)
 		if lddterm.alwaysRender then
-			lddterm.render(lddterm.transformation, lddterm.drawFunction)
+			lddterm.render(lddterm.transformation, lddterm.drawFunction, true)
 		end
 	end
 	window.handle.setPaletteColor = function(slot, r, g, b)
@@ -671,7 +677,7 @@ local newInstance = function(x, y, program, initialStart)
 			instance.timeMod = 0
 			instance.lastTime = 0
 		end
-	
+
 		local cx, cy
 
 		local drawInactiveScreen = function()
@@ -725,12 +731,12 @@ local newInstance = function(x, y, program, initialStart)
 			drawInactiveScreen()
 
 			coroutine.yield()
-			
+
 			for i = 0, 15 do
 				window.palette[2^i] = {term.nativePaletteColor(2^i)}
 			end
 			correctPalette(window.x, window.y)
-			
+
 			repeat
 				evt = {os.pullEventRaw()}
 				if evt[1] == "workspace_swap" then
@@ -959,10 +965,10 @@ local checkIfCanRun = function(evt, x, y)
 	elseif not instances[y][x] then
 		return false
 	end
-	
+
 	local instance = instances[y][x]
 	local focused = (focus[1] == x and focus[2] == y)
-	
+
 	if evt then
 		if justStarted then
 			return true
@@ -970,7 +976,7 @@ local checkIfCanRun = function(evt, x, y)
 			if instance.paused then
 				return false
 			else
-				
+
 				if evt[1] == "workspace_swap" then
 					return true
 				elseif evt[1] == "terminate" and focused then
@@ -988,7 +994,7 @@ local checkIfCanRun = function(evt, x, y)
 						return focused
 					end
 				end
-				
+
 			end
 		end
 	else
@@ -1052,14 +1058,14 @@ local resumeInstance = function(evt, x, y)
 			end
 			table.remove(instances[y][x].extraEvents, 1)
 		end
-		
+
 		if checkIfCanRun(instances[y][x].extraEvents[1], x, y) then
 			oldFuncReplace.os.queueEvent("resume_instance", x, y, instances[y][x].extraEvents[1])
 		end
 	end
 
 	term.redirect(previousTerm)
-	
+
 	os.startTimer = oldFuncReplace.os.startTimer
 	os.cancelTimer = oldFuncReplace.os.cancelTimer
 	if config.doPauseClockAndTime then
@@ -1124,8 +1130,9 @@ local main = function()
 
 	-- if true, timer events won't be accepted by instances (unless it's an extraEvent)
 	local banTimerEvent, evt
-	local doRedraw = false		-- redraw screen after resuming every instance
-	local doTick = true			-- check for key inputs and whatnot
+	local doRedraw = false			-- redraw screen after resuming every instance
+	local doForceRedraw = false	-- redraw screen without checking for changes in screen
+	local doTick = true					-- check for key inputs and whatnot
 
 	local checkIfExtraEvents = function()
 		for y = gridMinY, gridHeight do
@@ -1145,6 +1152,7 @@ local main = function()
 	while isRunning do
 		gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 		doRedraw = false
+		doForceRedraw = false
 		doTick = true
 
 		evt = {os.pullEventRaw()}
@@ -1160,6 +1168,7 @@ local main = function()
 				doDrawWorkspaceIndicator = false
 				banTimerEvent = true
 				doRedraw = true
+				doForceRedraw = true
 			else
 				if evt[2] == tID then
 					doRedraw = true
@@ -1172,9 +1181,9 @@ local main = function()
 				end
 			end
 		elseif evt[1] == "resume_instance" then
-		
+
 			resumeInstance(evt[4], evt[2], evt[3])
-			
+
 			doTick = false
 		end
 
@@ -1374,7 +1383,7 @@ local main = function()
 		end
 
 		if doRedraw then
-			lddterm.render()
+			lddterm.render(nil, nil, doForceRedraw)
 		end
 
 		lddterm.selectedWindow = instances[focus[2]][focus[1]].window.layer
