@@ -1379,7 +1379,7 @@ local specialRead = function(scrollInfo, specialNames, message, preInput)
 	specialNames = specialNames or {}
 	local gsX, gsY = (scrollInfo or {})[2] or 0, (scrollInfo or {})[3] or 0
 	local step = (scrollInfo or {})[1] or 0
-	local tID = os.startTimer(gameDelayInit)
+	local tID = os.startTimer(0.05)
 	local buff = {}
 	local cpos = 1
 	local maxSize = 15
@@ -1401,7 +1401,7 @@ local specialRead = function(scrollInfo, specialNames, message, preInput)
 		evt = {os.pullEvent()}
 		if evt[1] == "timer" and evt[2] == tID then
 			-- render the bg
-			tID = os.startTimer(gameDelayInit)
+			tID = os.startTimer(0.05)
 			step = step + 1
 			if mathceil(step / 100) % 2 == 1 then
 				gsX = gsX + 1
