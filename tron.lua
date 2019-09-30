@@ -1346,7 +1346,7 @@ local makeMenu = function(x, fromX, y, options, doAnimate, scrollInfo, _cpos)
 			end
 		elseif evt[1] == "timer" then
 			if evt[2] == gstID then
-				gstID = os.startTimer(gameDelayInit)
+				gstID = os.startTimer(0.05)
 				drawGrid(gsX, gsY, true)
 				step = step + 1
 				if mathceil(step / 100) % 2 == 1 then
