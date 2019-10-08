@@ -1901,10 +1901,12 @@ local boxCharSelector = function()
 		end
 	end
 	local rend = function()
-		term.setCursorPos(1,scr_y)
+		term.setCursorPos(scr_x - 3, scr_y)
 		term.setBackgroundColor(colors.lightGray)
-		term.setTextColor(colors.black)
+		term.setTextColor(colors.gray)
 		term.clearLine()
+		term.write("\\" .. string.byte(getDrawingCharacter(boxchar.topLeft, boxchar.topRight, boxchar.left, boxchar.right, boxchar.bottomLeft, boxchar.bottomRight).char) .. " ")
+		term.setTextColor(colors.black)
 		term.write("Press CTRL or 'N' when ready.")
 		term.setCursorPos(1,scr_y-3) co(boxchar.topLeft) write("Q") co(boxchar.topRight) write("W")
 		term.setCursorPos(1,scr_y-2) co(boxchar.left) write("A") co(boxchar.right) write("S")
@@ -1927,7 +1929,7 @@ local boxCharSelector = function()
 			end
 		elseif evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
 			local button, mx, my = evt[2], evt[3], evt[4]
-			if my >= scr_y-2 then
+			if my >= scr_y-3 then
 				if mx == 1 then
 					if my == scr_y - 3 then boxchar.topLeft = not boxchar.topLeft end
 					if my == scr_y - 2 then boxchar.left = not boxchar.left end
@@ -1961,7 +1963,7 @@ local specialCharSelector = function()
 		for x = 1, 16 do
 			chars[y] = chars[y] or {}
 			chars[y][x] = string.char(buff)
-                        buff = buff + 1
+			buff = buff + 1
 		end
 	end
 	local sy = scr_y - (#chars + 1)
@@ -1988,6 +1990,9 @@ local specialCharSelector = function()
 	term.write("Press CTRL or 'N' when ready.")
 
 	while true do
+		term.setCursorPos(scr_x - 3, scr_y)
+		term.setTextColor(colors.gray)
+		term.write("\\" .. string.byte(char) .. " ")
 		evt, butt, x, y = os.pullEvent()
 		if (evt == "mouse_click" or evt == "mouse_drag") then
 			if chars[y-sy] then
@@ -1996,10 +2001,10 @@ local specialCharSelector = function()
 						char = chars[y-sy][x]
 						render()
 					end
-				else
+				elseif evt == "mouse_click" then
 					return char
 				end
-			else
+			elseif evt == "mouse_click" then
 				return char
 			end
 		elseif evt == "key" then
@@ -2223,7 +2228,7 @@ local editFuncs = {
 }
 
 local blockEnlargeFrame = function(frameNo)
-	
+
 	local frame = deepCopy(paintEncoded[frameNo])
 	local charConvert = {
 		["\129"] = {{true , false},{false, false},{false, false}},
@@ -2574,7 +2579,7 @@ PAIN is a multi-frame paint program with the intention of becoming a stable, wel
 The main focus during development is to add many functions that you might see in real programs like MSPAINT, such as lines or a proper fill tool, as well as to export/import to and from as many image formats as possible.
 
 My ultimate goal is to have PAIN be the default paint program for most every operating system on the forums (for what it's worth). In order to do this, I'll need to make sure that PAIN is stable, easy to use, and can be easily limited by an OS to work with more menial tasks like making a single icon or what have you.
-		
+
 I hope my PAIN brings you joy.
 ]]
 		guiHelp(helpText)
@@ -3003,10 +3008,10 @@ local getInput = function() --gotta catch them all
 		renderBar(barmsg)
 		while true do
 			evt = {getEvents("mouse_scroll","mouse_click", "mouse_drag","mouse_up","key","key_up",true)}
-			
+
 			--doRender = false
 			oldx, oldy = paint.scrollX,paint.scrollY
-			
+
 			if (evt[1] == "mouse_scroll") and (not viewing) then
 				dir = evt[2]
 				if dir == 1 then
