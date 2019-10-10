@@ -1,4 +1,4 @@
--- 
+--
 -- ##     #####   ######  ######  ######
 -- ##     ##  ##  ##   ##   ##   ##   ###
 -- ##     ##   ## ##   ##   ##   ###
@@ -15,7 +15,6 @@
 --
 -- TO-DO:
 --  + Add multiplayer
---  + See if the line clearing animation is too resource-hoggy
 --  + Add random color pulsation (for effect!)
 
 local scr_x, scr_y = term.getSize()
@@ -26,6 +25,16 @@ local game = {
 	canPause = true,	-- if false, cannot pause game (such as in online multiplayer)
 	fallDelay = 0.25,	-- amount of time for each tetramino to fall down one space
 	inputDelay = 0.05,	-- amount of time between each input
+	control = {
+		moveLeft = keys.left,
+		moveRight = keys.right,
+		moveDown = keys.down,
+		rotateLeft = keys.z,
+		rotateRight = keys.x,
+		fastDrop = keys.up,
+		hold = keys.leftShift,
+		quit = keys.q
+	}
 }
 
 local tableCopy
@@ -42,15 +51,14 @@ tableCopy = function(tbl)
 end
 
 -- sets up brown as colors.special, for palette swapping magic(k)
-local _oldColors = tableCopy(colors)
+local tColors = tableCopy(colors)
 
-colors.special = 1
-colors.brown = nil	-- brown is now white
-if term.setPaletteColor then
-	colors.white = 4096
-	term.setPaletteColor(1, 0xf0f0f0)
-	term.setPaletteColor(4096, 0xf0f0f0)
-end
+tColors.white = 1
+tColors.brown = nil	-- brown is now white
+tColors.special = 4096
+term.setPaletteColor(tColors.special, 0xf0f0f0)
+term.setPaletteColor(tColors.white, 0xf0f0f0)
+
 
 -- generates a random number, excluding those listed in the _psExclude table
 local _psExclude = {}
@@ -243,7 +251,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 	end
 	-- what color the ghost mino will be
 	mino.ghostColor = 0x353535
-	
+
 	mino.x = x
 	mino.y = y
 	mino.lockBreaks = 8	-- anti-infinite measure
@@ -435,7 +443,7 @@ end
 -- draws the score of a player, and clears the space where the combo text is drawn
 local drawScore = function(player)
 	term.setCursorPos(2, 18)
-	term.setTextColor(1)
+	term.setTextColor(tColors.white)
 	term.write((" "):rep(16))
 	term.setCursorPos(2, 18)
 	term.write("Lines: " .. player.lines)
@@ -447,7 +455,7 @@ end
 -- also tells the player's combo, which is nice
 local drawComboMessage = function(player, lines)
 	term.setCursorPos(2, 18)
-	term.setTextColor(4096)
+	term.setTextColor(tColors.white)
 	term.write((" "):rep(16))
 	local msgs = {
 		"SINGLE",
@@ -459,7 +467,7 @@ local drawComboMessage = function(player, lines)
 	term.write(msgs[lines])
 	if player.combo >= 2 then
 		term.setCursorPos(2, 19)
-		term.setTextColor(1)
+		term.setTextColor(tColors.white)
 		term.write((" "):rep(16))
 		term.setCursorPos(2, 19)
 		term.write(player.combo .. "x COMBO")
@@ -477,8 +485,8 @@ local gameOver = function(player)
 		end
 		mino.draw()
 		renderBoard(player.board, 0, 0, true)
-		for i = 1, 200 do
-			color = color + 0.001
+		for i = 1, 20 do
+			color = color + 0.01
 			term.setPaletteColor(4096, math.sin(color) / 2 + 0.5, math.sin(color) / 2, math.sin(color) / 2)
 		end
 		sleep(0.05)
@@ -488,7 +496,7 @@ end
 
 -- initiates a game as a specific player (takes a number)
 local startGame = function(playerNumber)
-	term.setBackgroundColor(colors.gray)
+	term.setBackgroundColor(tColors.gray)
 	term.clear()
 
 	initializePlayers()
@@ -586,15 +594,15 @@ local startGame = function(playerNumber)
 		while true do
 			evt = {os.pullEvent()}
 			if evt[1] == "key" then
-				if evt[2] == keys.q then
+				if evt[2] == game.control.quit then
 					return
-				elseif evt[2] == keys.x then
+				elseif evt[2] == game.control.rotateRight then
 					mino.rotate(1)
 					ghostMino.rotate(1)
 					os.cancelTimer(lockTimer or 0)
 					mino.waitingForLock = false
 					draw()
-				elseif evt[2] == keys.z then
+				elseif evt[2] == game.control.rotateLeft then
 					mino.rotate(-1)
 					ghostMino.rotate(-1)
 					os.cancelTimer(lockTimer or 0)
@@ -602,26 +610,26 @@ local startGame = function(playerNumber)
 					draw()
 				end
 				if evt[3] == false then
-					if evt[2] == keys.left then
+					if evt[2] == game.control.moveLeft then
 						mino.move(-1, 0)
 						os.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
 						draw()
 						os.cancelTimer(inputTimer or 0)
 						inputTimer = os.startTimer(game.inputDelay)
-					elseif evt[2] == keys.right then
+					elseif evt[2] == game.control.moveRight then
 						mino.move(1, 0)
 						os.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
 						draw()
 						os.cancelTimer(inputTimer or 0)
 						inputTimer = os.startTimer(game.inputDelay)
-					elseif evt[2] == keys.up then
+					elseif evt[2] == game.control.fastDrop then
 						mino.move(0, board.ySize, true)
 						draw(true)
 						player.canHold = true
 						break
-					elseif evt[2] == keys.a then
+					elseif evt[2] == game.control.hold then
 						if player.canHold then
 							if player.hold == 0 then
 								takeFromQueue = true
@@ -644,19 +652,19 @@ local startGame = function(playerNumber)
 			elseif evt[1] == "timer" then
 				if evt[2] == inputTimer then
 					inputTimer = os.startTimer(game.inputDelay)
-					if keysDown[keys.left] == 2 then
+					if keysDown[game.control.moveLeft] == 2 then
 						mino.move(-1, 0)
 						os.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
 						draw()
 					end
-					if keysDown[keys.right] == 2 then
+					if keysDown[game.control.moveRight] == 2 then
 						mino.move(1, 0)
 						os.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
 						draw()
 					end
-					if keysDown[keys.down] then
+					if keysDown[game.control.moveDown] then
 						mino.move(0, 1)
 						os.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
@@ -700,7 +708,7 @@ local startGame = function(playerNumber)
 			player.combo = player.combo + 1
 			player.lines = player.lines + #clearedLines
 			drawComboMessage(player, #clearedLines)
-			for i = 1, 0, -0.002 do
+			for i = 1, 0, -0.12 do
 				term.setPaletteColor(4096, i,i,i)
 				for l = 1, #clearedLines do
 					for x = 1, board.xSize do
@@ -708,6 +716,7 @@ local startGame = function(playerNumber)
 					end
 				end
 				renderBoard(board, 0, 0, true)
+				sleep(0.05)
 			end
 			for i = #clearedLines, 1, -1 do
 				table.remove(board, clearedLines[i])
@@ -748,15 +757,24 @@ end
 
 parallel.waitForAny(main, getInput)
 
--- reset colors back from whence it came
-
-colors.special = nil
-for k,v in pairs(_oldColors) do
-	colors[k] = v
+-- reset palette to back from whence it came
+for k,v in pairs(colors) do
+	if type(v) == "number" then
+		term.setPaletteColor(v, term.nativePaletteColor(v))
+	end
 end
+
+print(colors.white)
 
 term.setBackgroundColor(colors.black)
 term.setTextColor(colors.white)
+
+for i = 1, 8 do
+	term.scroll(1)
+	if i == 5 then
+		term.setCursorPos(1, scr_y)
+		term.write("Thanks for playing!")
+	end
+	sleep(0.05)
+end
 term.setCursorPos(1, scr_y)
-term.clearLine()
-sleep(0)
