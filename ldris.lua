@@ -23,7 +23,6 @@ local game = {
 	p = {},				-- stores player information
 	paused = false,		-- whether or not game is paused
 	canPause = true,	-- if false, cannot pause game (such as in online multiplayer)
-	fallDelay = 0.25,	-- amount of time for each tetramino to fall down one space
 	inputDelay = 0.05,	-- amount of time between each input
 	control = {
 		moveLeft = keys.left,
@@ -34,8 +33,20 @@ local game = {
 		fastDrop = keys.up,
 		hold = keys.leftShift,
 		quit = keys.q
-	}
+	},
+	timers = {},
+	timerNo = 1
 }
+
+game.startTimer = function(duration)
+	game.timers[game.timerNo] = duration
+	game.timerNo = game.timerNo + 1
+	return game.timerNo - 1
+end
+
+game.cancelTimer = function(tID)
+	game.timers[tID or 0] = nil
+end
 
 local tableCopy
 tableCopy = function(tbl)
@@ -58,31 +69,6 @@ tColors.brown = nil	-- brown is now white
 tColors.special = 4096
 term.setPaletteColor(tColors.special, 0xf0f0f0)
 term.setPaletteColor(tColors.white, 0xf0f0f0)
-
-
--- generates a random number, excluding those listed in the _psExclude table
-local _psExclude = {}
-local pseudoRandom = function(min, max)
-	local num
-	-- check if it will exclude all values
-	local reset = true
-	for i = min, max do
-		if not _psExclude[i] then
-			reset = false
-			break
-		end
-	end
-	if reset then
-		_psExclude = {}
-		return math.random(min, max)
-	else
-		repeat
-			result = math.random(min, max)
-		until not _psExclude[result]
-		_psExclude[result] = true
-		return result
-	end
-end
 
 -- initializes and fixes up a board
 -- boards are 2D objects that can display perfectly square graphics
@@ -213,7 +199,8 @@ local doesSpaceExist = function(board, x, y)
 end
 
 -- checks if (x, y) is being occupied by a tetramino (or if it's off-board)
-local isSpaceSolid = function(board, x, y)
+local isSpaceSolid = function(board, _x, _y)
+	local x, y = math.floor(_x), math.floor(_y)
 	if doesSpaceExist(board, x, y) then
 		return board[y][x][1]
 	else
@@ -222,7 +209,8 @@ local isSpaceSolid = function(board, x, y)
 end
 
 -- ticks down a space's timers, which can cause it to become non-solid or background-colored
-local ageSpace = function(board, x, y)
+local ageSpace = function(board, _x, _y)
+	local x, y = math.floor(_x), math.floor(_y)
 	if doesSpaceExist(board, x, y) then
 		-- make space non-solid if timer elapses
 		if board[y][x][3] ~= 0 then
@@ -254,7 +242,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 
 	mino.x = x
 	mino.y = y
-	mino.lockBreaks = 8	-- anti-infinite measure
+	mino.lockBreaks = 16	-- anti-infinite measure
 	mino.waitingForLock = false
 	mino.board = board
 	mino.minoType = minoType
@@ -293,25 +281,45 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			output[y] = table.concat(output[y])
 		end
 		mino.shape = output
+		-- try to kick off wall/floor
 		if mino.checkCollision(0, 0) then
+			-- kick off floor
 			for y = 1, math.floor(#mino.shape) do
 				if not mino.checkCollision(0, -y) then
 					mino.y = mino.y - y
-					return
+					return true
 				end
 			end
-			for x = 0, -math.floor(#mino.shape[1]), -1 do
+			-- kick off right wall
+			for x = 0, -math.floor(#mino.shape[1] / 2), -1 do
 				if not mino.checkCollision(x, 0) then
 					mino.x = mino.x + x
-					return
+					return true
+				end
+				-- try diagonal-down
+				if not mino.checkCollision(x, 1) then
+					mino.x = mino.x + x
+					mino.y = mino.y + 1
+					return true
 				end
 			end
-			for x = 0, math.floor(#mino.shape[1]) do
+			-- kick off left wall
+			for x = 0, math.floor(#mino.shape[1] / 2) do
 				if not mino.checkCollision(x, 0) then
 					mino.x = mino.x + x
-					return
+					return true
+				end
+				-- try diagonal-down
+				if not mino.checkCollision(x, 1) then
+					mino.x = mino.x + x
+					mino.y = mino.y + 1
+					return true
 				end
 			end
+			mino.shape = oldShape
+			return false
+		else
+			return true
 		end
 	end
 	-- draws a mino onto a board; you'll still need to render the board, though
@@ -319,8 +327,8 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 		for y = 1, #mino.shape do
 			for x = 1, #mino.shape[y] do
 				if mino.shape[y]:sub(x,x) ~= " " then
-					if doesSpaceExist(mino.board, x + mino.x, y + mino.y) then
-						mino.board[y + mino.y][x + mino.x] = {
+					if doesSpaceExist(mino.board, x + math.floor(mino.x), y + math.floor(mino.y)) then
+						mino.board[y + math.floor(mino.y)][x + math.floor(mino.x)] = {
 							isSolid or false,
 							mino.shape[y]:sub(x,x),
 							isSolid and 0 or 0,
@@ -358,47 +366,68 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 	return mino
 end
 
+-- generates a random number, excluding those listed in the _psExclude table
+local pseudoRandom = function(randomPieces)
+	if #randomPieces == 0 then
+		for i = 1, #minos do
+			randomPieces[i] = i
+		end
+	end
+	local rand = math.random(1, #randomPieces)
+	local num = randomPieces[rand]
+	table.remove(randomPieces, rand)
+	return num
+end
+
 -- initialize players
 local initializePlayers = function()
 	game.p[1] = {
 		board = clearBoard({}, 2, 2, 10, 24, "f"),
-		holdBoard = clearBoard({}, 13, 14, 4, 4, "f"),
+		holdBoard = clearBoard({}, 13, 14, 4, 3, "f"),
 		queueBoard = clearBoard({}, 13, 2, 4, 14, "f"),
-		hold = 0,
-		canHold = true,
-		queue = {},
-		lines = 0,
-		combo = 0,
+		randomPieces = {},	-- list of all minos for pseudo-random selection
+		hold = 0,			-- current piece being held
+		canHold = true,		-- whether or not player can hold (can't hold twice in a row)
+		queue = {},			-- current queue of minos to use
+		lines = 0,			-- amount of lines cleared, "points"
+		combo = 0,			-- amount of consequative line clears
+		lastLinesClear = 0,	-- previous amount of simultaneous line clears (does not reset if miss)
+		level = 1,			-- level determines speed of mino drop
+		fallSteps = 0.1,		-- amount of spaces the mino will draw each drop
 	}
 	game.p[2] = {
 		board = clearBoard({}, 18, 2, 10, 24, "f"),
-		holdBoard = clearBoard({}, 29, 14, 4, 4, "f"),
+		holdBoard = clearBoard({}, 29, 14, 4, 3, "f"),
 		queueBoard = clearBoard({}, 29, 2, 4, 14, "f"),
+		randomPieces = {},
 		hold = 0,
 		canHold = true,
 		queue = {},
 		lines = 0,
 		combo = 0,
+		lastLinesClear = 0,
+		level = 1,
+		fallSteps = 0.1,
 	}
 	-- generates the initial queue of minos per player
 	for p = 1, #game.p do
 		for i = 1, #minos do
-			game.p[p].queue[i] = pseudoRandom(1, #minos)
+			game.p[p].queue[i] = pseudoRandom(game.p[p].randomPieces)
 		end
 	end
 end
 
 -- actually renders a board to the screen
-local renderBoard = function(board, bx, by, doAgeSpaces)
+local renderBoard = function(board, bx, by, doAgeSpaces, blankColor)
 	local char, line
 	local tY = board.y + (by or 0)
 	for y = 1, board.ySize, 3 do
 		line = {("\143"):rep(board.xSize),"",""}
 		term.setCursorPos(board.x + (bx or 0), tY)
 		for x = 1, board.xSize do
-			line[2] = line[2] .. board[y][x][2]
+			line[2] = line[2] .. (blankColor or board[y][x][2])
 			if board[y + 1] then
-				line[3] = line[3] .. board[y + 1][x][2]
+				line[3] = line[3] .. (blankColor or board[y + 1][x][2])
 			else
 				line[3] = line[3] .. board.BGcolor
 			end
@@ -408,10 +437,10 @@ local renderBoard = function(board, bx, by, doAgeSpaces)
 		term.setCursorPos(board.x + (bx or 0), tY + 1)
 		for x = 1, board.xSize do
 			if board[y + 2] then
-				line[2] = line[2] .. board[y + 1][x][2]
-				line[3] = line[3] .. board[y + 2][x][2]
+				line[2] = line[2] .. (blankColor or board[y + 1][x][2])
+				line[3] = line[3] .. (blankColor or board[y + 2][x][2])
 			elseif board[y + 1] then
-				line[2] = line[2] .. board[y + 1][x][2]
+				line[2] = line[2] .. (blankColor or board[y + 1][x][2])
 				line[3] = line[3] .. board.BGcolor
 			else
 				line[2] = line[2] .. board.BGcolor
@@ -451,6 +480,11 @@ local drawScore = function(player)
 	term.write((" "):rep(16))
 end
 
+local drawLevel = function(player)
+	term.setCursorPos(13, 17)
+	term.write("Lv" .. player.level .. "  ")
+end
+
 -- draws the player's simultaneous line clear after clearing one or more lines
 -- also tells the player's combo, which is nice
 local drawComboMessage = function(player, lines)
@@ -464,6 +498,13 @@ local drawComboMessage = function(player, lines)
 		"TETRIS"
 	}
 	term.setCursorPos(2, 18)
+	if lines == player.lastLinesCleared then
+		if lines == 3 then
+			term.write("OH BABY A ")
+		else
+			term.write("ANOTHER ")
+		end
+	end
 	term.write(msgs[lines])
 	if player.combo >= 2 then
 		term.setCursorPos(2, 19)
@@ -502,7 +543,7 @@ local startGame = function(playerNumber)
 	initializePlayers()
 
 	local mino, ghostMino
-	local dropTimer, inputTimer, lockTimer
+	local dropTimer, inputTimer, lockTimer, tickTimer
 	local evt, board, player
 	local clearedLines = {}
 
@@ -528,6 +569,11 @@ local startGame = function(playerNumber)
 
 	while true do
 
+		player.level = math.ceil((1 + player.lines) / 10)
+		player.fallSteps = 0.075 * (1.33 ^ player.level)
+
+		drawLevel(player)
+
 		if takeFromQueue then
 			currentMinoType = player.queue[1]
 		end
@@ -549,7 +595,7 @@ local startGame = function(playerNumber)
 
 		if takeFromQueue then
 			table.remove(player.queue, 1)
-			table.insert(player.queue, pseudoRandom(1, #minos))
+			table.insert(player.queue, pseudoRandom(player.randomPieces))
 		end
 
 		-- draw queue
@@ -570,13 +616,9 @@ local startGame = function(playerNumber)
 				player.hold,
 				player.holdBoard,
 				#minos[player.hold].shape[1] == 2 and 1 or 0,
-				1
+				0
 			)
 		end
-
-		dropTimer = os.startTimer(game.fallDelay)
-		inputTimer = os.startTimer(game.inputDelay)
-		os.cancelTimer(lockTimer or 0)
 
 		takeFromQueue = true
 
@@ -590,106 +632,153 @@ local startGame = function(playerNumber)
 
 		draw()
 
+		dropTimer = game.startTimer(0)
+		inputTimer = game.startTimer(game.inputDelay)
+		game.cancelTimer(lockTimer or 0)
+
+		tickTimer = os.startTimer(0.05)
+
 		-- drop a piece
 		while true do
+
 			evt = {os.pullEvent()}
-			if evt[1] == "key" then
-				if evt[2] == game.control.quit then
-					return
-				elseif evt[2] == game.control.rotateRight then
-					mino.rotate(1)
-					ghostMino.rotate(1)
-					os.cancelTimer(lockTimer or 0)
-					mino.waitingForLock = false
-					draw()
-				elseif evt[2] == game.control.rotateLeft then
-					mino.rotate(-1)
-					ghostMino.rotate(-1)
-					os.cancelTimer(lockTimer or 0)
-					mino.waitingForLock = false
-					draw()
+
+			-- tick down internal game timer system
+			if evt[1] == "timer" and evt[2] == tickTimer then
+				--local delKeys = {}
+				for k,v in pairs(game.timers) do
+					game.timers[k] = v - 0.05
+					if v <= 0 then
+						os.queueEvent("gameTimer", k)
+						game.timers[k] = nil
+					end
 				end
-				if evt[3] == false then
-					if evt[2] == game.control.moveLeft then
-						mino.move(-1, 0)
-						os.cancelTimer(lockTimer or 0)
-						mino.waitingForLock = false
-						draw()
-						os.cancelTimer(inputTimer or 0)
-						inputTimer = os.startTimer(game.inputDelay)
-					elseif evt[2] == game.control.moveRight then
-						mino.move(1, 0)
-						os.cancelTimer(lockTimer or 0)
-						mino.waitingForLock = false
-						draw()
-						os.cancelTimer(inputTimer or 0)
-						inputTimer = os.startTimer(game.inputDelay)
-					elseif evt[2] == game.control.fastDrop then
-						mino.move(0, board.ySize, true)
-						draw(true)
-						player.canHold = true
-						break
-					elseif evt[2] == game.control.hold then
-						if player.canHold then
-							if player.hold == 0 then
-								takeFromQueue = true
-							else
-								takeFromQueue = false
-							end
-							player.hold, currentMinoType = currentMinoType, player.hold
-							player.canHold = false
-							makeNewMino(
-								player.hold,
-								player.holdBoard,
-								#minos[player.hold].shape[1] == 2 and 1 or 0,
-								1
-							).draw()
-							renderBoard(player.holdBoard, 0, 0, true)
-							break
+				tickTimer = os.startTimer(0.05)
+			end
+
+			if player.paused then
+				if evt[1] == "key" then
+					if evt[2] == game.control.pause then
+						game.paused = false
+					end
+				end
+			else
+				if evt[1] == "key" then
+					if evt[2] == game.control.quit then
+						return
+					elseif evt[2] == game.control.pause then
+						game.paused = true
+					elseif evt[2] == game.control.rotateRight then
+						if mino.rotate(1) then
+							ghostMino.y = mino.y
+							ghostMino.rotate(1)
+							game.cancelTimer(lockTimer or 0)
+							mino.waitingForLock = false
+							draw()
+						end
+					elseif evt[2] == game.control.rotateLeft then
+						if mino.rotate(-1) then
+							ghostMino.y = mino.y
+							ghostMino.rotate(-1)
+							game.cancelTimer(lockTimer or 0)
+							mino.waitingForLock = false
+							draw()
 						end
 					end
-				end
-			elseif evt[1] == "timer" then
-				if evt[2] == inputTimer then
-					inputTimer = os.startTimer(game.inputDelay)
-					if keysDown[game.control.moveLeft] == 2 then
-						mino.move(-1, 0)
-						os.cancelTimer(lockTimer or 0)
-						mino.waitingForLock = false
-						draw()
-					end
-					if keysDown[game.control.moveRight] == 2 then
-						mino.move(1, 0)
-						os.cancelTimer(lockTimer or 0)
-						mino.waitingForLock = false
-						draw()
-					end
-					if keysDown[game.control.moveDown] then
-						mino.move(0, 1)
-						os.cancelTimer(lockTimer or 0)
-						mino.waitingForLock = false
-						draw()
-					end
-				elseif evt[2] == dropTimer then
-					if mino.checkCollision(0, 1) then
-						if mino.lockBreaks == 0 then
+					if evt[3] == false then
+						if evt[2] == game.control.moveLeft then
+							mino.move(-1, 0)
+							game.cancelTimer(lockTimer or 0)
+							mino.waitingForLock = false
+							draw()
+							game.cancelTimer(inputTimer or 0)
+							inputTimer = game.startTimer(game.inputDelay)
+						elseif evt[2] == game.control.moveRight then
+							mino.move(1, 0)
+							game.cancelTimer(lockTimer or 0)
+							mino.waitingForLock = false
+							draw()
+							game.cancelTimer(inputTimer or 0)
+							inputTimer = game.startTimer(game.inputDelay)
+						elseif evt[2] == game.control.fastDrop then
+							mino.move(0, board.ySize, true)
 							draw(true)
 							player.canHold = true
 							break
-						elseif not mino.waitingForLock then
-							mino.lockBreaks = mino.lockBreaks - 1
-							lockTimer = os.startTimer(game.fallDelay * 2)
-							mino.waitingForLock = true
+						elseif evt[2] == game.control.hold then
+							if player.canHold then
+								if player.hold == 0 then
+									takeFromQueue = true
+								else
+									takeFromQueue = false
+								end
+								player.hold, currentMinoType = currentMinoType, player.hold
+								player.canHold = false
+								makeNewMino(
+									player.hold,
+									player.holdBoard,
+									#minos[player.hold].shape[1] == 2 and 1 or 0,
+									0
+								).draw()
+								renderBoard(player.holdBoard, 0, 0, true)
+								break
+							end
 						end
-					else
-						mino.y = mino.y + 1
-						draw()
 					end
-					dropTimer = os.startTimer(game.fallDelay)
-				elseif evt[2] == lockTimer then
-					player.canHold = true
-					draw(true)
-					break
+				elseif evt[1] == "gameTimer" then
+					if evt[2] == inputTimer then
+						inputTimer = game.startTimer(game.inputDelay)
+						if not game.paused then
+							if keysDown[game.control.moveLeft] == 2 then
+								if mino.move(-1, 0) then
+									game.cancelTimer(lockTimer or 0)
+									mino.waitingForLock = false
+									draw()
+								end
+							end
+							if keysDown[game.control.moveRight] == 2 then
+								if mino.move(1, 0) then
+									game.cancelTimer(lockTimer or 0)
+									mino.waitingForLock = false
+									draw()
+								end
+							end
+							if keysDown[game.control.moveDown] then
+								game.cancelTimer(lockTimer or 0)
+								mino.waitingForLock = false
+								if mino.move(0, 1) then
+									draw()
+								else
+									draw(true)
+									break
+								end
+							end
+						end
+					elseif evt[2] == dropTimer then
+						dropTimer = game.startTimer(0)
+						if not game.paused then
+							if mino.checkCollision(0, 1) then
+								if mino.lockBreaks == 0 then
+									draw(true)
+									player.canHold = true
+									break
+								elseif not mino.waitingForLock then
+									mino.lockBreaks = mino.lockBreaks - 1
+									lockTimer = game.startTimer(math.max(0.2 / player.fallSteps, 0.25))
+									mino.waitingForLock = true
+								end
+							else
+								mino.move(0, player.fallSteps, true)
+								draw()
+							end
+						end
+					elseif evt[2] == lockTimer then
+						if not game.paused then
+							player.canHold = true
+							draw(true)
+							break
+						end
+					end
 				end
 			end
 		end
@@ -708,6 +797,7 @@ local startGame = function(playerNumber)
 			player.combo = player.combo + 1
 			player.lines = player.lines + #clearedLines
 			drawComboMessage(player, #clearedLines)
+			player.lastLinesCleared = #clearedLines
 			for i = 1, 0, -0.12 do
 				term.setPaletteColor(4096, i,i,i)
 				for l = 1, #clearedLines do
@@ -740,8 +830,10 @@ local getInput = function()
 			keysDown[evt[2]] = 1
 			timerKey[evt[2]] = os.startTimer(0.2)
 			keyTimer[timerKey[evt[2]]] = evt[2]
-		elseif evt[1] == "timer" and keyTimer[evt[2]] then
-			keysDown[keyTimer[evt[2]]] = 2
+		elseif evt[1] == "timer" then
+			if keysDown[keyTimer[evt[2]]] then
+				keysDown[keyTimer[evt[2]]] = 2
+			end
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 			os.cancelTimer(timerKey[evt[2]] or 0)
@@ -769,9 +861,9 @@ print(colors.white)
 term.setBackgroundColor(colors.black)
 term.setTextColor(colors.white)
 
-for i = 1, 8 do
+for i = 1, 5 do
 	term.scroll(1)
-	if i == 5 then
+	if i == 3 then
 		term.setCursorPos(1, scr_y)
 		term.write("Thanks for playing!")
 	end
