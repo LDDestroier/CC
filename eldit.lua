@@ -707,32 +707,36 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		local yAdj = 0
 		for id,sel in pairs(eldit.selections) do
 			for y = sel[1].y, sel[2].y do
-				xAdjusts[y] = xAdjusts[y] or {}
-				if checkWithinArea(#eldit.buffer[y] + 1, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
-					yAdj = yAdj + 1
-				end
-				yAdjusts[y + 1] = math.min(yAdjusts[y + 1] or math.huge, yAdj)
-				for x = 2, #eldit.buffer[y] do
-					xAdjusts[y][x] = math.min(xAdjusts[y][x] or math.huge, xAdj)
-					if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
-						xAdj = xAdj + 1
+				if eldit.buffer[y] then
+					xAdjusts[y] = xAdjusts[y] or {}
+					if checkWithinArea(#eldit.buffer[y] + 1, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
+						yAdj = yAdj + 1
+					end
+					yAdjusts[y + 1] = math.min(yAdjusts[y + 1] or math.huge, yAdj)
+					for x = 2, #eldit.buffer[y] do
+						xAdjusts[y][x] = math.min(xAdjusts[y][x] or math.huge, xAdj)
+						if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
+							xAdj = xAdj + 1
+						end
 					end
 				end
 			end
 		end
 		for id,sel in pairs(eldit.selections) do
 			for y = sel[2].y, sel[1].y, -1 do
-				for x = #eldit.buffer[y] + 1, 1, -1 do
-					if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
-						if x == #eldit.buffer[y] + 1 then
-							if eldit.buffer[y + 1] then
-								for i = 1, #eldit.buffer[y + 1] do
-									table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
+				if eldit.buffer[y] then
+					for x = #eldit.buffer[y] + 1, 1, -1 do
+						if checkWithinArea(x, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
+							if x == #eldit.buffer[y] + 1 then
+								if eldit.buffer[y + 1] then
+									for i = 1, #eldit.buffer[y + 1] do
+										table.insert(eldit.buffer[y], eldit.buffer[y + 1][i])
+									end
+									table.remove(eldit.buffer, y + 1)
 								end
-								table.remove(eldit.buffer, y + 1)
+							else
+								deleteText("single", nil, x, y)
 							end
-						else
-							deleteText("single", nil, x, y)
 						end
 					end
 				end
