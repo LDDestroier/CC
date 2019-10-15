@@ -3344,7 +3344,7 @@ local getInput = function() --gotta catch them all
 						local mevt
 						repeat
 							mevt = {os.pullEvent()}
-						until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and mevt[4] <= scr_y)
+						until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and (mevt[4] or math.huge) <= scr_y)
 						if not (mevt[1] == "key" and mevt[2] == keys.x) then
 							local x, y = mevt[3]+paint.scrollX, mevt[4]+paint.scrollY
 							if plc.renderBlittle then
