@@ -3057,6 +3057,7 @@ local getInput = function() --gotta catch them all
 				miceDown[button] = true
 				if y <= scr_y-(plc.renderBlittle and 0 or doRenderBar) then
 					if (button == 3) then
+						renderBottomBar("Type text onto canvas:")
 						putDownText(x,y)
 						miceDown = {}
 						keysDown = {}
@@ -3310,6 +3311,7 @@ local getInput = function() --gotta catch them all
 								x = 2*x
 								y = 3*y
 							end
+							renderBottomBar("Type text onto canvas:")
 							putDownText(x,y)
 							miceDown = {}
 							keysDown = {}
@@ -3342,31 +3344,36 @@ local getInput = function() --gotta catch them all
 						renderBottomBar("Pick color with cursor:")
 						paintEncoded = clearAllRedundant(paintEncoded)
 						local mevt
-						repeat
-							mevt = {os.pullEvent()}
-						until (mevt[1] == "key" and mevt[2] == keys.x) or (mevt[2] == 1 and (mevt[4] or math.huge) <= scr_y)
-						if not (mevt[1] == "key" and mevt[2] == keys.x) then
-							local x, y = mevt[3]+paint.scrollX, mevt[4]+paint.scrollY
-							if plc.renderBlittle then
-								x = 2*x
-								y = 3*y
-							end
-							local p
-							for a = 1, #paintEncoded[frame] do
-								p = paintEncoded[frame][a]
-								if (p.x == x) and (p.y == y) then
-									paint.t = p.t or paint.t
-									paint.b = p.b or paint.b
-									paint.c = p.c or paint.c
-									paint.m = p.m or paint.m
-									miceDown = {}
-									keysDown = {}
-									doRender = true
-									isDragging = false
-									break
+						local keepPicking = true
+						
+						while keepPicking do
+							mevt = {os.pullEvent()} 
+							if mevt[1] == "mouse_click" then
+								keepPicking = false
+								resetInputState()
+								if mevt[4] < scr_y then
+									local x, y = mevt[3]+paint.scrollX, mevt[4]+paint.scrollY
+									if plc.renderBlittle then
+										x = 2*x
+										y = 3*y
+									end
+									local p
+									for a = 1, #paintEncoded[frame] do
+										p = paintEncoded[frame][a]
+										if (p.x == x) and (p.y == y) then
+											paint.t = p.t or paint.t
+											paint.b = p.b or paint.b
+											paint.c = p.c or paint.c
+											paint.m = p.m or paint.m
+											break
+										end
+									end
+								end
+							elseif mevt[1] == "key" then
+								if mevt[2] == keys.x or evt[2] == keys.q then
+									keepPicking = false
 								end
 							end
-							resetInputState()
 						end
 						doRender = true
 						isDragging = false
