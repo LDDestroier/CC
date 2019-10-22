@@ -283,6 +283,12 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 		mino.shape = output
 		-- try to kick off wall/floor
 		if mino.checkCollision(0, 0) then
+			-- try T-spin triple rotation
+			if not mino.checkCollision(-direction, 2) then
+				mino.y = mino.y + 2
+				mino.x = mino.x - direction
+				return true
+			end
 			-- kick off floor
 			for y = 1, math.floor(#mino.shape) do
 				if not mino.checkCollision(0, -y) then
