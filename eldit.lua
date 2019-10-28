@@ -1,6 +1,18 @@
--- Eldit (still being made)
--- by LDDestroier
--- wget https://raw.githubusercontent.com/LDDestroier/CC/master/eldit.lua
+--[[
+	Eldit (still being made)
+	 by LDDestroier
+	wget https://raw.githubusercontent.com/LDDestroier/CC/master/eldit.lua
+
+TO DO:
+ - MAJOR: Merge selections that intersect
+ - MAJOR: Allow selecting with Shift + ArrowKeys
+ - MAJOR: Fix deleting multiple selections (MUST delete selections from bottom to top)
+ - MAJOR: Add syntax highlighting
+ - Add more keyboard shortcuts
+ - Add help menu
+ - Eventually add simultaneous peer editing
+
+--]]
 
 local scr_x, scr_y = term.getSize()
 
@@ -27,9 +39,15 @@ eldit.size = {
 	height = scr_y	-- vertical size
 }
 
+-- made-up keys for easier use of both left and right modifier keys
+keys.shift = 127
+keys.alt = 128
+keys.ctrl = 129
+
 config.showLineNumberIndicator = false
 config.showWhitespace = true
 config.showTrailingSpace = true
+config.findExtension = true
 
 -- minor optimizations, I think
 local concatTable = table.concat
@@ -77,7 +95,28 @@ end
 
 local argList = interpretArgs({...}, argData)
 
-eldit.filename = argList[1]
+eldit.filename = argList[1] and shell.resolve(argList[1])
+
+if eldit.filename then
+	if fs.isDir(eldit.filename) then
+		error("Cannot edit a directory.", 0)
+	end
+
+	if config.findExtension then
+		if not fs.exists(eldit.filename) then
+			local m
+			local d = fs.list(fs.getDir(eldit.filename))
+			for i = 1, #d do
+				m = d[i]:match(fs.getName(eldit.filename) .. "%....$")
+				if m then
+					eldit.filename = fs.combine(fs.getDir(eldit.filename), m)
+					break
+				end
+			end
+		end
+	end
+end
+
 eldit.cursors = {{
 	x = 1,
 	y = math.max(1, argList["-l"] or 1),
@@ -302,7 +341,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		[" "] = true,
 		["\9"] = true
 	}
-	
+
 	-- the big boi function, draws **EVERYTHING**
 	local render = function()
 		local cx, cy
@@ -358,7 +397,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 
 				if checkIfCursor(cx, cy) and isCursorBlink then
 					if isInsert then
-						cTxt, cBg = "0", "f"
+						cTxt, cBg = "8", "0"
 					else
 						cTxt, cBg = "f", "8"
 					end
@@ -496,9 +535,16 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		local xAdjList = {}
 		local yAdj = 0
 		sortCursors()
+
+		local rowBuff	-- represents the buffer row at the current cursor's Y
+		local startOnInterruptable
+
 		for id,cur in pairs(eldit.cursors) do
 			cx = _cx or cur.x - (xAdjList[_cy or cur.y] or 0)
 			cy = _cy or cur.y - yAdj
+
+			rowBuff = eldit.buffer[cy] or {}
+			startOnInterruptable = interruptable[rowBuff[cx]] or (not rowBuff[cx])
 
 			if mode == "single" or (direction == "forward" and cx == #eldit.buffer[cy] or (direction == "backward" and cx == 1)) then
 				if direction == "forward" then
@@ -540,17 +586,43 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 			elseif mode == "word" then
 				local pos = cx
 				if direction == "forward" then
-					repeat
+					while true do
 						pos = pos + 1
-					until interruptable[eldit.buffer[cy][pos]] or pos >= #eldit.buffer[cy]
+						if startOnInterruptable then
+							if (not interruptable[rowBuff[pos]]) or (not rowBuff[pos]) then
+								startOnInterruptable = false
+							end
+						else
+							if interruptable[rowBuff[pos]] or (not rowBuff[pos]) then
+								break
+							end
+						end
+
+						if (pos + 1) < 0 or (pos + 1) > #rowBuff + 1 then
+							break
+						end
+					end
 					for i = pos, cx, -1 do
 						xAdjList[cy] = (xAdjList[cy] or 0) + 1
 						table.remove(eldit.buffer[cy], i)
 					end
 				else
-					repeat
+					while true do
 						pos = pos - 1
-					until interruptable[eldit.buffer[cy][pos]] or pos <= 1
+						if startOnInterruptable then
+							if (not interruptable[rowBuff[pos]]) or (not rowBuff[pos]) then
+								startOnInterruptable = false
+							end
+						else
+							if interruptable[rowBuff[pos]] or (not rowBuff[pos]) then
+								break
+							end
+						end
+
+						if (pos - 1) < 0 or (pos - 1) > #rowBuff + 1 then
+							break
+						end
+					end
 					pos = math.max(1, pos)
 					for i = cx - 1, pos, -1 do
 						table.remove(eldit.buffer[cy], i)
@@ -642,14 +714,38 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 	end
 
 	-- moves the cursor by (xmod, ymod), and fixes its position if it's set to an invalid one
-	local adjustCursor = function(_xmod, _ymod, setLastX, mode, doNotDelSelections)
+	local adjustCursor = function(_xmod, _ymod, setLastX, mode, doNotDelSelections, adjustSelections, doNotTouchScroll)
+		local step = (_xmod / math.abs(_xmod))
+		local rowBuff	-- represents the buffer row at the current cursor's Y
+		local startOnInterruptable
+
+		local origCX, origCY
+
 		for id,cur in pairs(eldit.cursors) do
+			origCX, origCY = cur.x, cur.y
+			rowBuff = eldit.buffer[cur.y] or {}
+			startOnInterruptable = interruptable[rowBuff[cur.x + step]]
 			if mode == "word" then
-				xmod = (_xmod / math.abs(_xmod))
+				xmod = step
 				ymod = 0
-				repeat
-					xmod = xmod + (_xmod / math.abs(_xmod))
-				until interruptable[eldit.buffer[cur.y][cur.x + xmod]] or cur.x + xmod >= #eldit.buffer[cur.y] or cur.x + xmod <= 1
+				while true do
+					xmod = xmod + step
+					if math.abs(xmod) > math.abs(step) then
+						if startOnInterruptable then
+							if (not interruptable[rowBuff[cur.x + xmod]]) or (not rowBuff[cur.x + xmod]) then
+								startOnInterruptable = false
+							end
+						else
+							if interruptable[rowBuff[cur.x + xmod]] or (not rowBuff[cur.x + xmod]) then
+								break
+							end
+						end
+					end
+
+					if (cur.x + xmod + step) < 0 or (cur.x + xmod + step) > #rowBuff + 1 then
+						break
+					end
+				end
 				xmod = xmod - math.min(0, math.max(xmod, -1))
 			else
 				xmod = _xmod
@@ -668,7 +764,8 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 						cur.y = cur.y - 1
 						cur.x = cur.x + #eldit.buffer[cur.y] + 1
 					elseif cur.x > #eldit.buffer[cur.y] + 1 and cur.y < #eldit.buffer then
-						cur.x = cur.x - #eldit.buffer[cur.y] - 1
+--						cur.x = cur.x - #eldit.buffer[cur.y] - 1
+						cur.x = 1
 						cur.y = cur.y + 1
 					end
 				until (cur.x >= 1 and cur.x <= #eldit.buffer[cur.y] + 1) or ((cur.y == 1 and xmod < 0) or (cur.y == #eldit.buffer and xmod > 0))
@@ -684,13 +781,19 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				cur.y = math.max(1, math.min(cur.y, #eldit.buffer))
 				cur.x = math.max(1, math.min(cur.x, #eldit.buffer[cur.y] + 1))
 			end
+
+			if adjustSelections then
+				for sid, sel in pairs(eldit.selections) do
+
+				end
+			end
 		end
 		removeRedundantCursors()
-		if (not keysDown[keys.leftCtrl]) and not (xmod == 0 and ymod == 0) and not doNotDelSelections then
+		if (not keysDown[keys.ctrl]) and not (xmod == 0 and ymod == 0) and not doNotDelSelections then
 			eldit.selections = {}
 			isSelecting = false
 		end
-		if not isSelecting then
+		if (not isSelecting) and (not doNotTouchScroll) then
 			scrollToCursor()
 		end
 	end
@@ -707,6 +810,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		local yAdj = 0
 		for id,sel in pairs(eldit.selections) do
 			for y = sel[1].y, sel[2].y do
+				xAdj = 0
 				if eldit.buffer[y] then
 					xAdjusts[y] = xAdjusts[y] or {}
 					if checkWithinArea(#eldit.buffer[y] + 1, y, sel[1].x, sel[1].y, sel[2].x, sel[2].y) then
@@ -922,6 +1026,8 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 		[82] = 0,
 	}
 
+	local startedSelecting = false
+
 	-- here we go my man
 	scrollToCursor()
 	while true do
@@ -959,12 +1065,12 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 						})
 					end
 				end
-			elseif (evt[1] == "char" and not keysDown[keys.leftCtrl]) then
+			elseif (evt[1] == "char" and not keysDown[keys.ctrl]) then
 				placeText(evt[2])
 				if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
 				doRender = true
 			elseif evt[1] == "paste" then
-				if keysDown[keys.leftShift] then
+				if keysDown[keys.shift] then
 					local cb = eldit.clipboards[eldit.selectedClipboard]
 					local cbb = {}
 					if cb then
@@ -1004,10 +1110,16 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				doRender = true
 			elseif evt[1] == "key" then
 				keysDown[evt[2]] = true
-				-- KEYBOARD SHORTCUTS
-				if keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl] then
 
-					if keysDown[keys.leftShift] or keysDown[keys.rightShift] then
+				keysDown[keys.shift] = keysDown[keys.leftShift] or keysDown[keys.rightShift]
+				keysDown[keys.alt] = keysDown[keys.leftAlt] or keysDown[keys.rightAlt]
+				keysDown[keys.ctrl] = keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]
+
+
+				-- KEYBOARD SHORTCUTS
+				if keysDown[keys.ctrl] then
+
+					if keysDown[keys.shift] then
 						if evt[2] == keys.c or evt[2] == keys.x then
 							doRender = true
 							if #eldit.selections == 0 then
@@ -1054,7 +1166,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 								barlife = defaultBarLife
 							end
 							doRender = true
-							
+
 						elseif evt[2] == keys.s then
 							saveFile(eldit.filename)
 							tID = os.startTimer(0.4)
@@ -1066,18 +1178,23 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 					else
 						if numToKey[evt[2]] then -- if that's a number then
 							eldit.selectedClipboard = numToKey[evt[2]]
-							barmsg = "Selected clipboard " .. eldit.selectedClipboard .. "."
+							barmsg = "Selected clipboard " .. eldit.selectedClipboard
+							if eldit.clipboards[eldit.selectedClipboard] then
+								barmsg = barmsg .. ": " .. table.concat(eldit.clipboards[eldit.selectedClipboard][1][1])
+							else
+								barmsg = barmsg .. "."
+							end
 							barlife = defaultBarLife
 							doRender = true
 
 						elseif evt[2] == keys.rightBracket then
 							indentLines(false)
 							doRender, isCursorBlink = true, true
-							
+
 						elseif evt[2] == keys.leftBracket then
 							indentLines(true)
 							doRender, isCursorBlink = true, true
-							
+
 						elseif evt[2] == keys.backspace then
 							if #eldit.selections > 0 then
 								deleteSelections()
@@ -1134,13 +1251,13 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 							doRender = true
 
 						elseif evt[2] == keys.left then
-							adjustCursor(-1, 0, true, "word")
+							adjustCursor(-1, 0, true, "word", false, keysDown[keys.shift])
 							doRender, isCursorBlink = true, true
 							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 
 						elseif evt[2] == keys.right then
-							adjustCursor(1, 0, true, "word")
+							adjustCursor(1, 0, true, "word", false, keysDown[keys.shift])
 							doRender, isCursorBlink = true, true
 							eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 							eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
@@ -1165,7 +1282,7 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				else
 
 					if evt[2] == keys.tab then
-						if keysDown[keys.leftShift] then
+						if keysDown[keys.shift] then
 							indentLines(true)
 						elseif #eldit.selections > 0 then
 							indentLines(false)
@@ -1205,10 +1322,16 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 
 					elseif evt[2] == keys.pageUp then
 						adjustScroll(0, -eldit.size.height)
+						if isSelecting then
+							os.queueEvent("mouse_drag", 1, (miceDown[1] or miceDown[2]).x, (miceDown[1] or miceDown[2]).y)
+						end
 						doRender = true
 
 					elseif evt[2] == keys.pageDown then
 						adjustScroll(0, eldit.size.height)
+						if isSelecting then
+							os.queueEvent("mouse_drag", 1, (miceDown[1] or miceDown[2]).x, (miceDown[1] or miceDown[2]).y)
+						end
 						doRender = true
 
 					elseif evt[2] == keys.backspace then
@@ -1230,25 +1353,25 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 						if eldit.allowUndo then undotID = os.startTimer(eldit.undoDelay) end
 
 					elseif evt[2] == keys.left then
-						adjustCursor(-1, 0, true)
+						adjustCursor(-1, 0, true, nil, false, keysDown[keys.shift])
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 						doRender, isCursorBlink = true, true
 
 					elseif evt[2] == keys.right then
-						adjustCursor(1, 0, true)
+						adjustCursor(1, 0, true, nil, false, keysDown[keys.shift])
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 						doRender, isCursorBlink = true, true
 
 					elseif evt[2] == keys.up then
-						adjustCursor(0, -1, false)
+						adjustCursor(0, -1, false, nil, false, keysDown[keys.shift])
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 						doRender, isCursorBlink = true, true
 
 					elseif evt[2] == keys.down then
-						adjustCursor(0, 1, false)
+						adjustCursor(0, 1, false, nil, false, keysDown[keys.shift])
 						doRender, isCursorBlink = true, true
 						eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 						eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
@@ -1257,18 +1380,32 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				end
 			elseif evt[1] == "key_up" then
 				keysDown[evt[2]] = nil
+
+				keysDown[keys.shift] = keysDown[keys.leftShift] or keysDown[keys.rightShift]
+				keysDown[keys.alt] = keysDown[keys.leftAlt] or keysDown[keys.rightAlt]
+				keysDown[keys.ctrl] = keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]
 			elseif evt[1] == "mouse_click" then
 				local lineNoLen = getLineNoLen()
+				startedSelecting = false
 				miceDown[evt[2]] = {x = evt[3], y = evt[4]}
 				if evt[4] == -1 + eldit.size.y + eldit.size.height then
-					
+
 				else
-					if keysDown[keys.leftCtrl] then
+					if keysDown[keys.ctrl] and (
+						not checkIfSelected(
+							math.min(
+								evt[3] + eldit.scrollX - lineNoLen,
+								#eldit.buffer[evt[4] + eldit.scrollY] + 1
+							),
+							evt[4] + eldit.scrollY
+						)
+					) then
 						table.insert(eldit.cursors, {
 							x = evt[3] + eldit.scrollX - lineNoLen,
 							y = evt[4] + eldit.scrollY,
 							lastX = evt[3] + eldit.scrollX - lineNoLen
 						})
+						startedSelecting = true
 					else
 						eldit.cursors = {{
 							x = evt[3] + eldit.scrollX - lineNoLen,
@@ -1283,18 +1420,18 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 						scrollX = eldit.scrollX,
 						scrollY = eldit.scrollY,
 						lineNoLen = lineNoLen,
-						ctrl = keysDown[keys.leftCtrl],
+						ctrl = keysDown[keys.ctrl],
 						curID = #eldit.cursors,
 					}
 					sortSelections()
-					adjustCursor(0, 0, true)
+					adjustCursor(0, 0, true, nil, nil, nil, startedSelecting)
 					eldit.undoBuffer[eldit.undoPos].selections = eldit.selections
 					eldit.undoBuffer[eldit.undoPos].cursors = eldit.cursors
 				end
 				doRender = true
 			elseif evt[1] == "mouse_drag" then
 				if evt[4] == -1 + eldit.size.y + eldit.size.height then
-					
+
 				else
 					local lineNoLen = getLineNoLen()
 					local lastMX, lastMY
@@ -1340,8 +1477,8 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 						}
 						sortSelections()
 						eldit.cursors[lastMouse.curID] = {
-							x = eldit.selections[selID][1].x,
-							y = eldit.selections[selID][1].y,
+							x = eldit.selections[selID][2].x,
+							y = eldit.selections[selID][2].y,
 							lastX = eldit.selections[selID][1].x
 						}
 
@@ -1357,10 +1494,10 @@ prompt = function(prebuffer, precy, maxY, _eldit)
 				isSelecting = false
 				sortSelections()
 			elseif evt[1] == "mouse_scroll" then
-				if keysDown[keys.leftAlt] then
-					adjustScroll((keysDown[keys.leftCtrl] and eldit.size.width or 1) * evt[2], 0)
+				if keysDown[keys.alt] then
+					adjustScroll(((keysDown[keys.ctrl] and not (isSelecting or startedSelecting)) and eldit.size.width or 1) * evt[2], 0)
 				else
-					adjustScroll(0, (keysDown[keys.leftCtrl] and eldit.size.height or 1) * evt[2])
+					adjustScroll(0, ((keysDown[keys.ctrl] and not (isSelecting or startedSelecting)) and eldit.size.height or 1) * evt[2])
 				end
 				if isSelecting then
 					os.queueEvent("mouse_drag", 1, evt[3], evt[4])
