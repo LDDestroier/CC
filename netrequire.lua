@@ -19,9 +19,11 @@ local function netrequire(_name, alwaysDownload, ...)
 	else
 		local url = "https://github.com/LDDestroier/CC/raw/master/netrequire/" .. name
 		local net = http.get(url)
+		local description
 		if net then
 			url = net.readLine()
 			local useLoadAPI = net.readLine():sub(1, 4) == "true"
+			description = net.readAll()
 			net.close()
 			net = http.get(url)
 			if net then
