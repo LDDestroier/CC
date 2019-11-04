@@ -1,5 +1,6 @@
 https://github.com/LDDestroier/CC/raw/master/disknet.lua
-
+false
+LDDestroier
 Disknet is a communications API that uses a shared filesystem to have modem-like communications.
 The intended use is to have two floppy disks with the same ID, where each is connected to a separate computer.
 You can then have completely secure (if hard drive rapey) "modem" communications!
