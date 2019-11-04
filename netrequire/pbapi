@@ -1,3 +1,4 @@
 https://pastebin.com/raw/MpZXv6Hz
-
-PBAPI is made by KCat156.
+true
+KCat156
+A simple Pastebin API that takes a login token and can download, upload, and delete from a user's pastebin.
