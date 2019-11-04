@@ -1,4 +1,5 @@
 https://github.com/LDDestroier/CC/raw/master/API/skynet.lua
-
+false
+Gollark
 Skynet is originally made by Gollark, and is a modem-like communications API that uses websockets for inter-server use.
 This version of Skynet has the CBOR API bundled.
