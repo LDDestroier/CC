@@ -48,6 +48,12 @@ game.cancelTimer = function(tID)
 	game.timers[tID or 0] = nil
 end
 
+game.alterTimer = function(tID, mod)
+	if game.timers[tID] then
+		game.timers[tID] = game.timers[tID] + mod
+	end
+end
+
 local tableCopy
 tableCopy = function(tbl)
 	local output = {}
@@ -165,6 +171,19 @@ local minos = {
 			"c   c c   c c   c c       c   c  c c  c     c   c",
 			"c   c c   c c   c c       c   c  c c  c     c   c",
 			" ccc  c   c c   c ccccc    ccc    c   ccccc c   c",
+		}
+	},
+	["yousuck"] = {
+		canRotate = false,
+		shape = {
+			"c   c  ccc  c   c    ccc  c   c  ccc  c   c",
+			"c   c c   c c   c   c   c c   c c   c c  c ",
+			"c   c c   c c   c   c     c   c c     c c  ",
+			" c c  c   c c   c    ccc  c   c c     cc   ",
+			"  c   c   c c   c       c c   c c     c c  ",
+			"  c   c   c c   c       c c   c c     c  c ",
+			"  c   c   c c   c   c   c c   c c   c c   c",
+			"  c    ccc   ccc     ccc   ccc   ccc  c   c",
 		}
 	}
 }
@@ -524,7 +543,12 @@ end
 
 -- god damn it you've fucked up
 local gameOver = function(player)
-	local mino = makeNewMino("gameover", player.board, 12, 3)
+	local mino
+	if player.lines > 5 then
+		mino = makeNewMino("gameover", player.board, 12, 3)
+	else
+		mino = makeNewMino("yousuck", player.board, 12, 3)
+	end
 	local color = 0
 	for i = 1, 130 do
 		if i % 2 == 0 then
@@ -755,8 +779,13 @@ local startGame = function(playerNumber)
 								if mino.move(0, 1) then
 									draw()
 								else
-									draw(true)
-									break
+									if mino.waitingForLock then
+										game.alterTimer(lockTimer, -0.1)
+									else
+										mino.lockBreaks = mino.lockBreaks - 1
+										lockTimer = game.startTimer(math.max(0.2 / player.fallSteps, 0.25))
+										mino.waitingForLock = true
+									end
 								end
 							end
 						end
