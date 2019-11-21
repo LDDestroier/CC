@@ -737,7 +737,7 @@ local calculateGarbage = function(lines, combo, backToBack, didTspin)
 end
 
 -- actually give a player some garbage
-local doleOutGarbage = function(player, amount)
+local doleOutGarbage = function(player, cPlayer, amount)
 	local board = player.board
 	local gx = math.random(1, board.xSize)
 	local repeatProbability = 75	-- percent probability that garbage will leave the same hole open
@@ -1118,7 +1118,7 @@ local startGame = function(playerNumber)
 			-- take some garbage for yourself
 
 			if cPlayer.garbage > 0 then
-				doleOutGarbage(player, cPlayer.garbage)
+				doleOutGarbage(player, cPlayer, cPlayer.garbage)
 			end
 		end
 	else
