@@ -14,7 +14,8 @@
 -- and ghost pieces.
 --
 -- TO-DO:
---  + Add slight random color pulsation (for effect!)
+--  + Add random color pulsation (for effect!)
+--  + Add a proper title screen. The current one is pathetic.
 
 local scr_x, scr_y = term.getSize()
 local keysDown = {}
@@ -553,7 +554,7 @@ local initializePlayers = function(amountOfPlayers)
 	game.pp = {}
 
 	for i = 1, (amountOfPlayers or 1) do
-		game.p[i], game.pp[i] = newPlayer((i - 1) * 16, 0)
+		game.p[i], game.pp[i] = newPlayer((scr_x/2 - 8 * amountOfPlayers) + (i - 1) * 18, 0)
 	end
 
 	-- generates the initial queue of minos per player
@@ -908,6 +909,7 @@ local startGame = function(playerNumber)
 				math.floor(board.xSize / 2) - 2,
 				game.boardOverflow
 			)
+			cPlayer.mino = mino
 
 			ghostMino = makeNewMino(
 				currentMinoType,
@@ -916,6 +918,7 @@ local startGame = function(playerNumber)
 				game.boardOverflow,
 				"c"
 			)
+			cPlayer.ghostMino = ghostMino
 
 			if takeFromQueue then
 				table.remove(cPlayer.queue, 1)
@@ -1143,17 +1146,16 @@ local startGame = function(playerNumber)
 				-- man am I clever
 				cVal = math.max(0, cVal - 1)
 				for k,v in pairs(player.control) do
-					sendInfo("send_info", false)
+					--sendInfo("send_info", false)
 					cVal = 2
 					break
 				end
 				if cVal == 1 then
-					sendInfo("send_info", false)
+					--sendInfo("send_info", false)
 				end
 				if player then
 					for k,v in pairs(player.control) do
 						player.control[k] = v + 0.05
-						isControlling = true
 					end
 				end
 			end
@@ -1175,6 +1177,9 @@ local getInput = function()
 		if (evt[1] == "key" and evt[3] == false) or (evt[1] == "key_up") then
 			if game.revControl[evt[2]] then
 				game.p[game.you].control[game.revControl[evt[2]]] = keysDown[evt[2]]
+				if not game.net.isHost then
+					sendInfo("send_info", false)
+				end
 			end
 		end
 	end
@@ -1216,7 +1221,15 @@ local networking = function()
 					if game.net.isHost then
 						if type(msg.control) == "table" then
 							game.p[game.nou].control = msg.control
+							for y = 1, game.p[game.nou].board.ySize do
+								for x = 1, game.p[game.nou].board.xSize do
+									ageSpace(game.p[game.nou].board, x, y)
+								end
+							end
+							game.pp[game.nou].ghostMino.draw()
+							game.pp[game.nou].mino.draw()
 							sendInfo("send_info", false, game.nou)
+							renderBoard(game.p[game.nou].board, 0, 0, true)
 						end
 					else
 						if type(msg.p) == "table" then
