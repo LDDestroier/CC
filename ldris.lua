@@ -23,7 +23,6 @@ local game = {
 	p = {},					-- stores player information
 	pp = {},				-- stores other player information that doesn't need to be sent during netplay
 	you = 1,				-- current player slot
-	nou = 2,				-- current enemy slot
 	instanceID = math.random(1, 2^31-1),	-- random per-instance value to ensure skynet doesn't poopie
 	amountOfPlayers = 2,	-- amount of players for the current game
 	running = true,			-- if set to false, will quit the game
@@ -348,6 +347,7 @@ local sendInfo = function(command, doSendTime, playerNumber)
 			time = doSendTime and getTime(),
 			p = playerNumber and game.p[playerNumber] or game.p,
 			pNum = playerNumber,
+			you = game.you,
 			specialColor = {term.getPaletteColor(tColors.special)}
 		})
 	else
@@ -355,6 +355,8 @@ local sendInfo = function(command, doSendTime, playerNumber)
 			command = command,
 			gameID = game.net.gameID,
 			time = doSendTime and getTime(),
+			pNum = playerNumber,
+			you = game.you,
 			control = game.p[game.you].control
 		})
 	end
@@ -777,7 +779,14 @@ local startGame = function(playerNumber)
 		control = player.control
 
 		local draw = function(isSolid)
-			if not ((game.p[game.you] or {}).flashingSpecial or (game.p[game.nou] or {}).flashingSpecial) then
+			local canChangeSpecial = true
+			for k,v in pairs(game.p) do
+				if v.flashingSpecial then
+					canChangeSpecial = false
+					break
+				end
+			end
+			if canChangeSpecial then
 				term.setPaletteColor(4096, mino.ghostColor)
 			end
 			ghostMino.x = mino.x
@@ -1187,6 +1196,7 @@ end
 local cTime
 local networking = function()
 	local evt, side, channel, repchannel, msg, distance
+	local currentPlayers = 1
 	while true do
 		if game.net.useSkynet then
 			evt, channel, msg = os.pullEvent("skynet_message")
@@ -1200,7 +1210,6 @@ local networking = function()
 						if msg.time < cTime then
 							game.net.isHost = false
 							game.you = 2
-							game.nou = 1
 							game.net.gameID = msg.gameID
 						else
 							game.net.isHost = true
@@ -1222,41 +1231,41 @@ local networking = function()
 
 					if game.net.isHost then
 						if type(msg.control) == "table" then
-							game.p[game.nou].control = msg.control
-							for y = 1, game.p[game.nou].board.ySize do
-								for x = 1, game.p[game.nou].board.xSize do
-									ageSpace(game.p[game.nou].board, x, y)
-								end
-							end
-							--game.pp[game.nou].ghostMino.draw()
-							--game.pp[game.nou].mino.draw()
-							--sendInfo("send_info", false, game.nou)
-							--renderBoard(game.p[game.nou].board, 0, 0, true)
-						end
-					else
-						if type(msg.p) == "table" then
-							if msg.pNum then
-								for k,v in pairs(msg.p) do
-									if k ~= "control" then
-										game.p[msg.pNum][k] = v
+							if type(msg.you) == "number" and msg.you ~= game.you then
+								game.p[msg.you].control = msg.control
+								for y = 1, game.p[msg.you].board.ySize do
+									for x = 1, game.p[msg.you].board.xSize do
+										ageSpace(game.p[msg.you].board, x, y)
 									end
 								end
-							else
-								game.p = msg.p
 							end
-							if msg.specialColor then
-								term.setPaletteColor(tColors.special, table.unpack(msg.specialColor))
+						end
+					else
+						if type(msg.you) == "number" and msg.you ~= game.you then
+							if type(msg.p) == "table" then
+								if msg.pNum then
+									for k,v in pairs(msg.p) do
+										if k ~= "control" then
+											game.p[msg.pNum][k] = v
+										end
+									end
+								else
+									game.p = msg.p
+								end
+								if msg.specialColor then
+									term.setPaletteColor(tColors.special, table.unpack(msg.specialColor))
+								end
+								os.queueEvent("new_player_info", msg.p)
 							end
-							os.queueEvent("new_player_info", msg.p)
-						end
-						if msg.command == "quit_game" then
-							return
-						end
-						if msg.command == "flash_special" then
-							for i = 1, 0, -0.12 do
-								term.setPaletteColor(4096, i,i,i)
-								renderBoard(game.p[game.nou].board, 0, 0, true)
-								sleep(0.05)
+							if msg.command == "quit_game" then
+								return
+							end
+							if msg.command == "flash_special" then
+								for i = 1, 0, -0.12 do
+									term.setPaletteColor(4096, i,i,i)
+									renderBoard(game.p[msg.you].board, 0, 0, true)
+									sleep(0.05)
+								end
 							end
 						end
 					end
@@ -1427,7 +1436,6 @@ local main = function()
 	while true do
 
 		game.you = 1
-		game.nou = 2
 		game.net.isHost = true
 		finished = false
 		game.running = true
