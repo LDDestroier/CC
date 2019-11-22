@@ -1145,15 +1145,12 @@ local startGame = function(playerNumber)
 				inputTimer = os.startTimer(game.inputDelay)
 				-- man am I clever
 				cVal = math.max(0, cVal - 1)
-				for k,v in pairs(player.control) do
-					--sendInfo("send_info", false)
-					cVal = 2
-					break
-				end
-				if cVal == 1 then
-					--sendInfo("send_info", false)
-				end
 				if player then
+					for k,v in pairs(player.control) do
+						--sendInfo("send_info", false)
+						cVal = 2
+						break
+					end
 					for k,v in pairs(player.control) do
 						player.control[k] = v + 0.05
 					end
