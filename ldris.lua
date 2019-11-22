@@ -24,13 +24,15 @@ local game = {
 	pp = {},				-- stores other player information that doesn't need to be sent during netplay
 	you = 1,				-- current player slot
 	nou = 2,				-- current enemy slot
+	instanceID = math.random(1, 2^31-1),	-- random per-instance value to ensure skynet doesn't poopie
 	amountOfPlayers = 2,	-- amount of players for the current game
 	running = true,			-- if set to false, will quit the game
 	moveHoldDelay = 0.2,	-- amount of time to hold left or right for it to keep moving that way
 	boardOverflow = 12,		-- amount of space above the board that it can overflow
 	paused = false,			-- whether or not game is paused
 	canPause = true,		-- if false, cannot pause game (such as in online multiplayer)
-	inputDelay = 0,			-- amount of time between each input
+	inputDelay = 0.05,		-- amount of time between each input
+	gameDelay = 0.05,		-- amount of time between game ticks
 	config = {
 		TGMlock = true,		-- replicate the piece locking from Tetris: The Grand Master
 		scrubMode = false,	-- gives you nothing but I-pieces
@@ -329,10 +331,12 @@ local ageSpace = function(board, _x, _y)
 end
 
 local transmit = function(msg)
-	if game.net.useSkynet then
-		game.net.skynet.send(game.net.channel, msg)
-	else
-		game.net.modem.transmit(game.net.channel, game.net.channel, msg)
+	if game.net.active then
+		if game.net.useSkynet then
+			game.net.skynet.send(game.net.channel, msg)
+		else
+			game.net.modem.transmit(game.net.channel, game.net.channel, msg)
+		end
 	end
 end
 
@@ -637,7 +641,7 @@ end
 
 -- draws the player's simultaneous line clear after clearing one or more lines
 -- also tells the player's combo, which is nice
-local drawComboMessage = function(cPlayer, lines, didTspin)
+local drawComboMessage = function(player, cPlayer, lines, didTspin)
 	local msgs = {
 		"SINGLE",
 		"DOUBLE",
@@ -647,10 +651,10 @@ local drawComboMessage = function(cPlayer, lines, didTspin)
 	if not msgs[lines] then
 		return
 	end
-	term.setCursorPos(2, 18)
+	term.setCursorPos(player.xmod + 2, player.ymod + 18)
 	term.setTextColor(tColors.white)
 	term.write((" "):rep(16))
-	term.setCursorPos(2, 18)
+	term.setCursorPos(player.xmod + 2, player.ymod + 18)
 	if didTspin then
 		term.write("T-SPIN ")
 	else
@@ -664,10 +668,10 @@ local drawComboMessage = function(cPlayer, lines, didTspin)
 	end
 	term.write(msgs[lines])
 	if cPlayer.combo >= 2 then
-		term.setCursorPos(2, 19)
+		term.setCursorPos(player.xmod + 2, player.ymod + 19)
 		term.setTextColor(tColors.white)
 		term.write((" "):rep(16))
-		term.setCursorPos(2, 19)
+		term.setCursorPos(player.xmod + 2, player.ymod + 19)
 		if lines == 4 and cPlayer.combo == 3 then
 			term.write("HOLY SHIT!")
 		elseif lines == 4 and cPlayer.combo > 3 then
@@ -693,9 +697,7 @@ local gameOver = function(player, cPlayer)
 	end
 	local color = 0
 	for i = 1, 140 do
-		if i % 2 == 0 then
-			mino.x = mino.x - 1
-		end
+		mino.x = mino.x - 1
 		mino.draw()
 		sendInfo("send_info", false)
 		renderBoard(player.board, 0, 0, true)
@@ -703,7 +705,7 @@ local gameOver = function(player, cPlayer)
 			color = color + 0.01
 			term.setPaletteColor(4096, math.sin(color) / 2 + 0.5, math.sin(color) / 2, math.sin(color) / 2)
 		end
-		sleep(0.05)
+		sleep(0.1)
 	end
 	return
 end
@@ -888,7 +890,7 @@ local startGame = function(playerNumber)
 				end
 			end
 			for k,v in pairs(player.control) do
-				player.control[k] = v + 0.05
+				player.control[k] = v + game.inputDelay
 			end
 		end
 
@@ -974,7 +976,7 @@ local startGame = function(playerNumber)
 			inputTimer = game.startTimer(game.inputDelay)
 			game.cancelTimer(lockTimer or 0)
 
-			tickTimer = os.startTimer(0.05)
+			tickTimer = os.startTimer(game.inputDelay)
 
 			-- drop a piece
 			while game.running do
@@ -994,7 +996,7 @@ local startGame = function(playerNumber)
 								game.timers[k] = nil
 							end
 						end
-						tickTimer = os.startTimer(0.05)
+						tickTimer = os.startTimer(game.inputDelay)
 					elseif evt[2] == comboTimer then
 						cPlayer.drawCombo = false
 						drawScore(player, cPlayer)
@@ -1077,7 +1079,7 @@ local startGame = function(playerNumber)
 					player.backToBack = 0
 				end
 
-				drawComboMessage(cPlayer, #clearedLines)
+				drawComboMessage(player, cPlayer, #clearedLines)
 
 				cPlayer.lastLinesCleared = #clearedLines
 
@@ -1125,7 +1127,8 @@ local startGame = function(playerNumber)
 		-- if you're a client, take in all that board info and just fukkin draw it
 
 		inputTimer = os.startTimer(game.inputDelay)
-		local cVal = 0
+
+		local timeoutTimer = os.startTimer(3)
 
 		while game.running do
 			evt = {os.pullEvent()}
@@ -1140,20 +1143,19 @@ local startGame = function(playerNumber)
 					term.setCursorPos(13 + v.xmod, 13 + v.ymod)
 					term.write("HOLD")
 				end
-			elseif (evt[1] == "timer" and evt[2] == inputTimer) then
-				os.cancelTimer(inputTimer or 0)
-				inputTimer = os.startTimer(game.inputDelay)
-				-- man am I clever
-				cVal = math.max(0, cVal - 1)
-				if player then
-					for k,v in pairs(player.control) do
-						--sendInfo("send_info", false)
-						cVal = 2
-						break
+				os.cancelTimer(timeoutTimer or 0)
+				timeoutTimer = os.startTimer(3)
+			elseif evt[1] == "timer" then
+				if evt[2] == inputTimer then
+					os.cancelTimer(inputTimer or 0)
+					inputTimer = os.startTimer(game.inputDelay)
+					if player then
+						for k,v in pairs(player.control) do
+							player.control[k] = v + game.inputDelay
+						end
 					end
-					for k,v in pairs(player.control) do
-						player.control[k] = v + 0.05
-					end
+				elseif evt[2] == timeoutTimer then
+					return
 				end
 			end
 		end
@@ -1194,23 +1196,26 @@ local networking = function()
 		if channel == game.net.channel and type(msg) == "table" then
 			if game.net.waitingForGame then
 				if type(msg.time) == "number" and msg.command == "find_game" then
-					if msg.time < cTime then
-						game.net.isHost = false
-						game.you = 2
-						game.nou = 1
-						game.net.gameID = msg.gameID
-					else
-						game.net.isHost = true
-					end
+					if msg.instanceID ~= game.instanceID then
+						if msg.time < cTime then
+							game.net.isHost = false
+							game.you = 2
+							game.nou = 1
+							game.net.gameID = msg.gameID
+						else
+							game.net.isHost = true
+						end
 
-					transmit({
-						gameID = game.net.gameID,
-						time = cTime,
-						command = "find_game"
-					})
-					game.net.waitingForGame = false
-					os.queueEvent("new_game", game.net.gameID)
-					return game.net.gameID
+						transmit({
+							gameID = game.net.gameID,
+							time = cTime,
+							command = "find_game",
+							instanceID = game.instanceID
+						})
+						game.net.waitingForGame = false
+						os.queueEvent("new_game", game.net.gameID)
+						return game.net.gameID
+					end
 				end
 			else
 				if msg.gameID == game.net.gameID then
@@ -1223,10 +1228,10 @@ local networking = function()
 									ageSpace(game.p[game.nou].board, x, y)
 								end
 							end
-							game.pp[game.nou].ghostMino.draw()
-							game.pp[game.nou].mino.draw()
-							sendInfo("send_info", false, game.nou)
-							renderBoard(game.p[game.nou].board, 0, 0, true)
+							--game.pp[game.nou].ghostMino.draw()
+							--game.pp[game.nou].mino.draw()
+							--sendInfo("send_info", false, game.nou)
+							--renderBoard(game.p[game.nou].board, 0, 0, true)
 						end
 					else
 						if type(msg.p) == "table" then
@@ -1276,6 +1281,7 @@ local setUpModem = function()
 			term.clear()
 			cwrite("Connecting to Skynet...", scr_y / 2)
 			game.net.skynet.open(game.net.channel)
+			return true
 		else
 			term.clear()
 			cwrite("Downloading Skynet...", scr_y / 2)
@@ -1287,8 +1293,9 @@ local setUpModem = function()
 				skynet = dofile(game.net.skynetPath)
 				cwrite("Connecting to Skynet...", 1 + scr_y / 2)
 				skynet.open(game.net.channel)
+				return true
 			else
-				error("Could not download Skynet.")
+				return false, "Could not download Skynet."
 			end
 		end
 	else
@@ -1306,8 +1313,9 @@ local setUpModem = function()
 		end
 		if game.net.modem then
 			game.net.modem.open(game.net.channel)
+			return true
 		else
-			error("You should attach a modem.")
+			return false, "No modem was found."
 		end
 	end
 end
@@ -1356,8 +1364,8 @@ local titleScreen = function()	-- mondo placeholder
 		cwrite("Press 2 to play a modem game.", 8)
 		cwrite("Press S to enable Skynet.", 9)
 	end
-	cwrite("Press Q to quit.", 10)
-	cwrite(tostring(math.random(10000, 99999)), 12)
+	cwrite("Press H to see controls.", 10)
+	cwrite("Press Q to quit.", 11)
 	local evt
 	while true do
 		evt = {os.pullEvent()}
@@ -1368,11 +1376,44 @@ local titleScreen = function()	-- mondo placeholder
 				return "2P"
 			elseif evt[2] == keys.s then
 				return "skynet"
+			elseif evt[2] == keys.h then
+				return "help"
 			elseif evt[2] == keys.q then
 				return "quit"
 			end
 		end
 	end
+end
+
+local screenError = function(...)
+	local lines = {...}
+	term.setBackgroundColor(tColors.black)
+	term.setTextColor(tColors.white)
+	term.clear()
+	for i = 1, #lines do
+		cwrite(lines[i], 2 + i)
+	end
+	cwrite("Press any key to continue.", #lines + 4)
+	sleep(0)
+	repeat until os.pullEvent("key")
+end
+
+-- a lot of these menus and whatnot are very primitive. I can improve that later
+local showHelp = function()
+	term.setBackgroundColor(tColors.black)
+	term.setTextColor(tColors.white)
+	term.clear()
+	cwrite("CONTROLS (defaults):", 2)
+	term.setCursorPos(1, 4)
+	print(" Move Piece:   LEFT and RIGHT")
+	print(" Hard Drop:    UP")
+	print(" Fast Drop:    DOWN")
+	print(" Rotate Piece: Z and X")
+	print(" Hold Piece:   L.SHIFT")
+	print(" Quit:         Q")
+	print("\n Press any key to continue.")
+	sleep(0)
+	repeat until os.pullEvent("key")
 end
 
 local main = function()
@@ -1397,14 +1438,36 @@ local main = function()
 			if modeVal == "1P" then
 				game.net.active = false
 				game.amountOfPlayers = 1
+				game.gameDelay = 0.05
 				break
 			elseif modeVal == "2P" then
-				game.net.active = true
-				game.amountOfPlayers = 2
-				break
+				if setUpModem() then
+					if (game.net.skynet and game.net.useSkynet) then
+						game.gameDelay = 0.1
+					else
+						game.gameDelay = 0.05
+					end
+					game.net.active = true
+					game.amountOfPlayers = 2
+					break
+				else
+					screenError("A modem is required for multiplayer.")
+					finished = true
+				end
 			elseif modeVal == "skynet" then
-				game.net.useSkynet = not game.net.useSkynet
-				setUpModem()
+				if http.websocket then
+					game.net.useSkynet = not game.net.useSkynet
+					setUpModem()
+				else
+					screenError(
+						"Skynet requires websocket support.",
+						"Use CCEmuX, CC:Tweaked,",
+						"or CraftOS-PC 2.2 or higher to play."
+					)
+					finished = true
+				end
+			elseif modeVal == "help" then
+				showHelp()
 			elseif modeVal == "quit" then
 				return false
 			end
@@ -1418,7 +1481,8 @@ local main = function()
 			transmit({
 				gameID = game.net.gameID,
 				time = cTime,
-				command = "find_game"
+				command = "find_game",
+				instanceID = game.instanceID
 			})
 			if game.net.useSkynet then
 				rVal = parallel.waitForAny( networking, pleaseWait, game.net.skynet.listen )
