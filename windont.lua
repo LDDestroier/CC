@@ -13,12 +13,39 @@ for i = 1, 16 do
 end
 to_blit[0], to_colors["-"] = "-", 0
 
-local windont = {baseTerm = term.current()}
+local getTime = function()
+	return 24 * os.day() + os.time()
+end
 
-local config = {
-	defaultTextColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
-	defaultBackColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
+local windont = {
+	baseTerm = term.current(),
+	config = {
+		defaultTextColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
+		defaultBackColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
+		clearScreen = false,				-- if true, will clear the screen during render
+	},
+	info = {
+		BLIT_CALLS = 0,				-- amount of term.blit calls during the last render
+		LAST_RENDER_TIME = 0,		-- last time in which render was called
+		LAST_RENDER_AMOUNT = 0,		-- amount of windows drawn during last render
+		LAST_RENDER_WINDOWS = {},	-- table of the last window objects that were rendered
+	}
 }
+
+-- check if space on screenBuffer is transparent
+local check = function(buff, x, y, blitLayer)
+	if buff[blitLayer or 1][y] then
+		return (blitLayer or buff[1][y][x]) and (
+			(not buff[blitLayer or 2][y][x] or buff[blitLayer or 2][y][x] ~= "-") or
+			(not buff[blitLayer or 3][y][x] or buff[blitLayer or 3][y][x] ~= "-")
+		) and (
+			not (buff[1][y][x] == " " and buff[3][y][x] == "-")
+		)
+	end
+end
+
+-- draws one or more windon't objects
+-- should not draw over any terminal space that isn't occupied by a window
 
 windont.render = function(...)
 	local windows = {...}
@@ -27,15 +54,13 @@ windont.render = function(...)
 	local screenBuffer = {{}, {}, {}}
 	local blitList = {}	-- list of blit commands per line
 	local c	= 1 		-- current blitList entry
-	local cx, cy		-- each window's absolute X and Y
-	local buffer
 
-	-- check if space on screenBuffer is transparent
-	local check = function(x, y)
-		if screenBuffer[1][y] then
-			return screenBuffer[1][y][x] and (screenBuffer[2][y][x] or screenBuffer[3][y][x])
-		end
-	end
+	local cTime = getTime()
+
+	local AMNT_OF_BLITS = 0	-- how many blit calls are there?
+
+	local cx, cy				-- each window's absolute X and Y
+	local buffer
 
 	for y = 1, scr_y do
 		screenBuffer[1][y] = {}
@@ -44,26 +69,25 @@ windont.render = function(...)
 		blitList = {}
 		c = 1
 		for x = 1, scr_x do
-			for i = 1, #windows do
+			for i = #windows, 1, -1 do
 				if windows[i].meta.visible then
 					buffer = windows[i].meta.buffer
 					cx = x - windows[i].meta.x + 1
 					cy = y - windows[i].meta.y + 1
-					if type(buffer[1][cy]) == "table" then
-						screenBuffer[1][y][x] = screenBuffer[1][y][x] or buffer[1][cy][cx]
-						screenBuffer[2][y][x] = screenBuffer[2][y][x] or (buffer[2][cy][cx] ~= "-" and buffer[2][cy][cx])
-						screenBuffer[3][y][x] = screenBuffer[3][y][x] or (buffer[3][cy][cx] ~= "-" and buffer[3][cy][cx])
-					else
-						screenBuffer[1][y][x] = screenBuffer[1][y][x]
-						screenBuffer[2][y][x] = screenBuffer[2][y][x]
-						screenBuffer[3][y][x] = screenBuffer[3][y][x]
+					if check(buffer, cx, cy) then
+						screenBuffer[1][y][x] = check(buffer, cx, cy) and buffer[1][cy][cx] or screenBuffer[1][y][x]
+						screenBuffer[2][y][x] = check(buffer, cx, cy, 2) and buffer[2][cy][cx] or screenBuffer[3][y][x]
+						screenBuffer[3][y][x] = check(buffer, cx, cy, 3) and buffer[3][cy][cx] or screenBuffer[3][y][x]
 					end
 				end
 			end
-			screenBuffer[2][y][x] = screenBuffer[2][y][x] or config.defaultTextColor
-			screenBuffer[3][y][x] = screenBuffer[3][y][x] or config.defaultBackColor
-			if check(x, y) then
-				if check(x - 1, y) then
+			if windont.config.clearScreen then
+				screenBuffer[1][y][x] = screenBuffer[1][y][x] or " "
+			end
+			screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.config.defaultBackColor	-- intentionally not the default text color
+			screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.config.defaultBackColor
+			if check(screenBuffer, x, y) then
+				if check(screenBuffer, x - 1, y) then
 					blitList[c][1] = blitList[c][1] .. screenBuffer[1][y][x]
 					blitList[c][2] = blitList[c][2] .. screenBuffer[2][y][x]
 					blitList[c][3] = blitList[c][3] .. screenBuffer[3][y][x]
@@ -80,9 +104,19 @@ windont.render = function(...)
 		for k,v in pairs(blitList) do
 			bT.setCursorPos(k, y)
 			bT.blit(v[1], v[2], v[3])
+			AMNT_OF_BLITS = AMNT_OF_BLITS + 1
 		end
 	end
+
+	windont.info.BLIT_CALLS = AMNT_OF_BLITS
+	windont.info.LAST_RENDER_AMOUNT = #windows
+	windont.info.LAST_RENDER_WINDOWS = windows
+	windont.info.LAST_RENDER_TIME = cTime
+	windont.info.LAST_RENDER_DURATION = getTime() - cTime
+
 end
+
+-- creates a new windon't object that can be manipulated the same as a regular window
 
 windont.newWindow = function( x, y, width, height, misc )
 
@@ -108,15 +142,16 @@ windont.newWindow = function( x, y, width, height, misc )
 		width = width,						-- width of the buffer
 		height = height,					-- height of the buffer
 		buffer = {},						-- stores contents of terminal in buffer[1][y][x] format
+		renderBuddies = {},					-- renders any other window objects stored here after rendering here
 
 		cursorX = misc.cursorX or 1,
 		cursorY = misc.cursorY or 1,
 
-		textColor = misc.textColor or "0",	-- current text color
-		backColor = misc.backColor or "f",	-- current background color
+		textColor = misc.textColor or windont.config.defaultTextColor,	-- current text color
+		backColor = misc.backColor or windont.config.defaultBackColor,	-- current background color
 
 		blink = true,					-- cursor blink
-		isColor = term.isColor(),		-- if true, then it's an advanced computer
+		isColor = bT.isColor(),			-- if true, then it's an advanced computer
 		alwaysRender = false,			-- render after every terminal operation
 		visible = true,					-- if false, don't render ever
 
@@ -139,6 +174,8 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	-- initialize the buffer
 	meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor)
+
+	output.meta = meta
 
 	output.write = function(text)
 		assert(type(text) == "string", "argument must be string")
@@ -167,8 +204,8 @@ windont.newWindow = function( x, y, width, height, misc )
 		for i = 1, #char do
 			if meta.cursorX >= 1 and meta.cursorX <= meta.width and meta.cursorY >= 1 and meta.cursorY <= meta.height then
 				meta.buffer[1][meta.cursorY][meta.cursorX] = char:sub(i,i)
-				meta.buffer[2][meta.cursorY][meta.cursorX] = text:sub(i,i) == " " and config.defaultTextColor or text:sub(i,i)
-				meta.buffer[3][meta.cursorY][meta.cursorX] = back:sub(i,i) == " " and config.defaultBackColor or back:sub(i,i)
+				meta.buffer[2][meta.cursorY][meta.cursorX] = text:sub(i,i) == " " and windont.config.defaultTextColor or text:sub(i,i)
+				meta.buffer[3][meta.cursorY][meta.cursorX] = back:sub(i,i) == " " and windont.config.defaultBackColor or back:sub(i,i)
 				meta.cursorX = meta.cursorX + 1
 			end
 		end
@@ -198,7 +235,7 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.setTextColor = function(color)
 		if to_blit[color] then
-			meta.textColor = color
+			meta.textColor = to_blit[color]
 		else
 			error("Invalid color (got " .. color .. ")")
 		end
@@ -207,7 +244,7 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.setBackgroundColor = function(color)
 		if to_blit[color] then
-			meta.backColor = color
+			meta.backColor = to_blit[color]
 		else
 			error("Invalid color (got " .. color .. ")")
 		end
@@ -225,6 +262,7 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.getBackgroundColour = output.getBackgroundColor
 
 	output.setVisible = function(visible)
+		assert(type(visible) == "number", "bad argument #1 (expected boolean, got " .. type(visible) .. ")")
 		meta.visible = visible and true or false
 	end
 
@@ -247,10 +285,11 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.getLine = function(y)
 		assert(type(y) == "number", "bad argument #1 (expected number, got " .. type(y) .. ")")
+		assert(meta.buffer[1][y], "Line is out of range.")
 		return table.concat(meta.buffer[1][y]), table.concat(meta.buffer[2][y]), table.concat(meta.buffer[3][y])
 	end
 
-	output.scroll = function(amount)
+	output.scroll = function(amplitude)
 		if amplitude > 0 then
 			for i = 1, amplitude do
 				table.remove(meta.buffer[1], 1)
@@ -259,9 +298,9 @@ windont.newWindow = function( x, y, width, height, misc )
 			end
 		else
 			for i = 1, -amplitude do
-				meta.buffer[1][#meta.buffer[1]] = nil
-				meta.buffer[2][#meta.buffer[2]] = nil
-				meta.buffer[3][#meta.buffer[3]] = nil
+				table.insert(meta.buffer[1], 1, false)
+				table.insert(meta.buffer[2], 1, false)
+				table.insert(meta.buffer[3], 1, false)
 			end
 		end
 		meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor, meta.buffer)
@@ -318,10 +357,12 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.getPaletteColor = bT.getPaletteColor
 	output.getPaletteColour = bT.getPaletteColour
 
-	output.meta = meta
-
 	output.redraw = function()
-		windont.render(output)
+		if #meta.renderBuddies > 0 then
+			windont.render(output, table.unpack(meta.renderBuddies))
+		else
+			windont.render(output)
+		end
 	end
 
 	return output
