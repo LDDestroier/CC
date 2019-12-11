@@ -5,6 +5,22 @@ term.clear()
 local x1, y1 = 2, 5
 local x2, y2 = 13, 2
 
+-- demo transformation function
+-- mess with these all you like
+-- just remember that they apply in reverse (x and y are positions on the screen from 1 to the window's width/height)
+local TF = {
+	-- returns new X, new Y, and new character / text color / background color
+	char = function(x, y, meta)
+		return x, y, nil
+	end,
+	text = function(x, y, meta)
+		return x, y, nil
+	end,
+	back = function(x, y, meta)
+		return x, y, nil
+	end
+}
+
 local keysDown = {}
 
 local tickTimer = os.startTimer(0.05)
@@ -51,6 +67,10 @@ pBlit(TWO, 6,  "5---5-5--555---5555")
 pBlit(TWO, 8,  "ddddddddddddddddddd")
 pBlit(TWO, 9,  "ddddddddddddddddddd")
 pBlit(TWO, 10, "ddddddddddddddddddd")
+
+ONE.meta.charTransformation = TF.char
+ONE.meta.textTransformation = TF.text
+ONE.meta.backTransformation = TF.back
 
 while true do
 
