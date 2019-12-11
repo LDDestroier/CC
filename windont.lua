@@ -59,8 +59,11 @@ windont.render = function(...)
 
 	local AMNT_OF_BLITS = 0	-- how many blit calls are there?
 
-	local cx, cy				-- each window's absolute X and Y
-	local buffer
+	local cx, cy					-- each window's absolute X and Y
+	local char_cx, text_cx, back_cx	-- each window's transformed absolute X's in table form
+	local char_cy, text_cy, back_cy	-- each window's transformed absolute X's in table form
+	local buffer					-- each window's buffer
+	local newChar, newText, newBack	-- if the transformation function declares a new dot, this is it
 
 	for y = 1, scr_y do
 		screenBuffer[1][y] = {}
@@ -70,22 +73,52 @@ windont.render = function(...)
 		c = 1
 		for x = 1, scr_x do
 			for i = #windows, 1, -1 do
+				newChar, newText, newBack = nil
 				if windows[i].meta.visible then
 					buffer = windows[i].meta.buffer
 					cx = x - windows[i].meta.x + 1
 					cy = y - windows[i].meta.y + 1
-					if check(buffer, cx, cy) then
-						screenBuffer[1][y][x] = check(buffer, cx, cy) and buffer[1][cy][cx] or screenBuffer[1][y][x]
-						screenBuffer[2][y][x] = check(buffer, cx, cy, 2) and buffer[2][cy][cx] or screenBuffer[3][y][x]
-						screenBuffer[3][y][x] = check(buffer, cx, cy, 3) and buffer[3][cy][cx] or screenBuffer[3][y][x]
+					char_cx, text_cx, back_cx = cx, cx, cx
+					char_cy, text_cy, back_cy = cy, cy, cy
+
+					-- try char transformation
+					if windows[i].meta.charTransformation then
+						char_cx, char_cy, newChar = windows[i].meta.charTransformation(cx, cy, windows[i].meta)
+						if char_cx ~= math.floor(char_cx) or char_cy ~= math.floor(char_cy) then
+							newChar = " "
+						end
+						char_cx = math.floor(char_cx)
+						char_cy = math.floor(char_cy)
+					end
+
+					-- try text transformation
+					if windows[i].meta.textTransformation then
+						text_cx, text_cy, newText = windows[i].meta.textTransformation(cx, cy, windows[i].meta)
+						text_cx = math.floor(text_cx)
+						text_cy = math.floor(text_cy)
+					end
+
+					-- try back transformation
+					if windows[i].meta.backTransformation then
+						back_cx, back_cy, newBack = windows[i].meta.backTransformation(cx, cy, windows[i].meta)
+						back_cx = math.floor(back_cx)
+						back_cy = math.floor(back_cy)
+					end
+
+					if check(buffer, char_cx, char_cy) or check(buffer, text_cx, text_cy) or check(buffer, back_cx, back_cy) then
+						screenBuffer[1][y][x] = newChar or check(buffer, char_cx, char_cy   ) and (buffer[1][char_cy][char_cx]) or screenBuffer[1][y][x]
+						screenBuffer[2][y][x] = newText or check(buffer, text_cx, text_cy, 2) and (buffer[2][text_cy][text_cx]) or screenBuffer[3][y][x]
+						screenBuffer[3][y][x] = newBack or check(buffer, back_cx, back_cy, 3) and (buffer[3][back_cy][back_cx]) or screenBuffer[3][y][x]
 					end
 				end
 			end
+
 			if windont.config.clearScreen then
 				screenBuffer[1][y][x] = screenBuffer[1][y][x] or " "
 			end
 			screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.config.defaultBackColor	-- intentionally not the default text color
 			screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.config.defaultBackColor
+
 			if check(screenBuffer, x, y) then
 				if check(screenBuffer, x - 1, y) then
 					blitList[c][1] = blitList[c][1] .. screenBuffer[1][y][x]
@@ -143,6 +176,10 @@ windont.newWindow = function( x, y, width, height, misc )
 		height = height,					-- height of the buffer
 		buffer = {},						-- stores contents of terminal in buffer[1][y][x] format
 		renderBuddies = {},					-- renders any other window objects stored here after rendering here
+
+		charTransformation = nil,			-- function that transforms the characters of the window
+		textTransformation = nil,			-- function that transforms the text colors of the window
+		backTransformation = nil,			-- function that transforms the BG colors of the window
 
 		cursorX = misc.cursorX or 1,
 		cursorY = misc.cursorY or 1,
