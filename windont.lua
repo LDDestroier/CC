@@ -18,7 +18,7 @@ local getTime = function()
 end
 
 local windont = {
-	baseTerm = term.current(),
+	baseTerm = term.current(),				-- default base terminal for all windows
 	config = {
 		defaultTextColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
 		defaultBackColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
@@ -49,9 +49,9 @@ end
 
 windont.render = function(...)
 	local windows = {...}
-	local bT = windont.baseTerm
-	local scr_x, scr_y = bT.getSize()
+	local bT
 	local screenBuffer = {{}, {}, {}}
+	local scr_x, scr_y
 	local blitList = {}	-- list of blit commands per line
 	local c	= 1 		-- current blitList entry
 
@@ -65,79 +65,90 @@ windont.render = function(...)
 	local buffer					-- each window's buffer
 	local newChar, newText, newBack	-- if the transformation function declares a new dot, this is it
 
-	for y = 1, scr_y do
-		screenBuffer[1][y] = {}
-		screenBuffer[2][y] = {}
-		screenBuffer[3][y] = {}
-		blitList = {}
-		c = 1
-		for x = 1, scr_x do
-			for i = #windows, 1, -1 do
-				newChar, newText, newBack = nil
-				if windows[i].meta.visible then
-					buffer = windows[i].meta.buffer
-					cx = x - windows[i].meta.x + 1
-					cy = y - windows[i].meta.y + 1
-					char_cx, text_cx, back_cx = cx, cx, cx
-					char_cy, text_cy, back_cy = cy, cy, cy
+	local baseTerms = {}
+	for i = 1, #windows do
+		baseTerms[windows[i].meta.baseTerm] = baseTerms[windows[i].meta.baseTerm] or {}
+		baseTerms[windows[i].meta.baseTerm][i] = true
+	end
 
-					-- try char transformation
-					if windows[i].meta.charTransformation then
-						char_cx, char_cy, newChar = windows[i].meta.charTransformation(cx, cy, windows[i].meta)
-						if char_cx ~= math.floor(char_cx) or char_cy ~= math.floor(char_cy) then
-							newChar = " "
+	for bT, bT_list in pairs(baseTerms) do
+		scr_x, scr_y = bT.getSize()
+		for y = 1, scr_y do
+			screenBuffer[1][y] = {}
+			screenBuffer[2][y] = {}
+			screenBuffer[3][y] = {}
+			blitList = {}
+			c = 1
+			for x = 1, scr_x do
+				for i = #windows, 1, -1 do
+					if bT_list[i] then
+						newChar, newText, newBack = nil
+						if windows[i].meta.visible then
+							buffer = windows[i].meta.buffer
+							cx = x - windows[i].meta.x + 1
+							cy = y - windows[i].meta.y + 1
+							char_cx, text_cx, back_cx = cx, cx, cx
+							char_cy, text_cy, back_cy = cy, cy, cy
+
+							-- try char transformation
+							if windows[i].meta.charTransformation then
+								char_cx, char_cy, newChar = windows[i].meta.charTransformation(cx, cy, windows[i].meta)
+								if char_cx ~= math.floor(char_cx) or char_cy ~= math.floor(char_cy) then
+									newChar = " "
+								end
+								char_cx = math.floor(char_cx)
+								char_cy = math.floor(char_cy)
+							end
+
+							-- try text transformation
+							if windows[i].meta.textTransformation then
+								text_cx, text_cy, newText = windows[i].meta.textTransformation(cx, cy, windows[i].meta)
+								text_cx = math.floor(text_cx)
+								text_cy = math.floor(text_cy)
+							end
+
+							-- try back transformation
+							if windows[i].meta.backTransformation then
+								back_cx, back_cy, newBack = windows[i].meta.backTransformation(cx, cy, windows[i].meta)
+								back_cx = math.floor(back_cx)
+								back_cy = math.floor(back_cy)
+							end
+
+							if check(buffer, char_cx, char_cy) or check(buffer, text_cx, text_cy) or check(buffer, back_cx, back_cy) then
+								screenBuffer[1][y][x] = newChar or check(buffer, char_cx, char_cy   ) and (buffer[1][char_cy][char_cx]) or screenBuffer[1][y][x]
+								screenBuffer[2][y][x] = newText or check(buffer, text_cx, text_cy, 2) and (buffer[2][text_cy][text_cx]) or screenBuffer[3][y][x]
+								screenBuffer[3][y][x] = newBack or check(buffer, back_cx, back_cy, 3) and (buffer[3][back_cy][back_cx]) or screenBuffer[3][y][x]
+							end
 						end
-						char_cx = math.floor(char_cx)
-						char_cy = math.floor(char_cy)
 					end
+				end
 
-					-- try text transformation
-					if windows[i].meta.textTransformation then
-						text_cx, text_cy, newText = windows[i].meta.textTransformation(cx, cy, windows[i].meta)
-						text_cx = math.floor(text_cx)
-						text_cy = math.floor(text_cy)
-					end
+				if windont.config.clearScreen then
+					screenBuffer[1][y][x] = screenBuffer[1][y][x] or " "
+				end
+				screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.config.defaultBackColor	-- intentionally not the default text color
+				screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.config.defaultBackColor
 
-					-- try back transformation
-					if windows[i].meta.backTransformation then
-						back_cx, back_cy, newBack = windows[i].meta.backTransformation(cx, cy, windows[i].meta)
-						back_cx = math.floor(back_cx)
-						back_cy = math.floor(back_cy)
-					end
-
-					if check(buffer, char_cx, char_cy) or check(buffer, text_cx, text_cy) or check(buffer, back_cx, back_cy) then
-						screenBuffer[1][y][x] = newChar or check(buffer, char_cx, char_cy   ) and (buffer[1][char_cy][char_cx]) or screenBuffer[1][y][x]
-						screenBuffer[2][y][x] = newText or check(buffer, text_cx, text_cy, 2) and (buffer[2][text_cy][text_cx]) or screenBuffer[3][y][x]
-						screenBuffer[3][y][x] = newBack or check(buffer, back_cx, back_cy, 3) and (buffer[3][back_cy][back_cx]) or screenBuffer[3][y][x]
+				if check(screenBuffer, x, y) then
+					if check(screenBuffer, x - 1, y) then
+						blitList[c][1] = blitList[c][1] .. screenBuffer[1][y][x]
+						blitList[c][2] = blitList[c][2] .. screenBuffer[2][y][x]
+						blitList[c][3] = blitList[c][3] .. screenBuffer[3][y][x]
+					else
+						c = x
+						blitList[c] = {
+							screenBuffer[1][y][x],
+							screenBuffer[2][y][x],
+							screenBuffer[3][y][x]
+						}
 					end
 				end
 			end
-
-			if windont.config.clearScreen then
-				screenBuffer[1][y][x] = screenBuffer[1][y][x] or " "
+			for k,v in pairs(blitList) do
+				bT.setCursorPos(k, y)
+				bT.blit(v[1], v[2], v[3])
+				AMNT_OF_BLITS = AMNT_OF_BLITS + 1
 			end
-			screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.config.defaultBackColor	-- intentionally not the default text color
-			screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.config.defaultBackColor
-
-			if check(screenBuffer, x, y) then
-				if check(screenBuffer, x - 1, y) then
-					blitList[c][1] = blitList[c][1] .. screenBuffer[1][y][x]
-					blitList[c][2] = blitList[c][2] .. screenBuffer[2][y][x]
-					blitList[c][3] = blitList[c][3] .. screenBuffer[3][y][x]
-				else
-					c = x
-					blitList[c] = {
-						screenBuffer[1][y][x],
-						screenBuffer[2][y][x],
-						screenBuffer[3][y][x]
-					}
-				end
-			end
-		end
-		for k,v in pairs(blitList) do
-			bT.setCursorPos(k, y)
-			bT.blit(v[1], v[2], v[3])
-			AMNT_OF_BLITS = AMNT_OF_BLITS + 1
 		end
 	end
 
@@ -165,17 +176,16 @@ windont.newWindow = function( x, y, width, height, misc )
 	assert(width > 0, "width must be above zero")
 	assert(height > 0, "height must be above zero")
 
-	local bT = windont.baseTerm
-
 	local output = {}
 	misc = misc or {}
 	local meta = {
-		x = x or 1,							-- x position of the window
-		y = y or 1,							-- y position of the window
+		x = x or 1,						-- x position of the window
+		y = y or 1,						-- y position of the window
 		width = width,						-- width of the buffer
 		height = height,					-- height of the buffer
 		buffer = {},						-- stores contents of terminal in buffer[1][y][x] format
 		renderBuddies = {},					-- renders any other window objects stored here after rendering here
+		baseTerm = misc.baseTerm or windont.baseTerm,		-- base terminal for which this window draws on
 
 		charTransformation = nil,			-- function that transforms the characters of the window
 		textTransformation = nil,			-- function that transforms the text colors of the window
@@ -187,10 +197,10 @@ windont.newWindow = function( x, y, width, height, misc )
 		textColor = misc.textColor or windont.config.defaultTextColor,	-- current text color
 		backColor = misc.backColor or windont.config.defaultBackColor,	-- current background color
 
-		blink = true,					-- cursor blink
-		isColor = bT.isColor(),			-- if true, then it's an advanced computer
+		blink = true,				-- cursor blink
+		isColor = term.isColor(),		-- if true, then it's an advanced computer
 		alwaysRender = false,			-- render after every terminal operation
-		visible = true,					-- if false, don't render ever
+		visible = true,				-- if false, don't render ever
 
 		-- make a new buffer (optionally uses an existing buffer as a reference)
 		newBuffer = function(width, height, char, text, back, drawAtop)
@@ -208,6 +218,8 @@ windont.newWindow = function( x, y, width, height, misc )
 			return output
 		end
 	}
+
+	bT = meta.baseTerm
 
 	-- initialize the buffer
 	meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor)
@@ -347,7 +359,7 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.getSize = function()
-		return height, width
+		return width, height
 	end
 
 	output.isColor = function()
