@@ -22,7 +22,7 @@ local windont = {
 	config = {
 		defaultTextColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
 		defaultBackColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
-		clearScreen = false,				-- if true, will clear the screen during render
+		clearScreen = true,				-- if true, will clear the screen during render
 	},
 	info = {
 		BLIT_CALLS = 0,				-- amount of term.blit calls during the last render
@@ -69,6 +69,10 @@ windont.render = function(...)
 	for i = 1, #windows do
 		baseTerms[windows[i].meta.baseTerm] = baseTerms[windows[i].meta.baseTerm] or {}
 		baseTerms[windows[i].meta.baseTerm][i] = true
+	end
+
+	if bT == output then
+		bT = output.meta.baseTerm
 	end
 
 	for bT, bT_list in pairs(baseTerms) do
@@ -199,7 +203,7 @@ windont.newWindow = function( x, y, width, height, misc )
 
 		blink = true,				-- cursor blink
 		isColor = term.isColor(),		-- if true, then it's an advanced computer
-		alwaysRender = false,			-- render after every terminal operation
+		alwaysRender = true,			-- render after every terminal operation
 		visible = true,				-- if false, don't render ever
 
 		-- make a new buffer (optionally uses an existing buffer as a reference)
@@ -240,9 +244,9 @@ windont.newWindow = function( x, y, width, height, misc )
 			--local limit = math.max(0, meta.width - meta.cursorX + 1)
 			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
 			bT.blit(
-				table.unpack(meta.buffer[1][meta.cursorY]),
-				table.unpack(meta.buffer[2][meta.cursorY]),
-				table.unpack(meta.buffer[3][meta.cursorY])
+				table.concat(meta.buffer[1][meta.cursorY]),
+				table.concat(meta.buffer[2][meta.cursorY]),
+				table.concat(meta.buffer[3][meta.cursorY])
 			)
 		end
 	end
@@ -262,9 +266,9 @@ windont.newWindow = function( x, y, width, height, misc )
 			--local limit = math.max(0, meta.width - meta.cursorX + 1)
 			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
 			bT.blit(
-				table.unpack(meta.buffer[1][meta.cursorY]),
-				table.unpack(meta.buffer[2][meta.cursorY]),
-				table.unpack(meta.buffer[3][meta.cursorY])
+				table.concat(meta.buffer[1][meta.cursorY]),
+				table.concat(meta.buffer[2][meta.cursorY]),
+				table.concat(meta.buffer[3][meta.cursorY])
 			)
 		end
 	end
@@ -274,6 +278,9 @@ windont.newWindow = function( x, y, width, height, misc )
 		assert(type(y) == "number", "argument #2 must be number, got " .. type(y))
 		meta.cursorX, meta.cursorY = x, y
 		if meta.alwaysRender then
+			if bT == output then
+				bT = output.meta.baseTerm
+			end
 			bT.setCursorPos(meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
 		end
 	end
@@ -317,6 +324,9 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.clear = function()
 		meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor)
+		if meta.alwaysRender then
+			output.redraw()
+		end
 	end
 
 	output.clearLine = function()
@@ -385,7 +395,10 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.restoreCursor = function()
-		bT.setCursorPos(meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
+		bT.setCursorPos(
+			math.max(0, meta.x + meta.cursorX - 1),
+			math.max(0, meta.y + meta.cursorY - 1)
+		)
 		bT.setCursorBlink(meta.blink)
 	end
 
