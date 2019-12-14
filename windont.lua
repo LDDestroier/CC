@@ -6,16 +6,33 @@
 --  + Transparency within windows
 --  + Built-in window layering
 
-local to_blit, to_colors = {}, {}
-for i = 1, 16 do
-	to_blit[2 ^ (i - 1)] = ("0123456789abcdef"):sub(i, i)
-	to_colors[("0123456789abcdef"):sub(i, i)] = 2 ^ (i - 1)
-end
-to_blit[0], to_colors["-"] = "-", 0
+-- stores all local values to make drag-and-dropping into other programs less conflict-prone
+local lval = {
+	to_blit = {},
+	to_colors = {},
 
-local getTime = function()
-	return 24 * os.day() + os.time()
+	getTime = function()
+		return 24 * os.day() + os.time()
+	end,
+
+	-- check if space on screenBuffer is transparent
+	check = function(buff, x, y, blitLayer)
+	if buff[blitLayer or 1][y] then
+		return (blitLayer or buff[1][y][x]) and (
+			(not buff[blitLayer or 2][y][x] or buff[blitLayer or 2][y][x] ~= "-") or
+			(not buff[blitLayer or 3][y][x] or buff[blitLayer or 3][y][x] ~= "-")
+		) and (
+			not (buff[1][y][x] == " " and buff[3][y][x] == "-")
+		)
+	end
 end
+}
+
+for i = 1, 16 do
+	lval.to_blit[2 ^ (i - 1)] = ("0123456789abcdef"):sub(i, i)
+	lval.to_colors[("0123456789abcdef"):sub(i, i)] = 2 ^ (i - 1)
+end
+lval.to_blit[0], lval.to_colors["-"] = "-", 0
 
 local windont = {
 	baseTerm = term.current(),				-- default base terminal for all windows
@@ -32,30 +49,19 @@ local windont = {
 	}
 }
 
--- check if space on screenBuffer is transparent
-local check = function(buff, x, y, blitLayer)
-	if buff[blitLayer or 1][y] then
-		return (blitLayer or buff[1][y][x]) and (
-			(not buff[blitLayer or 2][y][x] or buff[blitLayer or 2][y][x] ~= "-") or
-			(not buff[blitLayer or 3][y][x] or buff[blitLayer or 3][y][x] ~= "-")
-		) and (
-			not (buff[1][y][x] == " " and buff[3][y][x] == "-")
-		)
-	end
-end
-
 -- draws one or more windon't objects
 -- should not draw over any terminal space that isn't occupied by a window
 
 windont.render = function(...)
 	local windows = {...}
 	local bT
+	local check = lval.check
 	local screenBuffer = {{}, {}, {}}
 	local scr_x, scr_y
 	local blitList = {}	-- list of blit commands per line
 	local c	= 1 		-- current blitList entry
 
-	local cTime = getTime()
+	local cTime = lval.getTime()
 
 	local AMNT_OF_BLITS = 0	-- how many blit calls are there?
 
@@ -160,7 +166,7 @@ windont.render = function(...)
 	windont.info.LAST_RENDER_AMOUNT = #windows
 	windont.info.LAST_RENDER_WINDOWS = windows
 	windont.info.LAST_RENDER_TIME = cTime
-	windont.info.LAST_RENDER_DURATION = getTime() - cTime
+	windont.info.LAST_RENDER_DURATION = lval.getTime() - cTime
 
 end
 
@@ -241,13 +247,15 @@ windont.newWindow = function( x, y, width, height, misc )
 			end
 		end
 		if meta.alwaysRender then
-			--local limit = math.max(0, meta.width - meta.cursorX + 1)
-			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
-			bT.blit(
-				table.concat(meta.buffer[1][meta.cursorY]),
-				table.concat(meta.buffer[2][meta.cursorY]),
-				table.concat(meta.buffer[3][meta.cursorY])
-			)
+			if #text ~= 0 then
+				--local limit = math.max(0, meta.width - meta.cursorX + 1)
+				bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
+				bT.blit(
+					table.concat(meta.buffer[1][meta.cursorY]),
+					table.concat(meta.buffer[2][meta.cursorY]),
+					table.concat(meta.buffer[3][meta.cursorY])
+				)
+			end
 		end
 	end
 
@@ -263,13 +271,15 @@ windont.newWindow = function( x, y, width, height, misc )
 			end
 		end
 		if meta.alwaysRender then
-			--local limit = math.max(0, meta.width - meta.cursorX + 1)
-			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
-			bT.blit(
-				table.concat(meta.buffer[1][meta.cursorY]),
-				table.concat(meta.buffer[2][meta.cursorY]),
-				table.concat(meta.buffer[3][meta.cursorY])
-			)
+			if #char ~= 0 then
+				--local limit = math.max(0, meta.width - meta.cursorX + 1)
+				bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
+				bT.blit(
+					table.concat(meta.buffer[1][meta.cursorY]),
+					table.concat(meta.buffer[2][meta.cursorY]),
+					table.concat(meta.buffer[3][meta.cursorY])
+				)
+			end
 		end
 	end
 
@@ -290,8 +300,8 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.setTextColor = function(color)
-		if to_blit[color] then
-			meta.textColor = to_blit[color]
+		if lval.to_blit[color] then
+			meta.textColor = lval.to_blit[color]
 		else
 			error("Invalid color (got " .. color .. ")")
 		end
@@ -299,8 +309,8 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.setTextColour = output.setTextColor
 
 	output.setBackgroundColor = function(color)
-		if to_blit[color] then
-			meta.backColor = to_blit[color]
+		if lval.to_blit[color] then
+			meta.backColor = lval.to_blit[color]
 		else
 			error("Invalid color (got " .. color .. ")")
 		end
@@ -308,12 +318,12 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.setBackgroundColour = output.setBackgroundColor
 
 	output.getTextColor = function()
-		return to_colors[meta.textColor]
+		return lval.to_colors[meta.textColor]
 	end
 	output.getTextColour = output.getTextColor
 
 	output.getBackgroundColor = function()
-		return to_colors[meta.backColor]
+		return lval.to_colors[meta.backColor]
 	end
 	output.getBackgroundColour = output.getBackgroundColor
 
@@ -349,22 +359,28 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.scroll = function(amplitude)
-		if amplitude > 0 then
-			for i = 1, amplitude do
-				table.remove(meta.buffer[1], 1)
-				table.remove(meta.buffer[2], 1)
-				table.remove(meta.buffer[3], 1)
+		if math.abs(amplitude) < meta.height then	-- minor optimization
+			if amplitude > 0 then
+				for i = 1, math.floor(amplitude) do
+					table.remove(meta.buffer[1], 1)
+					table.remove(meta.buffer[2], 1)
+					table.remove(meta.buffer[3], 1)
+				end
+			else
+				for i = 1, math.floor(-amplitude) do
+					table.insert(meta.buffer[1], 1, false)
+					table.insert(meta.buffer[2], 1, false)
+					table.insert(meta.buffer[3], 1, false)
+				end
 			end
+			meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor, meta.buffer)
 		else
-			for i = 1, -amplitude do
-				table.insert(meta.buffer[1], 1, false)
-				table.insert(meta.buffer[2], 1, false)
-				table.insert(meta.buffer[3], 1, false)
-			end
+			meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor)
 		end
-		meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor, meta.buffer)
 		if meta.alwaysRender then
-			output.redraw()
+			if math.floor(amplitude) ~= 0 then 
+				output.redraw()
+			end
 		end
 	end
 
