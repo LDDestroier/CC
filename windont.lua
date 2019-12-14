@@ -22,7 +22,7 @@ local windont = {
 	config = {
 		defaultTextColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
 		defaultBackColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
-		clearScreen = true,				-- if true, will clear the screen during render
+		clearScreen = false,				-- if true, will clear the screen during render
 	},
 	info = {
 		BLIT_CALLS = 0,				-- amount of term.blit calls during the last render
@@ -71,11 +71,10 @@ windont.render = function(...)
 		baseTerms[windows[i].meta.baseTerm][i] = true
 	end
 
-	if bT == output then
-		bT = output.meta.baseTerm
-	end
-
 	for bT, bT_list in pairs(baseTerms) do
+		if bT == output then
+			bT = output.meta.baseTerm
+		end
 		scr_x, scr_y = bT.getSize()
 		for y = 1, scr_y do
 			screenBuffer[1][y] = {}
@@ -84,6 +83,7 @@ windont.render = function(...)
 			blitList = {}
 			c = 1
 			for x = 1, scr_x do
+				isWindowHere = false
 				for i = #windows, 1, -1 do
 					if bT_list[i] then
 						newChar, newText, newBack = nil
@@ -214,9 +214,9 @@ windont.newWindow = function( x, y, width, height, misc )
 				output[2][y] = output[2][y] or {}
 				output[3][y] = output[3][y] or {}
 				for x = 1, width do
-					output[1][y][x] = output[1][y][x] or char or " "
-					output[2][y][x] = output[2][y][x] or text or "0"
-					output[3][y][x] = output[3][y][x] or back or "f"
+					output[1][y][x] = output[1][y][x] or (char or " ")
+					output[2][y][x] = output[2][y][x] or (text or "0")
+					output[3][y][x] = output[3][y][x] or (back or "f")
 				end
 			end
 			return output
@@ -425,6 +425,10 @@ windont.newWindow = function( x, y, width, height, misc )
 		else
 			windont.render(output)
 		end
+	end
+
+	if meta.alwaysRender then
+		output.redraw()
 	end
 
 	return output
