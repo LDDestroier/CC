@@ -238,7 +238,7 @@ windont.newWindow = function( x, y, width, height, misc )
 		end
 		if meta.alwaysRender then
 			--local limit = math.max(0, meta.width - meta.cursorX + 1)
-			bT.setCursorPos(meta.x, meta.y)
+			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
 			bT.blit(
 				table.unpack(meta.buffer[1][meta.cursorY]),
 				table.unpack(meta.buffer[2][meta.cursorY]),
@@ -260,7 +260,7 @@ windont.newWindow = function( x, y, width, height, misc )
 		end
 		if meta.alwaysRender then
 			--local limit = math.max(0, meta.width - meta.cursorX + 1)
-			bT.setCursorPos(meta.x, meta.y)
+			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
 			bT.blit(
 				table.unpack(meta.buffer[1][meta.cursorY]),
 				table.unpack(meta.buffer[2][meta.cursorY]),
