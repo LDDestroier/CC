@@ -11,21 +11,29 @@ local lval = {
 	to_blit = {},
 	to_colors = {},
 
+	expect = function(value, default, valueType)
+		if value == nil or (valueType and type(value) ~= valueType) then
+			return default
+		else
+			return value
+		end
+	end,
+
 	getTime = function()
 		return 24 * os.day() + os.time()
 	end,
 
 	-- check if space on screenBuffer is transparent
 	check = function(buff, x, y, blitLayer)
-	if buff[blitLayer or 1][y] then
-		return (blitLayer or buff[1][y][x]) and (
-			(not buff[blitLayer or 2][y][x] or buff[blitLayer or 2][y][x] ~= "-") or
-			(not buff[blitLayer or 3][y][x] or buff[blitLayer or 3][y][x] ~= "-")
-		) and (
-			not (buff[1][y][x] == " " and buff[3][y][x] == "-")
-		)
+		if buff[blitLayer or 1][y] then
+			return (blitLayer or buff[1][y][x]) and (
+				(not buff[blitLayer or 2][y][x] or buff[blitLayer or 2][y][x] ~= "-") or
+				(not buff[blitLayer or 3][y][x] or buff[blitLayer or 3][y][x] ~= "-")
+			) and (
+				not (buff[1][y][x] == " " and buff[3][y][x] == "-")
+			)
+		end
 	end
-end
 }
 
 for i = 1, 16 do
@@ -35,11 +43,14 @@ end
 lval.to_blit[0], lval.to_colors["-"] = "-", 0
 
 local windont = {
-	baseTerm = term.current(),				-- default base terminal for all windows
-	config = {
-		defaultTextColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
-		defaultBackColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
-		clearScreen = false,				-- if true, will clear the screen during render
+	doClearScreen = false,				-- if true, will clear the screen during render
+	default = {
+		baseTerm = term.current(),		-- default base terminal for all windows
+		textColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
+		backColor = "f",				-- default background color (what " " corresponds to in term.blit's third argument)
+		blink = true,
+		visible = true,
+		alwaysRender = true,			-- if true, new windows will always render if they are written to
 	},
 	info = {
 		BLIT_CALLS = 0,				-- amount of term.blit calls during the last render
@@ -52,7 +63,7 @@ local windont = {
 -- draws one or more windon't objects
 -- should not draw over any terminal space that isn't occupied by a window
 
-windont.render = function(...)
+windont.render = function(onlyX1, onlyX2, onlyY, ...)
 	local windows = {...}
 	local bT
 	local check = lval.check
@@ -60,6 +71,21 @@ windont.render = function(...)
 	local scr_x, scr_y
 	local blitList = {}	-- list of blit commands per line
 	local c	= 1 		-- current blitList entry
+
+	if type(onlyY) == "table" then
+		table.insert(windows, 1, onlyY)
+		onlyY = nil
+	end
+
+	if type(onlyX2) == "table" then
+		table.insert(windows, 1, onlyX2)
+		onlyX2 = nil
+	end
+
+	if type(onlyX1) == "table" then
+		table.insert(windows, 1, onlyX1)
+		onlyX1 = nil
+	end
 
 	local cTime = lval.getTime()
 
@@ -82,21 +108,20 @@ windont.render = function(...)
 			bT = output.meta.baseTerm
 		end
 		scr_x, scr_y = bT.getSize()
-		for y = 1, scr_y do
+		for y = onlyY or 1, onlyY or scr_y do
 			screenBuffer[1][y] = {}
 			screenBuffer[2][y] = {}
 			screenBuffer[3][y] = {}
 			blitList = {}
 			c = 1
-			for x = 1, scr_x do
-				isWindowHere = false
+			for x = onlyX1 or 1, math.min(scr_x, onlyX2 or scr_x) do
 				for i = #windows, 1, -1 do
 					if bT_list[i] then
 						newChar, newText, newBack = nil
 						if windows[i].meta.visible then
 							buffer = windows[i].meta.buffer
-							cx = x - windows[i].meta.x + 1
-							cy = y - windows[i].meta.y + 1
+							cx = 1 + x + -windows[i].meta.x
+							cy = 1 + y + -windows[i].meta.y
 							char_cx, text_cx, back_cx = cx, cx, cx
 							char_cy, text_cy, back_cy = cy, cy, cy
 
@@ -133,11 +158,11 @@ windont.render = function(...)
 					end
 				end
 
-				if windont.config.clearScreen then
+				if windont.doClearScreen then
 					screenBuffer[1][y][x] = screenBuffer[1][y][x] or " "
 				end
-				screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.config.defaultBackColor	-- intentionally not the default text color
-				screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.config.defaultBackColor
+				screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.default.backColor	-- intentionally not the default text color
+				screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.default.backColor
 
 				if check(screenBuffer, x, y) then
 					if check(screenBuffer, x - 1, y) then
@@ -162,8 +187,8 @@ windont.render = function(...)
 		end
 	end
 
-	windont.info.BLIT_CALLS = AMNT_OF_BLITS
 	windont.info.LAST_RENDER_AMOUNT = #windows
+	windont.info.BLIT_CALLS = AMNT_OF_BLITS
 	windont.info.LAST_RENDER_WINDOWS = windows
 	windont.info.LAST_RENDER_TIME = cTime
 	windont.info.LAST_RENDER_DURATION = lval.getTime() - cTime
@@ -189,28 +214,28 @@ windont.newWindow = function( x, y, width, height, misc )
 	local output = {}
 	misc = misc or {}
 	local meta = {
-		x = x or 1,						-- x position of the window
-		y = y or 1,						-- y position of the window
-		width = width,						-- width of the buffer
-		height = height,					-- height of the buffer
-		buffer = {},						-- stores contents of terminal in buffer[1][y][x] format
-		renderBuddies = {},					-- renders any other window objects stored here after rendering here
-		baseTerm = misc.baseTerm or windont.baseTerm,		-- base terminal for which this window draws on
+		x = lval.expect(x, 1),													-- x position of the window
+		y = lval.expect(y, 1),													-- y position of the window
+		width = width,															-- width of the buffer
+		height = height,														-- height of the buffer
+		buffer 			= lval.expect(misc.buffer, {}, "table"),							-- stores contents of terminal in buffer[1][y][x] format
+		renderBuddies 	= lval.expect(misc.renderBuddies, {}, "table"),						-- renders any other window objects stored here after rendering here
+		baseTerm 		= lval.expect(misc.baseTerm, windont.default.baseTerm, "table"),	-- base terminal for which this window draws on
+		isColor 		= lval.expect(misc.isColor, term.isColor(), "boolean"),				-- if true, then it's an advanced computer
 
-		charTransformation = nil,			-- function that transforms the characters of the window
-		textTransformation = nil,			-- function that transforms the text colors of the window
-		backTransformation = nil,			-- function that transforms the BG colors of the window
+		charTransformation = lval.expect(misc.charTransformation, nil, "function"),			-- function that transforms the characters of the window
+		textTransformation = lval.expect(misc.textTransformation, nil, "function"),			-- function that transforms the text colors of the window
+		backTransformation = lval.expect(misc.backTransformation, nil, "function"),			-- function that transforms the BG colors of the window
 
-		cursorX = misc.cursorX or 1,
-		cursorY = misc.cursorY or 1,
+		cursorX 		= lval.expect(misc.cursorX, 1),
+		cursorY 		= lval.expect(misc.cursorY, 1),
 
-		textColor = misc.textColor or windont.config.defaultTextColor,	-- current text color
-		backColor = misc.backColor or windont.config.defaultBackColor,	-- current background color
+		textColor 		= lval.expect(misc.textColor, windont.default.textColor, "string"),	-- current text color
+		backColor 		= lval.expect(misc.backColor, windont.default.backColor, "string"),	-- current background color
 
-		blink = true,				-- cursor blink
-		isColor = term.isColor(),		-- if true, then it's an advanced computer
-		alwaysRender = true,			-- render after every terminal operation
-		visible = true,				-- if false, don't render ever
+		blink 			= lval.expect(misc.blink, windont.default.blink, "boolean"),				-- cursor blink
+		alwaysRender 	= lval.expect(misc.alwaysRender, windont.default.alwaysRender, "boolean"),	-- render after every terminal operation
+		visible 		= lval.expect(misc.visible, windont.default.visible, "boolean"),			-- if false, don't render ever
 
 		-- make a new buffer (optionally uses an existing buffer as a reference)
 		newBuffer = function(width, height, char, text, back, drawAtop)
@@ -237,49 +262,38 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.meta = meta
 
 	output.write = function(text)
-		assert(type(text) == "string", "argument must be string")
-		for i = 1, #text do
+		assert(type(text) == "string" or type(text) == "number", "expected string, got " .. type(text))
+		local initX = meta.cursorX
+		for i = 1, #tostring(text) do
 			if meta.cursorX >= 1 and meta.cursorX <= meta.width and meta.cursorY >= 1 and meta.cursorY <= meta.height then
-				meta.buffer[1][meta.cursorY][meta.cursorX] = text:sub(i,i)
+				if not meta.buffer[1] then
+					error("what the fuck happened")
+				end
+				meta.buffer[1][meta.cursorY][meta.cursorX] = tostring(text):sub(i,i)
 				meta.buffer[2][meta.cursorY][meta.cursorX] = meta.textColor
 				meta.buffer[3][meta.cursorY][meta.cursorX] = meta.backColor
-				meta.cursorX = meta.cursorX + 1
 			end
+			meta.cursorX = meta.cursorX + 1
 		end
 		if meta.alwaysRender then
-			if #text ~= 0 then
-				--local limit = math.max(0, meta.width - meta.cursorX + 1)
-				bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
-				bT.blit(
-					table.concat(meta.buffer[1][meta.cursorY]),
-					table.concat(meta.buffer[2][meta.cursorY]),
-					table.concat(meta.buffer[3][meta.cursorY])
-				)
-			end
+			output.redraw(meta.x + initX - 1, meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
 		end
 	end
 
 	output.blit = function(char, text, back)
 		assert(type(char) == "string" and type(text) == "string" and type(back) == "string", "all arguments must be strings")
 		assert(#char == #text and #text == #back, "arguments must be same length")
+		local initX = meta.cursorX
 		for i = 1, #char do
 			if meta.cursorX >= 1 and meta.cursorX <= meta.width and meta.cursorY >= 1 and meta.cursorY <= meta.height then
 				meta.buffer[1][meta.cursorY][meta.cursorX] = char:sub(i,i)
-				meta.buffer[2][meta.cursorY][meta.cursorX] = text:sub(i,i) == " " and windont.config.defaultTextColor or text:sub(i,i)
-				meta.buffer[3][meta.cursorY][meta.cursorX] = back:sub(i,i) == " " and windont.config.defaultBackColor or back:sub(i,i)
+				meta.buffer[2][meta.cursorY][meta.cursorX] = text:sub(i,i) == " " and windont.default.textColor or text:sub(i,i)
+				meta.buffer[3][meta.cursorY][meta.cursorX] = back:sub(i,i) == " " and windont.default.backColor or back:sub(i,i)
 				meta.cursorX = meta.cursorX + 1
 			end
 		end
 		if meta.alwaysRender then
-			if #char ~= 0 then
-				--local limit = math.max(0, meta.width - meta.cursorX + 1)
-				bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
-				bT.blit(
-					table.concat(meta.buffer[1][meta.cursorY]),
-					table.concat(meta.buffer[2][meta.cursorY]),
-					table.concat(meta.buffer[3][meta.cursorY])
-				)
-			end
+			output.redraw(meta.x + initX - 1, meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
 		end
 	end
 
@@ -340,7 +354,9 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.clearLine = function()
-		meta.buffer[meta.cursorY] = nil
+		meta.buffer[1][meta.cursorY] = nil
+		meta.buffer[2][meta.cursorY] = nil
+		meta.buffer[3][meta.cursorY] = nil
 		meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor, meta.buffer)
 		if meta.alwaysRender then
 			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
@@ -360,25 +376,22 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.scroll = function(amplitude)
 		if math.abs(amplitude) < meta.height then	-- minor optimization
-			if amplitude > 0 then
-				for i = 1, math.floor(amplitude) do
-					table.remove(meta.buffer[1], 1)
-					table.remove(meta.buffer[2], 1)
-					table.remove(meta.buffer[3], 1)
-				end
-			else
-				for i = 1, math.floor(-amplitude) do
-					table.insert(meta.buffer[1], 1, false)
-					table.insert(meta.buffer[2], 1, false)
-					table.insert(meta.buffer[3], 1, false)
-				end
+			local blank = {{}, {}, {}}
+			for x = 1, meta.width do
+				blank[1][x] = " "
+				blank[2][x] = meta.textColor
+				blank[3][x] = meta.backColor
 			end
-			meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor, meta.buffer)
+			for y = 1, meta.height do
+				meta.buffer[1][y] = meta.buffer[1][y + amplitude] or blank[1]
+				meta.buffer[2][y] = meta.buffer[2][y + amplitude] or blank[2]
+				meta.buffer[3][y] = meta.buffer[3][y + amplitude] or blank[3]
+			end
 		else
 			meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor)
 		end
 		if meta.alwaysRender then
-			if math.floor(amplitude) ~= 0 then 
+			if math.floor(amplitude) ~= 0 then
 				output.redraw()
 			end
 		end
@@ -435,12 +448,13 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.getPaletteColor = bT.getPaletteColor
 	output.getPaletteColour = bT.getPaletteColour
 
-	output.redraw = function()
+	output.redraw = function(x1, x2, y)
 		if #meta.renderBuddies > 0 then
-			windont.render(output, table.unpack(meta.renderBuddies))
+			windont.render(x1, x2, y, output, table.unpack(meta.renderBuddies))
 		else
-			windont.render(output)
+			windont.render(x1, x2, y, output)
 		end
+		output.restoreCursor()
 	end
 
 	if meta.alwaysRender then
