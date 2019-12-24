@@ -34,7 +34,8 @@ end
 
 windont = dofile("windont.lua")
 
-windont.default.doClearScreen = true
+windont.doClearScreen = true
+windont.default.alwaysRender = false
 
 INSTRUCTIONS = windont.newWindow(2, scr_y - 5, scr_x - 4, 3, {backColor = "-"})
 ONE = windont.newWindow(1, 1, 9, 5, {backColor = "e"})
