@@ -36,6 +36,9 @@ local lval = {
 	end
 }
 
+local table_insert = table.insert
+local math_floor = math.floor
+
 for i = 1, 16 do
 	lval.to_blit[2 ^ (i - 1)] = ("0123456789abcdef"):sub(i, i)
 	lval.to_colors[("0123456789abcdef"):sub(i, i)] = 2 ^ (i - 1)
@@ -73,17 +76,17 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 	local c	= 1 		-- current blitList entry
 
 	if type(onlyY) == "table" then
-		table.insert(windows, 1, onlyY)
+		table_insert(windows, 1, onlyY)
 		onlyY = nil
 	end
 
 	if type(onlyX2) == "table" then
-		table.insert(windows, 1, onlyX2)
+		table_insert(windows, 1, onlyX2)
 		onlyX2 = nil
 	end
 
 	if type(onlyX1) == "table" then
-		table.insert(windows, 1, onlyX1)
+		table_insert(windows, 1, onlyX1)
 		onlyX1 = nil
 	end
 
@@ -91,11 +94,11 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 
 	local AMNT_OF_BLITS = 0	-- how many blit calls are there?
 
-	local cx, cy					-- each window's absolute X and Y
-	local char_cx, text_cx, back_cx	-- each window's transformed absolute X's in table form
-	local char_cy, text_cy, back_cy	-- each window's transformed absolute X's in table form
-	local buffer					-- each window's buffer
-	local newChar, newText, newBack	-- if the transformation function declares a new dot, this is it
+	local cx, cy								-- each window's absolute X and Y
+	local char_cx, text_cx, back_cx				-- each window's transformed absolute X's in table form
+	local char_cy, text_cy, back_cy				-- each window's transformed absolute X's in table form
+	local buffer								-- each window's buffer
+	local newChar, newText, newBack, newBuff	-- if the transformation function declares a new dot, this is it
 
 	local baseTerms = {}
 	for i = 1, #windows do
@@ -108,6 +111,15 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 			bT = output.meta.baseTerm
 		end
 		scr_x, scr_y = bT.getSize()
+		-- try entire buffer transformations
+		for i = #windows, 1, -1 do
+			if bT_list[i] then
+				if windows[i].meta.metaTransformation then
+					-- metaTransformation functions needn't return a value
+					windows[i].meta.metaTransformation(windows[i].meta)
+				end
+			end
+		end
 		for y = onlyY or 1, onlyY or scr_y do
 			screenBuffer[1][y] = {}
 			screenBuffer[2][y] = {}
@@ -120,6 +132,7 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 						newChar, newText, newBack = nil
 						if windows[i].meta.visible then
 							buffer = windows[i].meta.buffer
+
 							cx = 1 + x + -windows[i].meta.x
 							cy = 1 + y + -windows[i].meta.y
 							char_cx, text_cx, back_cx = cx, cx, cx
@@ -128,25 +141,25 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 							-- try char transformation
 							if windows[i].meta.charTransformation then
 								char_cx, char_cy, newChar = windows[i].meta.charTransformation(cx, cy, windows[i].meta)
-								if char_cx ~= math.floor(char_cx) or char_cy ~= math.floor(char_cy) then
+								if char_cx ~= math_floor(char_cx) or char_cy ~= math_floor(char_cy) then
 									newChar = " "
 								end
-								char_cx = math.floor(char_cx)
-								char_cy = math.floor(char_cy)
+								char_cx = math_floor(char_cx)
+								char_cy = math_floor(char_cy)
 							end
 
 							-- try text transformation
 							if windows[i].meta.textTransformation then
 								text_cx, text_cy, newText = windows[i].meta.textTransformation(cx, cy, windows[i].meta)
-								text_cx = math.floor(text_cx)
-								text_cy = math.floor(text_cy)
+								text_cx = math_floor(text_cx)
+								text_cy = math_floor(text_cy)
 							end
 
 							-- try back transformation
 							if windows[i].meta.backTransformation then
 								back_cx, back_cy, newBack = windows[i].meta.backTransformation(cx, cy, windows[i].meta)
-								back_cx = math.floor(back_cx)
-								back_cy = math.floor(back_cy)
+								back_cx = math_floor(back_cx)
+								back_cy = math_floor(back_cy)
 							end
 
 							if check(buffer, char_cx, char_cy) or check(buffer, text_cx, text_cy) or check(buffer, back_cx, back_cy) then
@@ -165,7 +178,7 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 				screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.default.backColor
 
 				if check(screenBuffer, x, y) then
-					if check(screenBuffer, x - 1, y) then
+					if check(screenBuffer, -1 + x, y) then
 						blitList[c][1] = blitList[c][1] .. screenBuffer[1][y][x]
 						blitList[c][2] = blitList[c][2] .. screenBuffer[2][y][x]
 						blitList[c][3] = blitList[c][3] .. screenBuffer[3][y][x]
@@ -182,7 +195,7 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 			for k,v in pairs(blitList) do
 				bT.setCursorPos(k, y)
 				bT.blit(v[1], v[2], v[3])
-				AMNT_OF_BLITS = AMNT_OF_BLITS + 1
+				AMNT_OF_BLITS = 1 + AMNT_OF_BLITS
 			end
 		end
 	end
@@ -191,7 +204,7 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 	windont.info.BLIT_CALLS = AMNT_OF_BLITS
 	windont.info.LAST_RENDER_WINDOWS = windows
 	windont.info.LAST_RENDER_TIME = cTime
-	windont.info.LAST_RENDER_DURATION = lval.getTime() - cTime
+	windont.info.LAST_RENDER_DURATION = lval.getTime() + -cTime
 
 end
 
@@ -214,10 +227,10 @@ windont.newWindow = function( x, y, width, height, misc )
 	local output = {}
 	misc = misc or {}
 	local meta = {
-		x = lval.expect(x, 1),													-- x position of the window
-		y = lval.expect(y, 1),													-- y position of the window
-		width = width,															-- width of the buffer
-		height = height,														-- height of the buffer
+		x 				= lval.expect(x, 1),												-- x position of the window
+		y 				= lval.expect(y, 1),												-- y position of the window
+		width 			= width,															-- width of the buffer
+		height			= height,															-- height of the buffer
 		buffer 			= lval.expect(misc.buffer, {}, "table"),							-- stores contents of terminal in buffer[1][y][x] format
 		renderBuddies 	= lval.expect(misc.renderBuddies, {}, "table"),						-- renders any other window objects stored here after rendering here
 		baseTerm 		= lval.expect(misc.baseTerm, windont.default.baseTerm, "table"),	-- base terminal for which this window draws on
@@ -226,12 +239,13 @@ windont.newWindow = function( x, y, width, height, misc )
 		charTransformation = lval.expect(misc.charTransformation, nil, "function"),			-- function that transforms the characters of the window
 		textTransformation = lval.expect(misc.textTransformation, nil, "function"),			-- function that transforms the text colors of the window
 		backTransformation = lval.expect(misc.backTransformation, nil, "function"),			-- function that transforms the BG colors of the window
+		metaTransformation = lval.expect(misc.miscTransformation, nil, "function"),			-- function that transforms the whole output.meta function
 
 		cursorX 		= lval.expect(misc.cursorX, 1),
 		cursorY 		= lval.expect(misc.cursorY, 1),
 
-		textColor 		= lval.expect(misc.textColor, windont.default.textColor, "string"),	-- current text color
-		backColor 		= lval.expect(misc.backColor, windont.default.backColor, "string"),	-- current background color
+		textColor 		= lval.expect(misc.textColor, windont.default.textColor, "string"),			-- current text color
+		backColor 		= lval.expect(misc.backColor, windont.default.backColor, "string"),			-- current background color
 
 		blink 			= lval.expect(misc.blink, windont.default.blink, "boolean"),				-- cursor blink
 		alwaysRender 	= lval.expect(misc.alwaysRender, windont.default.alwaysRender, "boolean"),	-- render after every terminal operation
@@ -276,7 +290,11 @@ windont.newWindow = function( x, y, width, height, misc )
 			meta.cursorX = meta.cursorX + 1
 		end
 		if meta.alwaysRender then
-			output.redraw(meta.x + initX - 1, meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
+			output.redraw(
+				-1 + meta.x + initX,
+				-1 + meta.x + meta.cursorX,
+				-1 + meta.y + meta.cursorY
+			)
 		end
 	end
 
@@ -293,7 +311,11 @@ windont.newWindow = function( x, y, width, height, misc )
 			end
 		end
 		if meta.alwaysRender then
-			output.redraw(meta.x + initX - 1, meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
+			output.redraw(
+				-1 + meta.x + initX,
+				-1 + meta.x + meta.cursorX,
+				-1 + meta.y + meta.cursorY
+			)
 		end
 	end
 
@@ -305,7 +327,10 @@ windont.newWindow = function( x, y, width, height, misc )
 			if bT == output then
 				bT = output.meta.baseTerm
 			end
-			bT.setCursorPos(meta.x + meta.cursorX - 1, meta.y + meta.cursorY - 1)
+			bT.setCursorPos(
+				-1 + meta.x + meta.cursorX,
+				-1 + meta.y + meta.cursorY
+			)
 		end
 	end
 
@@ -359,7 +384,7 @@ windont.newWindow = function( x, y, width, height, misc )
 		meta.buffer[3][meta.cursorY] = nil
 		meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor, meta.buffer)
 		if meta.alwaysRender then
-			bT.setCursorPos(meta.x, meta.y + meta.cursorY - 1)
+			bT.setCursorPos(meta.x, -1 + meta.y + meta.cursorY)
 			bT.blit(
 				(" "):rep(meta.width),
 				(meta.textColor):rep(meta.width),
@@ -391,7 +416,7 @@ windont.newWindow = function( x, y, width, height, misc )
 			meta.buffer = meta.newBuffer(meta.width, meta.height, " ", meta.textColor, meta.backColor)
 		end
 		if meta.alwaysRender then
-			if math.floor(amplitude) ~= 0 then
+			if math_floor(amplitude) ~= 0 then
 				output.redraw()
 			end
 		end
@@ -409,8 +434,8 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.reposition = function(x, y, width, height)
 		assert(type(x) == "number", "bad argument #1 (expected number, got " .. type(x) .. ")")
 		assert(type(y) == "number", "bad argument #2 (expected number, got " .. type(y) .. ")")
-		meta.x = math.floor(x)
-		meta.y = math.floor(y)
+		meta.x = math_floor(x)
+		meta.y = math_floor(y)
 		if width then
 			assert(type(width) == "number", "bad argument #3 (expected number, got " .. type(width) .. ")")
 			assert(type(height) == "number", "bad argument #4 (expected number, got " .. type(height) .. ")")
@@ -425,8 +450,8 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.restoreCursor = function()
 		bT.setCursorPos(
-			math.max(0, meta.x + meta.cursorX - 1),
-			math.max(0, meta.y + meta.cursorY - 1)
+			math.max(0, -1 + meta.x + meta.cursorX),
+			math.max(0, -1 + meta.y + meta.cursorY)
 		)
 		bT.setCursorBlink(meta.blink)
 	end
