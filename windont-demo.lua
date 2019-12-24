@@ -8,16 +8,25 @@ local x2, y2 = 13, 2
 -- demo transformation function
 -- mess with these all you like
 -- just remember that they apply in reverse (x and y are positions on the screen from 1 to the window's width/height)
+
+local getRandomColor = function(_cols)
+	local cols = _cols or "0123456789abcdef"
+	local p = math.random(1, #cols)
+	return cols:sub(p, p)
+end
+
 local TF = {
 	-- returns new X, new Y, and new character / text color / background color
-	char = function(x, y, meta)
-		return x, y, nil
-	end,
-	text = function(x, y, meta)
-		return x, y, nil
-	end,
-	back = function(x, y, meta)
-		return x, y, nil
+	meta = function(cols)
+		return function(meta)
+			for y = 1, meta.height do
+				for x = 1, meta.width do
+					if meta.buffer[2][y][x] ~= "-" then
+						meta.buffer[3][y][x] = getRandomColor(cols)
+					end
+				end
+			end
+		end
 	end
 }
 
@@ -29,7 +38,7 @@ local scr_x, scr_y = term.current().getSize()
 
 local pBlit = function(t, y, str)
 	t.setCursorPos(1, y)
-	t.blit(str, str, str)
+	t.blit((" "):rep(#str), str, str)
 end
 
 windont = dofile("windont.lua")
@@ -39,7 +48,7 @@ windont.default.alwaysRender = false
 
 INSTRUCTIONS = windont.newWindow(2, scr_y - 5, scr_x - 4, 3, {backColor = "-"})
 ONE = windont.newWindow(1, 1, 9, 5, {backColor = "e"})
-TWO = windont.newWindow(1, 1, 19, 10, {backColor = "-"})
+TWO = windont.newWindow(1, 1, 19, 10, {backColor = "-", textColor = "-"})
 
 INSTRUCTIONS.setCursorPos(1, 1)
 INSTRUCTIONS.write("Arrow keys to move windon't ONE (red)")
@@ -69,9 +78,12 @@ pBlit(TWO, 8,  "ddddddddddddddddddd")
 pBlit(TWO, 9,  "ddddddddddddddddddd")
 pBlit(TWO, 10, "ddddddddddddddddddd")
 
-ONE.meta.charTransformation = TF.char
-ONE.meta.textTransformation = TF.text
-ONE.meta.backTransformation = TF.back
+ONE.meta.metaTransformation = TF.meta("e-")
+TWO.meta.metaTransformation = TF.meta(
+	string.rep("5", 50) ..
+	string.rep("d", 40) ..
+	string.rep("4", 1)
+)
 
 while true do
 
