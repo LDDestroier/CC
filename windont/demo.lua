@@ -41,6 +41,11 @@ local pBlit = function(t, y, str)
 	t.blit((" "):rep(#str), str, str)
 end
 
+local pWrite = function(t, x, y, str)
+	t.setCursorPos(x, y)
+	t.write(str)
+end
+
 windont = dofile("windont.lua")
 
 windont.doClearScreen = true
@@ -50,21 +55,15 @@ INSTRUCTIONS = windont.newWindow(2, scr_y - 5, scr_x - 4, 3, {backColor = "-"})
 ONE = windont.newWindow(1, 1, 9, 5, {backColor = "e"})
 TWO = windont.newWindow(1, 1, 19, 10, {backColor = "-", textColor = "-"})
 
-INSTRUCTIONS.setCursorPos(1, 1)
-INSTRUCTIONS.write("Arrow keys to move windon't ONE (red)")
-INSTRUCTIONS.setCursorPos(1, 2)
-INSTRUCTIONS.write("WASD keys to move windon't TWO (blue)")
-INSTRUCTIONS.setCursorPos(1, 3)
-INSTRUCTIONS.write("Press 'Q' to quit")
+pWrite(INSTRUCTIONS, 1, 1, "Arrow keys to move windon't ONE (red)")
+pWrite(INSTRUCTIONS, 1, 2, "WASD keys to move windon't TWO (blue)")
+pWrite(INSTRUCTIONS, 1, 3, "Press 'Q' to quit")
 
 ONE.setTextColor(0)
 ONE.setBackgroundColor(colors.gray)
-ONE.setCursorPos(2, 2)
-ONE.write("  I'm  ")
-ONE.setCursorPos(2, 3)
-ONE.write("Stencil")
-ONE.setCursorPos(2, 4)
-ONE.write("  Man  ")
+pWrite(INSTRUCTIONS, 2, 2, "  I'm  ")
+pWrite(INSTRUCTIONS, 2, 3, "Stencil")
+pWrite(INSTRUCTIONS, 2, 4, "  Man  ")
 
 TWO.setTextColor(colors.gray)
 TWO.setBackgroundColor(colors.green)
