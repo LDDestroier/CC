@@ -61,9 +61,9 @@ pWrite(INSTRUCTIONS, 1, 3, "Press 'Q' to quit")
 
 ONE.setTextColor(0)
 ONE.setBackgroundColor(colors.gray)
-pWrite(INSTRUCTIONS, 2, 2, "  I'm  ")
-pWrite(INSTRUCTIONS, 2, 3, "Stencil")
-pWrite(INSTRUCTIONS, 2, 4, "  Man  ")
+pWrite(ONE, 2, 2, "  I'm  ")
+pWrite(ONE, 2, 3, "Stencil")
+pWrite(ONE, 2, 4, "  Man  ")
 
 TWO.setTextColor(colors.gray)
 TWO.setBackgroundColor(colors.green)
