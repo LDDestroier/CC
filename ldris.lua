@@ -26,7 +26,7 @@ local game = {
 	instanceID = math.random(1, 2^31-1),	-- random per-instance value to ensure skynet doesn't poopie
 	amountOfPlayers = 2,	-- amount of players for the current game
 	running = true,			-- if set to false, will quit the game
-	moveHoldDelay = 0.2,	-- amount of time to hold left or right for it to keep moving that way
+	moveHoldDelay = 0.1,	-- amount of time to hold left or right for it to keep moving that way
 	boardOverflow = 12,		-- amount of space above the board that it can overflow
 	paused = false,			-- whether or not game is paused
 	canPause = true,		-- if false, cannot pause game (such as in online multiplayer)
@@ -688,17 +688,22 @@ end
 -- god damn it you've fucked up
 local gameOver = function(player, cPlayer)
 	local mino
+	local waitTime
 	if cPlayer.lines == 0 then
 		mino = makeNewMino("eatmyass", player.board, 12, 3 + game.boardOverflow)
+		waitTime = 130
 	elseif cPlayer.lines <= 5 then
 		mino = makeNewMino("yousuck", player.board, 12, 3 + game.boardOverflow)
+		waitTime = 100
 	elseif cPlayer.lines == 69 or cPlayer.lines == 690 then
 		mino = makeNewMino("nice", player.board, 12, 3 + game.boardOverflow)
+		waitTime = 80
 	else
 		mino = makeNewMino("gameover", player.board, 12, 3 + game.boardOverflow)
+		waitTime = 90
 	end
 	local color = 0
-	for i = 1, 140 do
+	for i = 1, waitTime do
 		mino.x = mino.x - 1
 		mino.draw()
 		sendInfo("send_info", false)
