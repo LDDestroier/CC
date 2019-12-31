@@ -986,6 +986,10 @@ local startGame = function(playerNumber)
 
 			draw()
 
+
+			game.cancelTimer(dropTimer)
+			game.cancelTimer(lockTimer)
+
 			dropTimer = game.startTimer(0)
 			inputTimer = game.startTimer(game.inputDelay)
 			game.cancelTimer(lockTimer or 0)
