@@ -118,12 +118,103 @@ lddterm.adjustX = 0					-- moves entire screen X
 lddterm.adjustY = 0					-- moves entire screen Y
 lddterm.selectedWindow = 1			-- determines which window controls the cursor
 lddterm.windows = {}				-- internal list of all lddterm windows
-lddterm.nativePalettes = {}			-- native palette colors
-for i = 0, 15 do
-	lddterm.nativePalettes[2^i] = {term.nativePaletteColor(2^i)}
-end
+lddterm.nativePalettes = {			-- native palette colors
+	[ 1 ] = {
+		0.94117647409439,
+		0.94117647409439,
+		0.94117647409439,
+	},
+	[ 2 ] = {
+		0.94901961088181,
+		0.69803923368454,
+		0.20000000298023,
+	},
+	[ 4 ] = {
+		0.89803922176361,
+		0.49803921580315,
+		0.84705883264542,
+	},
+	[ 8 ] = {
+		0.60000002384186,
+		0.69803923368454,
+		0.94901961088181,
+	},
+	[ 16 ] = {
+		0.87058824300766,
+		0.87058824300766,
+		0.42352941632271,
+	},
+	[ 32 ] = {
+		0.49803921580315,
+		0.80000001192093,
+		0.098039217293262,
+	},
+	[ 64 ] = {
+		0.94901961088181,
+		0.69803923368454,
+		0.80000001192093,
+	},
+	[ 128 ] = {
+		0.29803922772408,
+		0.29803922772408,
+		0.29803922772408,
+	},
+	[ 256 ] = {
+		0.60000002384186,
+		0.60000002384186,
+		0.60000002384186,
+	},
+	[ 512 ] = {
+		0.29803922772408,
+		0.60000002384186,
+		0.69803923368454,
+	},
+	[ 1024 ] = {
+		0.69803923368454,
+		0.40000000596046,
+		0.89803922176361,
+	},
+	[ 2048 ] = {
+		0.20000000298023,
+		0.40000000596046,
+		0.80000001192093,
+	},
+	[ 4096 ] = {
+		0.49803921580315,
+		0.40000000596046,
+		0.29803922772408,
+	},
+	[ 8192 ] = {
+		0.34117648005486,
+		0.65098041296005,
+		0.30588236451149,
+	},
+	[ 16384 ] = {
+		0.80000001192093,
+		0.29803922772408,
+		0.29803922772408,
+	},
+	[ 32768 ] = {
+		0.066666670143604,
+		0.066666670143604,
+		0.066666670143604,
+	}
+}
 -- backdropColors used for the void outside of windows, if using rainbow void
 local backdropColors = {"0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"}
+
+local copyTable
+copyTable = function(tbl)
+	local output = {}
+	for k,v in pairs(tbl) do
+		if type(v) == "table" then
+			output[k] = copyTable(v)
+		else
+			output[k] = v
+		end
+	end
+	return output
+end
 
 -- draws one of three things:
 --  1. workspace grid indicator
@@ -337,9 +428,7 @@ lddterm.newWindow = function(width, height, x, y, meta)
 			window.buffer[3][y][x] = window.colors[2]
 		end
 	end
-	for i = 0, 15 do
-		window.palette[2^i] = {term.nativePaletteColor(2^i)}
-	end
+	window.palette = copyTable(lddterm.nativePalettes)
 
 	window.handle = {}
 	window.handle.setCursorPos = function(x, y)
@@ -732,9 +821,7 @@ local newInstance = function(x, y, program, initialStart)
 
 			coroutine.yield()
 
-			for i = 0, 15 do
-				window.palette[2^i] = {term.nativePaletteColor(2^i)}
-			end
+			window.palette = copyTable(lddterm.nativePalettes)
 			correctPalette(window.x, window.y)
 
 			repeat
