@@ -57,10 +57,11 @@ alwaysRender		-- boolean, if true, then all term.write or term.blit calls will i
 visible			-- boolean, if false, then the window just like, won't render, man
 ```
 
-All transformation functions (except for `metaTransformation`) are called on every (x, y) position on the screen per window, and each one takes in three arguments:
+All transformation functions (except for `metaTransformation`) are called on every (x, y) position on the screen per window, and each one takes in four arguments:
 	1. X position on the screen relative to the window's X position
 	2. Y position on the screen relative to the window's Y position
-	3. `meta` value of the window
+	3. Character/text color/background color on the window's (X, Y) position (if outside the buffer, is `nil`)
+	4. `meta` value of the window
 and return the following information:
 	1. New X position for that part of the window
 	2. New Y position for that part of the window
@@ -73,11 +74,11 @@ As a side note, the order that the transformations are called in is as follows:
 	3. textTransformation
 	4. backTransformation
 
-<<< MORE ON THAT LATER >>>
+All transformation functions (besides metaTransformation) will not change the contents of the buffer, only alter how they are drawn to the screen.
 
 ## windont.render
 ```
-windont.render(optional number x1, optional number x2, optional number y, winodw_1, window_2, ...)
+windont.render(optional number x1, optional number x2, optional number y, window_1, window_2, ...)
 ```
 Renders one or more Windon't objects onto their base terminals. If two or more windows share a base terminal, they will render layered atop each other from top to bottom, meaning that `window_1` will draw on top of `window_2`.
 If windows contain any transparent regions (designated by the color "-" usable with `term.blit`), then the next window down the list will peek through.
