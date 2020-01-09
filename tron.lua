@@ -566,7 +566,7 @@ player = resetPlayers()
 
 local images
 if _HOST then -- need to add some NFP image replacements for older versions of CC
-	{
+	images = {
 		logo = {
 			{
 				" \149\131\131\131\131\131\131\131\131\131\149\151\131\131\131\131\131\131\131\139\139   \135\135\131\131\131\139\139  \159\139    \149\131\131\149",
