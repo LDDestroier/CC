@@ -1,13 +1,15 @@
 local tArg = {...}
 local filename = tArg[1]
 
-local contrast = 2		-- lower value means higher contrast
-local addSpeed = 4		-- higher value means brighter colors show up faster
-local subtractSpeed = 2	-- higher value means darker colors take over faster
+local contrast = 2			-- lower value means higher contrast
+local addSpeed = 4			-- higher value means brighter colors show up faster
+local subtractSpeed = 2		-- higher value means darker colors take over faster
+local minimumStatic = -8	-- lower value means static will be less frequent (not less powerful)
+local maximumStatic = 0		-- higher value means static will be more powerful (not less frequent) (if zero, disables static)
 local tint = {
 	1,
-	0.7,
-	0.1,
+	0.749,
+	0,
 }
 
 if not fs.exists("windont.lua") then
@@ -88,15 +90,19 @@ gstTerm.meta.metaTransformation = function(meta)
 			meta.buffer[1][y][x] = CHAR
 
 			if rv_bright[TXCOL] >= rv_bright[meta.buffer[2][y][x]] then
-				meta.buffer[2][y][x] = bright[ math.min(rv_bright[meta.buffer[2][y][x]] + addSpeed, rv_bright[TXCOL]) ]
+				meta.buffer[2][y][x] = bright[ math.min(16, math.min(rv_bright[meta.buffer[2][y][x]] + addSpeed, rv_bright[TXCOL]) + math.max(0, math.random(minimumStatic, maximumStatic))) ]
 			else
 				meta.buffer[2][y][x] = bright[ math.max(rv_bright[meta.buffer[2][y][x]] - subtractSpeed, 1) ]
 			end
 
 			if rv_bright[BGCOL] >= rv_bright[meta.buffer[3][y][x]] then
-				meta.buffer[3][y][x] = bright[ math.min(rv_bright[meta.buffer[3][y][x]] + addSpeed, rv_bright[BGCOL]) ]
+				meta.buffer[3][y][x] = bright[ math.min(16, math.min(rv_bright[meta.buffer[3][y][x]] + addSpeed, rv_bright[BGCOL]) + math.max(0, math.random(minimumStatic, maximumStatic))) ]
 			else
 				meta.buffer[3][y][x] = bright[ math.max(rv_bright[meta.buffer[3][y][x]] - subtractSpeed, 1) ]
+			end
+
+			if meta.buffer[2][y][x] == "f" and meta.buffer[3][y][x] == "f" and newTerm.meta.buffer[1][y][x] == " " then
+				meta.buffer[1][y][x] = " "
 			end
 
 		end
@@ -119,4 +125,5 @@ term.redirect(oldTerm)
 for i = 0, 15 do
 	term.setPaletteColor(2^i, table.unpack(nativePalette[2^i]))
 end
+newTerm.redraw()
 term.setCursorPos(1, scr_y)
