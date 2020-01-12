@@ -18,10 +18,11 @@ local gstTerm = windont.newWindow(1, 1, 51, 19)
 newTerm.meta.alwaysRender = false
 gstTerm.meta.alwaysRender = false
 
+local contrast = 2	-- lower value equals higher contrast
 local tint = {
 	1,
-	1,
-	1,
+	0.7,
+	0.1,
 }
 
 local scr_x, scr_y = term.getSize()
@@ -43,9 +44,9 @@ local resetPalette = function()
 	for i = 0, 15 do
 		p = 2 ^ (-1 + rv_alpha[bright[i + 1]])
 		palette[p] = {
-			(i / 15) * tint[1],
-			(i / 15) * tint[2],
-			(i / 15) * tint[3],
+			((i + contrast) / (15 + contrast)) * tint[1],
+			((i + contrast) / (15 + contrast)) * tint[2],
+			((i + contrast) / (15 + contrast)) * tint[3],
 		}
 		nativePalette[p] = {term.getPaletteColor(p)}
 		term.setPaletteColor(p, table.unpack(palette[p]))
@@ -102,6 +103,7 @@ parallel.waitForAny(function()
 end, function()
 	while true do
 		gstTerm.redraw()
+		newTerm.restoreCursor()
 		sleep(0)
 	end
 end)
