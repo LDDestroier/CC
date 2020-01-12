@@ -35,7 +35,7 @@ local lval = {
 				elseif (not buffer[3][y][x] or buffer[3][y][x] == "-") and buffer[1][y][x] == " " then
 					return false
 				else
-					return true
+					return buffer[1][y][x] and buffer[2][y][x] and buffer[3][y][x]
 				end
 			end
 		end
