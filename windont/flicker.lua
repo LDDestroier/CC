@@ -1,3 +1,6 @@
+local tArg = {...}
+local filename = tArg[1]
+
 if not fs.exists("windont.lua") then
 	print("'windont.lua' not found! Downloading...")
 	local net = http.get("https://github.com/LDDestroier/CC/raw/master/windont/windont.lua")
@@ -79,7 +82,7 @@ end
 local oldTerm = term.redirect(newTerm)
 
 parallel.waitForAny(function()
-	shell.run("/rom/programs/shell.lua")
+	shell.run(filename or "/rom/programs/shell.lua")
 end, function()
 	while true do
 		newTerm.redraw()
