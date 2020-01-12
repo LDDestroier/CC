@@ -1,6 +1,15 @@
 local tArg = {...}
 local filename = tArg[1]
 
+local contrast = 2		-- lower value means higher contrast
+local addSpeed = 4		-- higher value means brighter colors show up faster
+local subtractSpeed = 2	-- higher value means darker colors take over faster
+local tint = {
+	1,
+	0.7,
+	0.1,
+}
+
 if not fs.exists("windont.lua") then
 	print("'windont.lua' not found! Downloading...")
 	local net = http.get("https://github.com/LDDestroier/CC/raw/master/windont/windont.lua")
@@ -16,17 +25,12 @@ end
 
 local windont = require("windont")
 
+windont.useSetVisible = true
+
 local newTerm = windont.newWindow(1, 1, term.getSize())
 local gstTerm = windont.newWindow(1, 1, term.getSize())
 newTerm.meta.alwaysRender = false
 gstTerm.meta.alwaysRender = false
-
-local contrast = 2	-- lower value equals higher contrast
-local tint = {
-	1,
-	0.7,
-	0.1,
-}
 
 local scr_x, scr_y = term.getSize()
 
@@ -66,7 +70,7 @@ newTerm.setPaletteColour = newTerm.setPaletteColor
 gstTerm.meta.metaTransformation = function(meta)
 	for y = 1, meta.height do
 		for x = 1, meta.width do
-			
+
 			local BGCOL = newTerm.meta.buffer[3][y][x]
 			local TXCOL
 			if newTerm.meta.buffer[1][y][x] == " " then
@@ -82,19 +86,19 @@ gstTerm.meta.metaTransformation = function(meta)
 			end
 
 			meta.buffer[1][y][x] = CHAR
-			
+
 			if rv_bright[TXCOL] >= rv_bright[meta.buffer[2][y][x]] then
-				meta.buffer[2][y][x] = TXCOL
+				meta.buffer[2][y][x] = bright[ math.min(rv_bright[meta.buffer[2][y][x]] + addSpeed, rv_bright[TXCOL]) ]
 			else
-				meta.buffer[2][y][x] = bright[ rv_bright[meta.buffer[2][y][x]] - 1 ]
+				meta.buffer[2][y][x] = bright[ math.max(rv_bright[meta.buffer[2][y][x]] - subtractSpeed, 1) ]
 			end
 
 			if rv_bright[BGCOL] >= rv_bright[meta.buffer[3][y][x]] then
-				meta.buffer[3][y][x] = BGCOL
+				meta.buffer[3][y][x] = bright[ math.min(rv_bright[meta.buffer[3][y][x]] + addSpeed, rv_bright[BGCOL]) ]
 			else
-				meta.buffer[3][y][x] = bright[ rv_bright[meta.buffer[3][y][x]] - 1 ]
+				meta.buffer[3][y][x] = bright[ math.max(rv_bright[meta.buffer[3][y][x]] - subtractSpeed, 1) ]
 			end
-			
+
 		end
 	end
 end
