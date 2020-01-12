@@ -2,7 +2,7 @@ if not fs.exists("windont.lua") then
 	print("'windont.lua' not found! Downloading...")
 	local net = http.get("https://github.com/LDDestroier/CC/raw/master/windont/windont.lua")
 	if net then
-		local file = fs.open("windont.lua")
+		local file = fs.open("windont.lua", "w")
 		file.write(net.readAll())
 		file.close()
 		net.close()
