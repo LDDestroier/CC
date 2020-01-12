@@ -16,8 +16,8 @@ end
 
 local windont = require("windont")
 
-local newTerm = windont.newWindow(1, 1, 51, 19)
-local gstTerm = windont.newWindow(1, 1, 51, 19)
+local newTerm = windont.newWindow(1, 1, term.getSize())
+local gstTerm = windont.newWindow(1, 1, term.getSize())
 newTerm.meta.alwaysRender = false
 gstTerm.meta.alwaysRender = false
 
