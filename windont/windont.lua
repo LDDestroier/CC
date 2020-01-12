@@ -53,6 +53,7 @@ lval.to_blit[0], lval.to_colors["-"] = "-", 0
 
 local windont = {
 	doClearScreen = false,				-- if true, will clear the screen during render
+	useSetVisible = false,				-- if true, sets the base terminal's visibility to false before rendering
 	default = {
 		baseTerm = term.current(),		-- default base terminal for all windows
 		textColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
@@ -117,6 +118,9 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 	for bT, bT_list in pairs(baseTerms) do
 		if bT == output then
 			bT = output.meta.baseTerm
+		end
+		if windont.useSetVisible and bT.setVisible then
+			bT.setVisible(false)
 		end
 		scr_x, scr_y = bT.getSize()
 		-- try entire buffer transformations
@@ -209,6 +213,9 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 				bT.blit(v[1], v[2], v[3])
 				AMNT_OF_BLITS = 1 + AMNT_OF_BLITS
 			end
+		end
+		if windont.useSetVisible and bT.setVisible then
+			bT.setVisible(true)
 		end
 	end
 
