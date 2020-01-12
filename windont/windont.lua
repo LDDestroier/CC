@@ -386,7 +386,7 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.getBackgroundColour = output.getBackgroundColor
 
 	output.setVisible = function(visible)
-		assert(type(visible) == "number", "bad argument #1 (expected boolean, got " .. type(visible) .. ")")
+		assert(type(visible) == "boolean", "bad argument #1 (expected boolean, got " .. type(visible) .. ")")
 		meta.visible = visible and true or false
 	end
 
