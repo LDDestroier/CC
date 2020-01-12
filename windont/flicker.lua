@@ -68,7 +68,7 @@ local shades = {
 	["b"] = {"6","7","8","9"},
 	["c"] = {"7","8","9","a"},
 	["d"] = {"5","6","7","8"},
-	["e"] = {"4","5","6","7"},
+	["e"] = {"5","6","7","8"},
 }
 
 newTerm.meta.textTransformation = function(x, y, dot, meta)
