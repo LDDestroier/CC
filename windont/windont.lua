@@ -215,7 +215,11 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 			end
 		end
 		if windont.useSetVisible and bT.setVisible then
-			bT.setVisible(true)
+			if not multishell then
+				bT.setVisible(true)
+			elseif multishell.getFocus() == multishell.getCurrent() then
+				bT.setVisible(true)
+			end
 		end
 	end
 
