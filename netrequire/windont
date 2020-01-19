@@ -1,0 +1,4 @@
+https://github.com/LDDestroier/CC/raw/master/windont/windont.lua
+false
+LDDestroier
+An enhanced window API replacement that supports independant text/background color transparency and transformation functions that allow for distorting the windows.
