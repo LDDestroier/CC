@@ -5,6 +5,7 @@ local tArg = {...}
 
 local instances = {}
 local configPath = ".workspace_config"
+local useConfig = true		-- if false, will not create or use the config file
 
 local config = {
 	workspaceMoveSpeed = 0.15,
@@ -22,6 +23,8 @@ local config = {
 		{true,true,true},
 	}
 }
+
+local scr_x, scr_y = term.getSize()
 
 -- values determined after every new/removed workspace
 local gridWidth, gridHeight, gridMinX, gridMinY
@@ -57,19 +60,102 @@ local readFile = function(path)
 end
 
 local saveConfig = function()
-	local file = fs.open(configPath, "w")
-	file.write( textutils.serialize(config) )
-	file.close()
+	if useConfig then
+		local file = fs.open(configPath, "w")
+		file.write( textutils.serialize(config) )
+		file.close()
+	end
 end
 
 local loadConfig = function()
-	if fs.exists(configPath) then
+	if useConfig and fs.exists(configPath) then
 		local contents = readFile(configPath)
 		local newConfig = textutils.unserialize(contents)
 		for k,v in pairs(newConfig) do
 			config[k] = v
 		end
 	end
+end
+
+local cwrite = function(text, y, terminal)
+	terminal = terminal or term.current()
+	local cx, cy = terminal.getCursorPos()
+	local sx, sy = terminal.getSize()
+	terminal.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
+	terminal.write(text)
+end
+
+local displayHelp = function(doCenter)
+	local w = doCenter and cwrite or function(txt) print(txt) end
+	w("CTRL+SHIFT+ARROW to switch workspace.   ",	-3 + scr_y / 2)
+	w("CTRL+SHIFT+TAB+ARROW to swap.           ",	-2 + scr_y / 2)
+	w("CTRL+SHIFT+[WASD] to create a workspace ",	-1 + scr_y / 2)
+	w(" up/left/down/right respectively.       ",	 0 + scr_y / 2)
+	w("CTRL+SHIFT+P to pause a workspace.      ",	 1 + scr_y / 2)
+	w("CTRL+SHIFT+Q to delete a workspace.     ",	 2 + scr_y / 2)
+	w("Terminate an inactive workspace to exit.",	 3 + scr_y / 2)
+end
+
+local function interpretArgs(tInput, tArgs)
+	local output = {}
+	local errors = {}
+	local usedEntries = {}
+	for aName, aType in pairs(tArgs) do
+		output[aName] = false
+		for i = 1, #tInput do
+			if not usedEntries[i] then
+				if tInput[i] == aName and not output[aName] then
+					if aType then
+						usedEntries[i] = true
+						if type(tInput[i+1]) == aType or type(tonumber(tInput[i+1])) == aType then
+							usedEntries[i+1] = true
+							if aType == "number" then
+								output[aName] = tonumber(tInput[i+1])
+							else
+								output[aName] = tInput[i+1]
+							end
+						else
+							output[aName] = nil
+							errors[1] = errors[1] and (errors[1] + 1) or 1
+							errors[aName] = "expected " .. aType .. ", got " .. type(tInput[i+1])
+						end
+					else
+						usedEntries[i] = true
+						output[aName] = true
+					end
+				end
+			end
+		end
+	end
+	for i = 1, #tInput do
+		if not usedEntries[i] then
+			output[#output+1] = tInput[i]
+		end
+	end
+	return output, errors
+end
+
+local argData = {
+	["--help"] = false,
+	["-h"] = false,
+	["--config"] = false,
+	["-c"] = false,
+	["--noconfig"] = false,
+}
+
+argList, argErrors = interpretArgs({...}, argData)
+
+if argList["--help"] or argList["-h"] then
+	displayHelp(false)
+	write("\n")
+	return
+elseif argList["--config"] or argList["-c"] then
+	shell.run("rom/programs/edit.lua", configPath)
+	return
+end
+
+if argList["--noconfig"] then
+	useConfig = false
 end
 
 loadConfig()
@@ -84,7 +170,6 @@ local workspaceIndicatorDuration = 0.6
 -- if held down while moving workspace, will swap positions
 local swapKey = keys.tab
 
-local scr_x, scr_y = term.getSize()
 local windowWidth = scr_x
 local windowHeight = scr_y
 local doDrawWorkspaceIndicator = false
@@ -94,14 +179,6 @@ local realScroll = {0,0}	-- this value changes depending on scroll for smoothnes
 local focus = {}			-- currently focused instance, declared when loading from config
 
 local isRunning = true
-
-local cwrite = function(text, y, terminal)
-	terminal = terminal or term.current()
-	local cx, cy = terminal.getCursorPos()
-	local sx, sy = terminal.getSize()
-	terminal.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
-	terminal.write(text)
-end
 
 -- start up lddterm (I'm starting to think I should've used window API)
 local lddterm = {
@@ -994,16 +1071,6 @@ local removeWorkspace = function(xmod, ymod)
 	end
 end
 
-local displayHelp = function()
-	cwrite("CTRL+SHIFT+ARROW to switch workspace.   ",	-3 + scr_y / 2)
-	cwrite("CTRL+SHIFT+TAB+ARROW to swap.           ",	-2 + scr_y / 2)
-	cwrite("CTRL+SHIFT+[WASD] to create a workspace ",	-1 + scr_y / 2)
-	cwrite(" up/left/down/right respectively.       ",	 0 + scr_y / 2)
-	cwrite("CTRL+SHIFT+P to pause a workspace.      ",	 1 + scr_y / 2)
-	cwrite("CTRL+SHIFT+Q to delete a workspace.     ",	 2 + scr_y / 2)
-	cwrite("Terminate an inactive workspace to exit.",	 3 + scr_y / 2)
-end
-
 local inputEvt = {
 	key = true,
 	key_up = true,
@@ -1199,8 +1266,8 @@ local main = function()
 	scrollWindows(true, false)
 
 	term.clear()
-	if config.timesRan <= 0 then
-		displayHelp()
+	if useConfig and config.timesRan <= 0 then
+		displayHelp(true)
 		sleep(0.1)
 		os.pullEvent("key")
 
@@ -1477,63 +1544,6 @@ local main = function()
 		justStarted = false
 
 	end
-end
-
-local function interpretArgs(tInput, tArgs)
-	local output = {}
-	local errors = {}
-	local usedEntries = {}
-	for aName, aType in pairs(tArgs) do
-		output[aName] = false
-		for i = 1, #tInput do
-			if not usedEntries[i] then
-				if tInput[i] == aName and not output[aName] then
-					if aType then
-						usedEntries[i] = true
-						if type(tInput[i+1]) == aType or type(tonumber(tInput[i+1])) == aType then
-							usedEntries[i+1] = true
-							if aType == "number" then
-								output[aName] = tonumber(tInput[i+1])
-							else
-								output[aName] = tInput[i+1]
-							end
-						else
-							output[aName] = nil
-							errors[1] = errors[1] and (errors[1] + 1) or 1
-							errors[aName] = "expected " .. aType .. ", got " .. type(tInput[i+1])
-						end
-					else
-						usedEntries[i] = true
-						output[aName] = true
-					end
-				end
-			end
-		end
-	end
-	for i = 1, #tInput do
-		if not usedEntries[i] then
-			output[#output+1] = tInput[i]
-		end
-	end
-	return output, errors
-end
-
-local argData = {
-	["--help"] = false,
-	["-h"] = false,
-	["--config"] = false,
-	["-c"] = false
-}
-
-argList, argErrors = interpretArgs({...}, argData)
-
-if argList["--help"] or argList["-h"] then
-	displayHelp()
-	write("\n")
-	return
-elseif argList["--config"] or argList["-c"] then
-	shell.run("rom/programs/edit.lua", configPath)
-	return
 end
 
 if _G.currentlyRunningWorkspace then
