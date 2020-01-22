@@ -125,8 +125,8 @@ if multishell then
 end
 
 parallel.waitForAny(function()
-	shell.run(filename or "/rom/programs/shell.lua")
-end, function()
+		pcall(function() shell.run(filename or "/rom/programs/shell.lua") end)
+	end, function()
 	while true do
 		if gstTerm.meta.width ~= newTerm.meta.width or gstTerm.meta.height ~= newTerm.meta.height then
 			gstTerm.reposition(1, 1, newTerm.meta.width, newTerm.meta.height)
