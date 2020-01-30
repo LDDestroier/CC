@@ -48,7 +48,7 @@ windont.default.alwaysRender = false
 
 INSTRUCTIONS = windont.newWindow(2, scr_y - 5, scr_x - 4, 3, {backColor = "-"})
 ONE = windont.newWindow(1, 1, 9, 5, {backColor = "e"})
-TWO = windont.newWindow(1, 1, 19, 10, {backColor = "-", textColor = "-"})
+TWO = windont.newWindow(1, 1, 19, 11, {backColor = "-", textColor = "-"})
 
 INSTRUCTIONS.setCursorPos(1, 1)
 INSTRUCTIONS.write("Arrow keys to move windon't ONE (red)")
@@ -77,6 +77,7 @@ pBlit(TWO, 6,  "5---5-5--555---5555")
 pBlit(TWO, 8,  "ddddddddddddddddddd")
 pBlit(TWO, 9,  "ddddddddddddddddddd")
 pBlit(TWO, 10, "ddddddddddddddddddd")
+pBlit(TWO, 11, "ddddddddddddddddddd")
 
 
 ONE.meta.metaTransformation = TF.meta("e-")
@@ -125,10 +126,18 @@ while true do
 		ONE.reposition(x1, y1)
 		TWO.reposition(x2, y2)
 
-		windont.render(ONE, TWO, INSTRUCTIONS)
+		windont.render({}, INSTRUCTIONS, ONE, TWO)
 
 		TWO.setCursorPos(2, 9)
-		TWO.write("blits: " .. windont.info.BLIT_CALLS .. "  ")
+		TWO.setTextColor(colors.gray)
+		TWO.write("    Blits: ")
+		TWO.setTextColor(colors.white)
+		TWO.write(windont.info.BLIT_CALLS .. "  ")
+		TWO.setCursorPos(2, 10)
+		TWO.setTextColor(colors.gray)
+		TWO.write("Draw time: ")
+		TWO.setTextColor(colors.white)
+		TWO.write(windont.info.LAST_RENDER_DURATION .. "  ")
 
 		for k,v in pairs(keysDown) do
 			keysDown[k] = v + 1
