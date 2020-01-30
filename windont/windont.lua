@@ -10,6 +10,7 @@
 local lval = {
 	to_blit = {},
 	to_colors = {},
+	oldScreenBuffer = {},
 
 	expect = function(value, default, valueType)
 		if value == nil or (valueType and type(value) ~= valueType) then
@@ -43,6 +44,7 @@ local lval = {
 }
 
 local table_insert = table.insert
+local table_concat = table.concat
 local math_floor = math.floor
 
 for i = 1, 16 do
@@ -73,30 +75,28 @@ local windont = {
 -- draws one or more windon't objects
 -- should not draw over any terminal space that isn't occupied by a window
 
-windont.render = function(onlyX1, onlyX2, onlyY, ...)
+windont.render = function(options, ...)
 	local windows = {...}
-	local bT
+	options = options or {}
+	local bT, scr_x, scr_y
+
+	-- checks if "options" is actually the first window, just in case
+	if type(options.meta) == "table" then
+		if (
+			type(options.meta.buffer) == "table" and
+			type(options.meta.x) == "number" and
+			type(options.meta.y) == "number" and
+			type(options.meta.newBuffer) == "function"
+		) then
+			table_insert(windows, 1, options)
+		end
+	end
+
 	local check = lval.check
 
 	local screenBuffer = {{}, {}, {}}
-	local scr_x, scr_y
 	local blitList = {}	-- list of blit commands per line
 	local c	= 1 		-- current blitList entry
-
-	if type(onlyY) == "table" then
-		table_insert(windows, 1, onlyY)
-		onlyY = nil
-	end
-
-	if type(onlyX2) == "table" then
-		table_insert(windows, 1, onlyX2)
-		onlyX2 = nil
-	end
-
-	if type(onlyX1) == "table" then
-		table_insert(windows, 1, onlyX1)
-		onlyX1 = nil
-	end
 
 	local cTime = lval.getTime()
 
@@ -132,13 +132,13 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 				end
 			end
 		end
-		for y = onlyY or 1, onlyY or scr_y do
+		for y = options.onlyY or 1, options.onlyY or scr_y do
 			screenBuffer[1][y] = {}
 			screenBuffer[2][y] = {}
 			screenBuffer[3][y] = {}
 			blitList = {}
 			c = 1
-			for x = onlyX1 or 1, math.min(scr_x, onlyX2 or scr_x) do
+			for x = options.onlyX1 or 1, math.min(scr_x, options.onlyX2 or scr_x) do
 				for i = #windows, 1, -1 do
 					if bT_list[i] then
 						newChar, newText, newBack = nil
@@ -208,12 +208,19 @@ windont.render = function(onlyX1, onlyX2, onlyY, ...)
 					end
 				end
 			end
-			for k,v in pairs(blitList) do
-				bT.setCursorPos(k, y)
-				bT.blit(v[1], v[2], v[3])
-				AMNT_OF_BLITS = 1 + AMNT_OF_BLITS
+			if (not lval.oldScreenBuffer[bT]) or (
+				table_concat(screenBuffer[1][y]) ~= table_concat(lval.oldScreenBuffer[bT][1][y]) or
+				table_concat(screenBuffer[2][y]) ~= table_concat(lval.oldScreenBuffer[bT][2][y]) or
+				table_concat(screenBuffer[3][y]) ~= table_concat(lval.oldScreenBuffer[bT][3][y])
+			) then
+				for k,v in pairs(blitList) do
+					bT.setCursorPos(k, y)
+					bT.blit(v[1], v[2], v[3])
+					AMNT_OF_BLITS = 1 + AMNT_OF_BLITS
+				end
 			end
 		end
+		lval.oldScreenBuffer[bT] = screenBuffer
 		if windont.useSetVisible and bT.setVisible then
 			if not multishell then
 				bT.setVisible(true)
@@ -419,7 +426,7 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.getLine = function(y)
 		assert(type(y) == "number", "bad argument #1 (expected number, got " .. type(y) .. ")")
 		assert(meta.buffer[1][y], "Line is out of range.")
-		return table.concat(meta.buffer[1][y]), table.concat(meta.buffer[2][y]), table.concat(meta.buffer[3][y])
+		return table_concat(meta.buffer[1][y]), table_concat(meta.buffer[2][y]), table_concat(meta.buffer[3][y])
 	end
 
 	output.scroll = function(amplitude)
@@ -498,9 +505,9 @@ windont.newWindow = function( x, y, width, height, misc )
 
 	output.redraw = function(x1, x2, y)
 		if #meta.renderBuddies > 0 then
-			windont.render(x1, x2, y, output, table.unpack(meta.renderBuddies))
+			windont.render({onlyX1 = x1, onlyX2 = x2, onlyY = y}, output, table.unpack(meta.renderBuddies))
 		else
-			windont.render(x1, x2, y, output)
+			windont.render({onlyX1 = x1, onlyX2 = x2, onlyY = y}, output)
 		end
 		output.restoreCursor()
 	end
