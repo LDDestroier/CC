@@ -55,6 +55,7 @@ lval.to_blit[0], lval.to_colors["-"] = "-", 0
 
 local windont = {
 	doClearScreen = false,				-- if true, will clear the screen during render
+	ignoreUnchangedLines = true,		-- if true, the render function will check each line it renders against the last framebuffer and ignore it if they are the same
 	useSetVisible = false,				-- if true, sets the base terminal's visibility to false before rendering
 	default = {
 		baseTerm = term.current(),		-- default base terminal for all windows
@@ -76,6 +77,13 @@ local windont = {
 -- should not draw over any terminal space that isn't occupied by a window
 
 windont.render = function(options, ...)
+--	potential options:
+--		number:		onlyX1
+--		number:		onlyX2
+--		number:		onlyY
+--		boolean:	force		(forces render / ignores optimiztaion that compares current framebuffer to old one)
+--		terminal:	baseTerm	(forces to render onto this terminal instead of the window's base terminal)
+
 	local windows = {...}
 	options = options or {}
 	local bT, scr_x, scr_y
@@ -110,9 +118,16 @@ windont.render = function(options, ...)
 	local oriChar, oriText, oriBack
 
 	local baseTerms = {}
-	for i = 1, #windows do
-		baseTerms[windows[i].meta.baseTerm] = baseTerms[windows[i].meta.baseTerm] or {}
-		baseTerms[windows[i].meta.baseTerm][i] = true
+	if type(options.baseTerm) == "table" then
+		for i = 1, #windows do
+			baseTerms[options.baseTerm] = baseTerms[options.baseTerm] or {}
+			baseTerms[options.baseTerm][i] = true
+		end
+	else
+		for i = 1, #windows do
+			baseTerms[windows[i].meta.baseTerm] = baseTerms[windows[i].meta.baseTerm] or {}
+			baseTerms[windows[i].meta.baseTerm][i] = true
+		end
 	end
 
 	for bT, bT_list in pairs(baseTerms) do
@@ -208,7 +223,7 @@ windont.render = function(options, ...)
 					end
 				end
 			end
-			if (not lval.oldScreenBuffer[bT]) or (
+			if (not lval.oldScreenBuffer[bT]) or (not windont.ignoreUnchangedLines) or (options.force) or (
 				table_concat(screenBuffer[1][y]) ~= table_concat(lval.oldScreenBuffer[bT][1][y]) or
 				table_concat(screenBuffer[2][y]) ~= table_concat(lval.oldScreenBuffer[bT][2][y]) or
 				table_concat(screenBuffer[3][y]) ~= table_concat(lval.oldScreenBuffer[bT][3][y])
