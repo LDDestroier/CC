@@ -78,11 +78,26 @@ All transformation functions (besides metaTransformation) will not change the co
 
 ## windont.render
 ```
-windont.render(optional number x1, optional number x2, optional number y, window_1, window_2, ...)
+windont.render(table options, window_1, window_2, ...)
 ```
 Renders one or more Windon't objects onto their base terminals. If two or more windows share a base terminal, they will render layered atop each other from top to bottom, meaning that `window_1` will draw on top of `window_2`.
 If windows contain any transparent regions (designated by the color "-" usable with `term.blit`), then the next window down the list will peek through.
 Transparency is applied individually for text colors and background colors. If you have a window with a solid BG color but a transparent text color, then the background color of the underlying window will now be the text color of the above window, kinda like a text-shaped stencil.
 
-The optional values `x1`, `x2`, and `y` are used if you want to render to only render onto a specific line on the base terminal (specifically, line `y` from X `x1` to `x2`).
+The argument `options` is a table, and comes before any windows.
+```lson
+-- Potential options:
+local options = {
+	onlyX1 = 3,
+	onlyX2 = 25,
+	onlyY = 7,
+	force = false,
+	baseTerm = term.current()
+}
+```
+The number values `onlyX1`, `onlyX2`, and `onlyY` limit where `windont.render()` draws on the screen. Specifically, it limits rendering to: `(onlyX1 >= x <= onlyX2, y == onlyY)`.
+The boolean `force` option disables the optimization where `windont.render()` would compare the buffer it is about to draw to the last buffer it drew to reduce blit calls.
+The terminal `baseTerm` option basically ensures that every window being passed through `windont.render()` will draw on the specified terminal.
+
+
 If a window's meta has `alwaysRender = true`, then `windont.render` is called with that window, as well as the positions of the write/blit call.
