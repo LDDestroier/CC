@@ -79,13 +79,17 @@ pBlit(TWO, 9,  "ddddddddddddddddddd")
 pBlit(TWO, 10, "ddddddddddddddddddd")
 pBlit(TWO, 11, "ddddddddddddddddddd")
 
-
 ONE.meta.metaTransformation = TF.meta("e-")
 TWO.meta.metaTransformation = TF.meta(
 	string.rep("5", 50) ..
 	string.rep("d", 40) ..
 	string.rep("4", 1)
 )
+
+local round = function(number)
+	local v = 100000
+	return math.floor(number * v) / v
+end
 
 while true do
 
@@ -137,7 +141,7 @@ while true do
 		TWO.setTextColor(colors.gray)
 		TWO.write("Draw time: ")
 		TWO.setTextColor(colors.white)
-		TWO.write(windont.info.LAST_RENDER_DURATION .. "  ")
+		TWO.write(round(windont.info.LAST_RENDER_DURATION) .. "  ")
 
 		for k,v in pairs(keysDown) do
 			keysDown[k] = v + 1
