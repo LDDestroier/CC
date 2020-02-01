@@ -25,6 +25,89 @@ for i = 1, 16 do
 end
 to_blit[0], to_colors["-"] = "-", 0
 
+local nativePalette = {		-- native palette colors, since some terminals are naughty and don't contain term.nativePaletteColor()
+	[ 1 ] = {
+		0.94117647409439,
+		0.94117647409439,
+		0.94117647409439,
+	},
+	[ 2 ] = {
+		0.94901961088181,
+		0.69803923368454,
+		0.20000000298023,
+	},
+	[ 4 ] = {
+		0.89803922176361,
+		0.49803921580315,
+		0.84705883264542,
+	},
+	[ 8 ] = {
+		0.60000002384186,
+		0.69803923368454,
+		0.94901961088181,
+	},
+	[ 16 ] = {
+		0.87058824300766,
+		0.87058824300766,
+		0.42352941632271,
+	},
+	[ 32 ] = {
+		0.49803921580315,
+		0.80000001192093,
+		0.098039217293262,
+	},
+	[ 64 ] = {
+		0.94901961088181,
+		0.69803923368454,
+		0.80000001192093,
+	},
+	[ 128 ] = {
+		0.29803922772408,
+		0.29803922772408,
+		0.29803922772408,
+	},
+	[ 256 ] = {
+		0.60000002384186,
+		0.60000002384186,
+		0.60000002384186,
+	},
+	[ 512 ] = {
+		0.29803922772408,
+		0.60000002384186,
+		0.69803923368454,
+	},
+	[ 1024 ] = {
+		0.69803923368454,
+		0.40000000596046,
+		0.89803922176361,
+	},
+	[ 2048 ] = {
+		0.20000000298023,
+		0.40000000596046,
+		0.80000001192093,
+	},
+	[ 4096 ] = {
+		0.49803921580315,
+		0.40000000596046,
+		0.29803922772408,
+	},
+	[ 8192 ] = {
+		0.34117648005486,
+		0.65098041296005,
+		0.30588236451149,
+	},
+	[ 16384 ] = {
+		0.80000001192093,
+		0.29803922772408,
+		0.29803922772408,
+	},
+	[ 32768 ] = {
+		0.066666670143604,
+		0.066666670143604,
+		0.066666670143604,
+	}
+}
+
 -- check if space on screenBuffer is transparent
 local checkTransparent = function(buffer, x, y, blitLayer)
 	if buffer[blitLayer or 1][y] then
@@ -521,6 +604,16 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.setPaletteColour = bT.setPaletteColour
 	output.getPaletteColor = bT.getPaletteColor
 	output.getPaletteColour = bT.getPaletteColour
+
+	if bT.getPaletteColor then
+		output.nativePaletteColor = bT.nativePaletteColor or function(col)
+			if nativePalette[col] then
+				return table.unpack(nativePalette[col])
+			else
+				return table.unpack(nativePalette[1]) -- I don't get how this function takes in non-base2 numbers...
+			end
+		end
+	end
 
 	output.redraw = function(x1, x2, y)
 		if #meta.renderBuddies > 0 then
