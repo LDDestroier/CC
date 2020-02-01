@@ -2,7 +2,7 @@ local disknet = {}
 
 local tArg = {...}
 
-disknet.mainPath = tArg[1] or "disk/DISKNET"
+disknet.mainPath = "disk/DISKNET"
 local limitChannelsToModem = false
 local useSleepToYield = false
 local maximumBufferSize = 64
@@ -13,9 +13,12 @@ local uniqueID = math.random(1, 2^31 - 1) -- prevents receiving your own message
 local msgCheckList = {} -- makes sure duplicate messages aren't received
 local ageToToss = 0.002	-- amount of time before a message is removed
 
+--	used for synching times between different emulators
+disknet._timeMod = 0
+
 -- do not think for one second that os.epoch("utc") would be a proper substitute
 local getTime = function()
-	return os.time() + (-1 + os.day()) * 24
+	return (os.time() + (-1 + os.day()) * 24) + disknet._timeMod
 end
 
 local readFile = function(path)
@@ -248,6 +251,14 @@ disknet.receive = function(channel, senderFilter)
 	else
 		error(grr)
 	end
+end
+
+disknet.receive_TS = function(...)
+	local message, channel, id, time = disknet.receive(...)
+	if time then
+		disknet._timeMod = time - getTime()
+	end
+	return message, channel, id, time
 end
 
 return disknet
