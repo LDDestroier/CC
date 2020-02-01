@@ -338,6 +338,7 @@ end
 
 local inputPath = argList[1]
 local outputPath = argList[2] or inputPath
+local defaultAutoExtractPath = argList[3]
 local exists, mode
 
 if inputPath == "moo" and not fs.exists(inputPath) then
@@ -911,7 +912,8 @@ elseif mode == "pack" then
 			sPrint("Tacking on self-extractor.")
 			archive = ([[
 local tArg = {...}
-local outputPath, file = tArg[1] and fs.combine(shell.dir(), tArg[1]) or shell.getRunningProgram()
+local outputPath, file = tArg[1] and fs.combine(shell.dir(), tArg[1]) or ]] .. ((defaultAutoExtractPath and ("\"" .. defaultAutoExtractPath .. "\"")) or "shell.getRunningProgram()") .. [[
+
 local safeColorList = {[colors.white] = true,[colors.lightGray] = true,[colors.gray] = true,[colors.black] = true}
 local stc = function(color) if (term.isColor() or safeColorList[color]) then term.setTextColor(color) end end
 local archive = textutils.unserialize(]] ..
