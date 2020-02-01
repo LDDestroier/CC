@@ -6,57 +6,55 @@
 --  + Transparency within windows
 --  + Built-in window layering
 
--- stores all local values to make drag-and-dropping into other programs less conflict-prone
-local lval = {
-	to_blit = {},
-	to_colors = {},
-	oldScreenBuffer = {},
-
-	expect = function(value, default, valueType)
-		if value == nil or (valueType and type(value) ~= valueType) then
-			return default
-		else
-			return value
-		end
-	end,
-
-	getTime = function()
-		return 24 * os.day() + os.time()
-	end,
-
-	-- check if space on screenBuffer is transparent
-
-	check = function(buffer, x, y, blitLayer)
-		if buffer[blitLayer or 1][y] then
-			if blitLayer then
-				return (buffer[blitLayer][y][x] and buffer[blitLayer][y][x] ~= "-")
-			else
-				if (not buffer[2][y][x] or buffer[2][y][x] == "-") and (not buffer[3][y][x] or buffer[3][y][x] == "-") then
-					return false
-				elseif (not buffer[3][y][x] or buffer[3][y][x] == "-") and buffer[1][y][x] == " " then
-					return false
-				else
-					return buffer[1][y][x] and buffer[2][y][x] and buffer[3][y][x]
-				end
-			end
-		end
-	end
-}
+-- stores each base terminal's framebuffers to optimize rendering
+local oldScreenBuffer = {}
 
 local table_insert = table.insert
 local table_concat = table.concat
 local math_floor = math.floor
+local to_blit = {}
+local to_colors = {}
+
+local getTime = function()
+	return 24 * os.day() + os.time()
+end
 
 for i = 1, 16 do
-	lval.to_blit[2 ^ (i - 1)] = ("0123456789abcdef"):sub(i, i)
-	lval.to_colors[("0123456789abcdef"):sub(i, i)] = 2 ^ (i - 1)
+	to_blit[2 ^ (i - 1)] = ("0123456789abcdef"):sub(i, i)
+	to_colors[("0123456789abcdef"):sub(i, i)] = 2 ^ (i - 1)
 end
-lval.to_blit[0], lval.to_colors["-"] = "-", 0
+to_blit[0], to_colors["-"] = "-", 0
+
+-- check if space on screenBuffer is transparent
+local checkTransparent = function(buffer, x, y, blitLayer)
+	if buffer[blitLayer or 1][y] then
+		if blitLayer then
+			return (buffer[blitLayer][y][x] and buffer[blitLayer][y][x] ~= "-")
+		else
+			if (not buffer[2][y][x] or buffer[2][y][x] == "-") and (not buffer[3][y][x] or buffer[3][y][x] == "-") then
+				return false
+			elseif (not buffer[3][y][x] or buffer[3][y][x] == "-") and (not buffer[1][y][x] or buffer[1][y][x] == " ") then
+				return false
+			else
+				return buffer[1][y][x] and buffer[2][y][x] and buffer[3][y][x]
+			end
+		end
+	end
+end
+
+local expect = function(value, default, valueType)
+	if value == nil or (valueType and type(value) ~= valueType) then
+		return default
+	else
+		return value
+	end
+end
 
 local windont = {
 	doClearScreen = false,				-- if true, will clear the screen during render
 	ignoreUnchangedLines = true,		-- if true, the render function will check each line it renders against the last framebuffer and ignore it if they are the same
 	useSetVisible = false,				-- if true, sets the base terminal's visibility to false before rendering
+	sameCharWillStencil = false,		-- if true, if one window is layered atop another and both windows have a spot where the character is the same, and the top window's text color is transparent, it will use the TEXT color of the lower window instead of the BACKGROUND color
 	default = {
 		baseTerm = term.current(),		-- default base terminal for all windows
 		textColor = "0",				-- default text color (what " " corresponds to in term.blit's second argument)
@@ -100,13 +98,11 @@ windont.render = function(options, ...)
 		end
 	end
 
-	local check = lval.check
-
 	local screenBuffer = {{}, {}, {}}
 	local blitList = {}	-- list of blit commands per line
 	local c	= 1 		-- current blitList entry
 
-	local cTime = lval.getTime()
+	local cTime = getTime()
 
 	local AMNT_OF_BLITS = 0	-- how many blit calls are there?
 
@@ -116,6 +112,7 @@ windont.render = function(options, ...)
 	local buffer							-- each window's buffer
 	local newChar, newText, newBack			-- if the transformation function declares a new dot, this is it
 	local oriChar, oriText, oriBack
+	local char_out, text_out, back_out		-- three tables, directly returned from the transformation functions
 
 	local baseTerms = {}
 	if type(options.baseTerm) == "table" then
@@ -132,7 +129,7 @@ windont.render = function(options, ...)
 
 	for bT, bT_list in pairs(baseTerms) do
 		if bT == output then
-			bT = output.meta.baseTerm
+			bT = options.baseTerm or output.meta.baseTerm
 		end
 		if windont.useSetVisible and bT.setVisible then
 			bT.setVisible(false)
@@ -169,34 +166,43 @@ windont.render = function(options, ...)
 							oriText = (buffer[2][cy] or {})[cx]
 							oriBack = (buffer[3][cy] or {})[cx]
 
-							-- try char transformation
-							if windows[i].meta.charTransformation then
-								char_cx, char_cy, newChar = windows[i].meta.charTransformation(cx, cy, {oriChar, oriText, oriBack}, windows[i].meta)
-								if char_cx ~= math_floor(char_cx) or char_cy ~= math_floor(char_cy) then
-									newChar = " "
+							-- try transformation
+							if windows[i].meta.transformation then
+								char_out, text_out, back_out = windows[i].meta.transformation(cx, cy, oriChar, oriText, oriBack, windows[i].meta)
+
+								if char_out then
+									char_cx = math_floor(char_out[1] or cx)
+									char_cy = math_floor(char_out[2] or cy)
+									if (char_out[1] % 1 ~= 0) or (char_out[2] % 1 ~= 0) then
+										newChar = " "
+									else
+										newChar = char_out[3]
+									end
 								end
-								char_cx = math_floor(char_cx or cx)
-								char_cy = math_floor(char_cy or cy)
+
+								if text_out then
+									text_cx = math_floor(text_out[1] or cx)
+									text_cy = math_floor(text_out[2] or cy)
+									newText = text_out[3]
+								end
+
+								if back_out then
+									back_cx = math_floor(back_out[1] or cx)
+									back_cy = math_floor(back_out[2] or cy)
+									newBack = back_out[3]
+								end
 							end
 
-							-- try text transformation
-							if windows[i].meta.textTransformation then
-								text_cx, text_cy, newText = windows[i].meta.textTransformation(cx, cy, {oriChar, oriText, oriBack}, windows[i].meta)
-								text_cx = math_floor(text_cx or cx)
-								text_cy = math_floor(text_cy or cy)
-							end
+							if checkTransparent(buffer, char_cx, char_cy) or checkTransparent(buffer, text_cx, text_cy) or checkTransparent(buffer, back_cx, back_cy) then
 
-							-- try back transformation
-							if windows[i].meta.backTransformation then
-								back_cx, back_cy, newBack = windows[i].meta.backTransformation(cx, cy, {oriChar, oriText, oriBack}, windows[i].meta)
-								back_cx = math_floor(back_cx or cx)
-								back_cy = math_floor(back_cy or cy)
-							end
-
-							if check(buffer, char_cx, char_cy) or check(buffer, text_cx, text_cy) or check(buffer, back_cx, back_cy) then
-								screenBuffer[1][y][x] = newChar or check(buffer, char_cx, char_cy   ) and (buffer[1][char_cy][char_cx]) or screenBuffer[1][y][x]
-								screenBuffer[2][y][x] = newText or check(buffer, text_cx, text_cy, 2) and (buffer[2][text_cy][text_cx]) or screenBuffer[3][y][x]
-								screenBuffer[3][y][x] = newBack or check(buffer, back_cx, back_cy, 3) and (buffer[3][back_cy][back_cx]) or screenBuffer[3][y][x]
+								screenBuffer[2][y][x] = newText or checkTransparent(buffer, text_cx, text_cy, 2) and (buffer[2][text_cy][text_cx]) or (
+									(buffer[1][text_cy][text_cx] == screenBuffer[1][y][x]) and (windont.sameCharWillStencil) and
+										screenBuffer[2][y][x]
+									or
+										screenBuffer[3][y][x]
+									)
+								screenBuffer[1][y][x] = newChar or checkTransparent(buffer, char_cx, char_cy   ) and (buffer[1][char_cy][char_cx]) or screenBuffer[1][y][x]
+								screenBuffer[3][y][x] = newBack or checkTransparent(buffer, back_cx, back_cy, 3) and (buffer[3][back_cy][back_cx]) or screenBuffer[3][y][x]
 							end
 						end
 					end
@@ -208,8 +214,8 @@ windont.render = function(options, ...)
 				screenBuffer[2][y][x] = screenBuffer[2][y][x] or windont.default.backColor	-- intentionally not the default text color
 				screenBuffer[3][y][x] = screenBuffer[3][y][x] or windont.default.backColor
 
-				if check(screenBuffer, x, y) then
-					if check(screenBuffer, -1 + x, y) then
+				if checkTransparent(screenBuffer, x, y) then
+					if checkTransparent(screenBuffer, -1 + x, y) then
 						blitList[c][1] = blitList[c][1] .. screenBuffer[1][y][x]
 						blitList[c][2] = blitList[c][2] .. screenBuffer[2][y][x]
 						blitList[c][3] = blitList[c][3] .. screenBuffer[3][y][x]
@@ -223,10 +229,10 @@ windont.render = function(options, ...)
 					end
 				end
 			end
-			if (not lval.oldScreenBuffer[bT]) or (not windont.ignoreUnchangedLines) or (options.force) or (
-				table_concat(screenBuffer[1][y]) ~= table_concat(lval.oldScreenBuffer[bT][1][y]) or
-				table_concat(screenBuffer[2][y]) ~= table_concat(lval.oldScreenBuffer[bT][2][y]) or
-				table_concat(screenBuffer[3][y]) ~= table_concat(lval.oldScreenBuffer[bT][3][y])
+			if (not oldScreenBuffer[bT]) or (not windont.ignoreUnchangedLines) or (options.force) or (
+				table_concat(screenBuffer[1][y]) ~= table_concat(oldScreenBuffer[bT][1][y]) or
+				table_concat(screenBuffer[2][y]) ~= table_concat(oldScreenBuffer[bT][2][y]) or
+				table_concat(screenBuffer[3][y]) ~= table_concat(oldScreenBuffer[bT][3][y])
 			) then
 				for k,v in pairs(blitList) do
 					bT.setCursorPos(k, y)
@@ -235,7 +241,7 @@ windont.render = function(options, ...)
 				end
 			end
 		end
-		lval.oldScreenBuffer[bT] = screenBuffer
+		oldScreenBuffer[bT] = screenBuffer
 		if windont.useSetVisible and bT.setVisible then
 			if not multishell then
 				bT.setVisible(true)
@@ -249,7 +255,7 @@ windont.render = function(options, ...)
 	windont.info.BLIT_CALLS = AMNT_OF_BLITS
 	windont.info.LAST_RENDER_WINDOWS = windows
 	windont.info.LAST_RENDER_TIME = cTime
-	windont.info.LAST_RENDER_DURATION = lval.getTime() + -cTime
+	windont.info.LAST_RENDER_DURATION = getTime() + -cTime
 
 end
 
@@ -272,29 +278,27 @@ windont.newWindow = function( x, y, width, height, misc )
 	local output = {}
 	misc = misc or {}
 	local meta = {
-		x 				= lval.expect(x, 1),												-- x position of the window
-		y 				= lval.expect(y, 1),												-- y position of the window
+		x 				= expect(x, 1),												-- x position of the window
+		y 				= expect(y, 1),												-- y position of the window
 		width 			= width,															-- width of the buffer
 		height			= height,															-- height of the buffer
-		buffer 			= lval.expect(misc.buffer, {}, "table"),							-- stores contents of terminal in buffer[1][y][x] format
-		renderBuddies 	= lval.expect(misc.renderBuddies, {}, "table"),						-- renders any other window objects stored here after rendering here
-		baseTerm 		= lval.expect(misc.baseTerm, windont.default.baseTerm, "table"),	-- base terminal for which this window draws on
-		isColor 		= lval.expect(misc.isColor, term.isColor(), "boolean"),				-- if true, then it's an advanced computer
+		buffer 			= expect(misc.buffer, {}, "table"),							-- stores contents of terminal in buffer[1][y][x] format
+		renderBuddies 	= expect(misc.renderBuddies, {}, "table"),						-- renders any other window objects stored here after rendering here
+		baseTerm 		= expect(misc.baseTerm, windont.default.baseTerm, "table"),	-- base terminal for which this window draws on
+		isColor 		= expect(misc.isColor, term.isColor(), "boolean"),				-- if true, then it's an advanced computer
 
-		charTransformation = lval.expect(misc.charTransformation, nil, "function"),			-- function that transforms the characters of the window
-		textTransformation = lval.expect(misc.textTransformation, nil, "function"),			-- function that transforms the text colors of the window
-		backTransformation = lval.expect(misc.backTransformation, nil, "function"),			-- function that transforms the BG colors of the window
-		metaTransformation = lval.expect(misc.miscTransformation, nil, "function"),			-- function that transforms the whole output.meta function
+		transformation 	= expect(misc.transformation, nil, "function"),			-- function that transforms the char/text/back dots of the window
+		metaTransformation = expect(misc.miscTransformation, nil, "function"),			-- function that transforms the whole output.meta function
 
-		cursorX 		= lval.expect(misc.cursorX, 1),
-		cursorY 		= lval.expect(misc.cursorY, 1),
+		cursorX 		= expect(misc.cursorX, 1),
+		cursorY 		= expect(misc.cursorY, 1),
 
-		textColor 		= lval.expect(misc.textColor, windont.default.textColor, "string"),			-- current text color
-		backColor 		= lval.expect(misc.backColor, windont.default.backColor, "string"),			-- current background color
+		textColor 		= expect(misc.textColor, windont.default.textColor, "string"),			-- current text color
+		backColor 		= expect(misc.backColor, windont.default.backColor, "string"),			-- current background color
 
-		blink 			= lval.expect(misc.blink, windont.default.blink, "boolean"),				-- cursor blink
-		alwaysRender 	= lval.expect(misc.alwaysRender, windont.default.alwaysRender, "boolean"),	-- render after every terminal operation
-		visible 		= lval.expect(misc.visible, windont.default.visible, "boolean"),			-- if false, don't render ever
+		blink 			= expect(misc.blink, windont.default.blink, "boolean"),				-- cursor blink
+		alwaysRender 	= expect(misc.alwaysRender, windont.default.alwaysRender, "boolean"),	-- render after every terminal operation
+		visible 		= expect(misc.visible, windont.default.visible, "boolean"),			-- if false, don't render ever
 
 		-- make a new buffer (optionally uses an existing buffer as a reference)
 		newBuffer = function(width, height, char, text, back, drawAtop)
@@ -384,8 +388,8 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.setTextColor = function(color)
-		if lval.to_blit[color] then
-			meta.textColor = lval.to_blit[color]
+		if to_blit[color] then
+			meta.textColor = to_blit[color]
 		else
 			error("Invalid color (got " .. color .. ")")
 		end
@@ -393,8 +397,8 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.setTextColour = output.setTextColor
 
 	output.setBackgroundColor = function(color)
-		if lval.to_blit[color] then
-			meta.backColor = lval.to_blit[color]
+		if to_blit[color] then
+			meta.backColor = to_blit[color]
 		else
 			error("Invalid color (got " .. color .. ")")
 		end
@@ -402,12 +406,12 @@ windont.newWindow = function( x, y, width, height, misc )
 	output.setBackgroundColour = output.setBackgroundColor
 
 	output.getTextColor = function()
-		return lval.to_colors[meta.textColor]
+		return to_colors[meta.textColor]
 	end
 	output.getTextColour = output.getTextColor
 
 	output.getBackgroundColor = function()
-		return lval.to_colors[meta.backColor]
+		return to_colors[meta.backColor]
 	end
 	output.getBackgroundColour = output.getBackgroundColor
 
