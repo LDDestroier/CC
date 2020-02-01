@@ -1,5 +1,5 @@
 local tArg = {...}
-local outputPath, file = tArg[1] and fs.combine(shell.dir(), tArg[1]) or /
+local outputPath, file = tArg[1] and fs.combine(shell.dir(), tArg[1]) or "/"
 local safeColorList = {[colors.white] = true,[colors.lightGray] = true,[colors.gray] = true,[colors.black] = true}
 local stc = function(color) if (term.isColor() or safeColorList[color]) then term.setTextColor(color) end end
 local archive = textutils.unserialize("{\
