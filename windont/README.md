@@ -57,22 +57,32 @@ alwaysRender		-- boolean, if true, then all term.write or term.blit calls will i
 visible			-- boolean, if false, then the window just like, won't render, man
 ```
 
-All transformation functions (except for `metaTransformation`) are called on every (x, y) position on the screen per window, and each one takes in four arguments:
+The normal transformation function (`transformation`, not `metaTransformation`) are called on every (x, y) position on the screen per window, and each one takes in six arguments:
 	1. X position on the screen relative to the window's X position
 	2. Y position on the screen relative to the window's Y position
-	3. Character/text color/background color on the window's (X, Y) position (if outside the buffer, is `nil`)
-	4. `meta` value of the window
+	3. Character on the window's (X, Y) (if outside the buffer, is `nil`)
+	4. Text color on the window's (X, Y) (if outside the buffer, is `nil`)
+	5. Background color on the window's (X, Y) (if outside the buffer, is `nil`)
+	6. `meta` value of the window
 and return the following information:
-	1. New X position for that part of the window
-	2. New Y position for that part of the window
-	3. Optionally, a new character, text color, or background color (depending on if it's `charTransformation`, `textTransformation`, or `backTransformation`.)
+	1. Table containing `{new character X position, new character Y position, new character}` (all optional values)
+	2. Table containing `{new text X position, new text Y position, new text color}` (all optional values)
+	3. Table containing `{new background X position, new background Y position, new background color}` (all optional values)
+
+For instance, it could take in:
+```
+win.transformation(2, 6, "r", "2", "f", win.meta)`
+```
+
+... and return:
+
+```
+{2, 6, "R"}, {2, 6, "3"}, {"2, 6, "-"}
+```
+
+...with a light blue "R" with a transparent background being placed at (2, 6) to replace the lowercase "r".
 
 `metaTransformation` is different in that it takes one value, being the window's `meta` value, and returns nothing. The `metaTransformation` function just modifies the `meta` value and that's it.
-As a side note, the order that the transformations are called in is as follows:
-	1. metaTransformation
-	2. charTransformation
-	3. textTransformation
-	4. backTransformation
 
 All transformation functions (besides metaTransformation) will not change the contents of the buffer, only alter how they are drawn to the screen.
 
