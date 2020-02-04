@@ -71,12 +71,10 @@ local shades = {
 	["e"] = {"5","6","7","8"},
 }
 
-newTerm.meta.textTransformation = function(x, y, dot, meta)
-	return x, y, shades[dot[2]][math.random(1, intensity)]
-end
-
-newTerm.meta.backTransformation = function(x, y, dot, meta)
-	return x, y, shades[dot[3]][math.random(1, intensity)]
+newTerm.meta.transformation = function(x, y, char, text, back, meta)
+	return 	{x, y},
+			{x, y, shades[text][math.random(1, intensity)]},
+			{x, y, shades[back][math.random(1, intensity)]}
 end
 
 local oldTerm = term.redirect(newTerm)
@@ -90,8 +88,7 @@ end, function()
 	end
 end)
 
-newTerm.meta.textTransformation = nil
-newTerm.meta.backTransformation = nil
+newTerm.meta.transformation = nil
 newTerm.redraw()
 
 term.redirect(oldTerm)
