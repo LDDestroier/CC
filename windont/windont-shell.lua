@@ -1,4 +1,17 @@
+if not fs.exists("windont.lua") then
+	print("'windont.lua' not found! Downloading...")
+	local net = http.get("https://github.com/LDDestroier/CC/raw/master/windont/windont.lua")
+	if net then
+		local file = fs.open("windont.lua", "w")
+		file.write(net.readAll())
+		file.close()
+		net.close()
+	else
+		error("Could not download Windon't.", 0)
+	end
+end
 local windont = require "windont"
+
 windont.default.alwaysRender = false
 
 local scr_x, scr_y = term.getSize()
@@ -191,8 +204,8 @@ end
 
 local main = function()
 
-	newInstance(3, 3, 20, 10, "rom/programs/shell.lua", nil)
-	newInstance(8, 5, 20, 10, "rom/programs/shell.lua", nil)
+	newInstance(3, 3, 30, 12, "rom/programs/shell.lua", nil)
+	newInstance(8, 5, 30, 12, "rom/programs/shell.lua", nil)
 
 	local evt, success, result, oldTerm
 	local cx, cy
