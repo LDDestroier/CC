@@ -15,6 +15,24 @@ local math_floor = math.floor
 local to_blit = {}
 local to_colors = {}
 
+local table_compare = function(tbl1, tbl2)
+	if type(tbl1) ~= "table" or type(tbl2) ~= "table" then
+		return tbl1 == tbl2
+	else
+		for k,v in pairs(tbl1) do
+			if tbl1[k] ~= tbl2[k] then
+				return false
+			end
+		end
+		for k,v in pairs(tbl2) do
+			if tbl1[k] ~= tbl2[k] then
+				return false
+			end
+		end
+		return true
+	end
+end
+
 local getTime = function()
 	return 24 * os.day() + os.time()
 end
@@ -313,9 +331,9 @@ windont.render = function(options, ...)
 				end
 			end
 			if (not oldScreenBuffer[bT]) or (not windont.ignoreUnchangedLines) or (options.force) or (
-				table_concat(screenBuffer[1][y]) ~= table_concat(oldScreenBuffer[bT][1][y]) or
-				table_concat(screenBuffer[2][y]) ~= table_concat(oldScreenBuffer[bT][2][y]) or
-				table_concat(screenBuffer[3][y]) ~= table_concat(oldScreenBuffer[bT][3][y])
+				(not table_compare(screenBuffer[1][y], oldScreenBuffer[bT][1][y])) or
+				(not table_compare(screenBuffer[2][y], oldScreenBuffer[bT][2][y])) or
+				(not table_compare(screenBuffer[3][y], oldScreenBuffer[bT][3][y]))
 			) then
 				for k,v in pairs(blitList) do
 					bT.setCursorPos(k, y)
