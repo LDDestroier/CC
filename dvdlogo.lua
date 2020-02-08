@@ -120,6 +120,8 @@ local render = function(colorReplace)
 	end
 end
 
+local color = math.random(1, 15)
+
 local tick = function()
 	scr_x, scr_y = term.getSize()
 	xWall = scr_x - imgXsize + 1 - xMargin
@@ -129,11 +131,13 @@ local tick = function()
 
 	if floor(logo.x) == (1 + xMargin) or floor(logo.x) == xWall then
 		logo.xvel = -logo.xvel
+		color = math.random(1, 15)
 	end
 	if floor(logo.y) == (1 + yMargin) or floor(logo.y) == yWall then
 		logo.yvel = -logo.yvel
+		color = math.random(1, 15)
 	end
-	render()
+	render(string.sub("0123456789abcdef", color, color))
 end
 
 term.setBackgroundColor(colors.black)
