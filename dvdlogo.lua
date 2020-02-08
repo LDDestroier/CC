@@ -1,5 +1,3 @@
-local nfte = require "nfte"
-
 local mon = peripheral.find("monitor")
 if mon then
 	mon.setTextScale(0.5)
