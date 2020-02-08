@@ -16,47 +16,6 @@ getSize = function(image)
 	return x, y
 end
 
-local loadImageDataNFT = function(image, background) -- string image
-	local output = {{},{},{}} -- char, text, back
-	local y = 1
-	background = (background or " "):sub(1,1)
-	local text, back = " ", background
-	local doSkip, c1, c2 = false
-	local maxX = 0
-	local bx
-	for i = 1, #image do
-		if doSkip then
-			doSkip = false
-		else
-			output[1][y] = output[1][y] or ""
-			output[2][y] = output[2][y] or ""
-			output[3][y] = output[3][y] or ""
-			c1, c2 = image:sub(i,i), image:sub(i+1,i+1)
-			if c1 == tchar then
-				text = c2
-				doSkip = true
-			elseif c1 == bchar then
-				back = c2
-				doSkip = true
-			elseif c1 == "\n" then
-				maxX = max(maxX, #output[1][y])
-				y = y + 1
-				text, back = " ", background
-			else
-				output[1][y] = output[1][y]..c1
-				output[2][y] = output[2][y]..text
-				output[3][y] = output[3][y]..back
-			end
-		end
-	end
-	for y = 1, #output[1] do
-		output[1][y] = output[1][y] .. (" "):rep(maxX - #output[1][y])
-		output[2][y] = output[2][y] .. (" "):rep(maxX - #output[2][y])
-		output[3][y] = output[3][y] .. (background):rep(maxX - #output[3][y])
-	end
-	return output
-end
-
 local drawImage = function(image, x, y, terminal)
 	terminal = terminal or term.current()
 	local cx, cy = terminal.getCursorPos()
@@ -80,18 +39,45 @@ local logo = {
 	yvel = (math.random(0, 1) * 2) - 1,
 	x = floor(scr_x / 2),
 	y = floor(scr_y / 2),
-	img = loadImageDataNFT([[
-    00f      0f0f
-   0ff0   f00f0f   0f0f     0f0ff0    f00f
-   00     0f0f    00f0f0f   0f0f     00
-0f0f   0f0f     0f0f0f     00    0f0f
-0f       00f     0f0f
-              0ff0
-     0f0f
-0f0f0f0f
-0f0f       0f0f
-   f00f0f
-           f0	]])
+	img = {
+		{
+			"       ",
+			"        ",
+			"          ",
+			"         ",
+			"         ",
+			"                          ",
+			"        ",
+			"  ",
+			"       ",
+			"    ",
+			"                    ",
+		}, {
+			"  00000000000    ff000000ff ",
+			" ff0 0f00 f0f   f000fff  00f",
+			" 00   f00  000ff000 f00   00",
+			"f00 ff00   f0f000   00  ff00",
+			"            0000   f0000000 ",
+			"            f0              ",
+			"   fffffff000000fffffff     ",
+			"ff000000000000000f000000ff  ",
+			"f000000fff     ffff0000000  ",
+			" 0000f0000000000000000000   ",
+			"         00000000           ",
+		}, {
+			"  0000000000f    0000000000 ",
+			" 00f f00f 000   000ff00  f00",
+			" 00   00f  00f000ff 00f   00",
+			"00f 000f   00000f   00  000f",
+			"00000ff     00ff   000000ff ",
+			"            0f              ",
+			"   00000000000000000000     ",
+			"00000000fffffffff000000000  ",
+			"0000000000     0000000000f  ",
+			" ffff000000000000000fffff   ",
+			"         ffffffff           ",
+		}
+	}
 }
 
 local imgXsize, imgYsize = getSize(logo.img)
