@@ -57,8 +57,8 @@ local render = function(shift,mon)
 		line = bow:rep(scr_x):sub(1,scr_x)
 		local text = ("#"):rep(scr_x)
 		if wpath.doFlip then
-			txcol = wrap(line, -1*math.abs(scr_y/2-y)+shift-1)
-			bgcol = wrap(line, -1*math.abs(scr_y/2-y)+shift)
+			txcol = wrap(line:reverse(), -1*math.abs(scr_y/2-y)+shift-1)
+			bgcol = wrap(line:reverse(), -1*math.abs(scr_y/2-y)+shift)
 		else
 			txcol = wrap(line, -1*math.abs(y-scr_y/2)+shift-1)
 			bgcol = wrap(line, -1*math.abs(y-scr_y/2)+shift)
