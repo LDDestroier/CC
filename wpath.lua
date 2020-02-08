@@ -57,8 +57,8 @@ local render = function(shift,mon)
 		line = bow:rep(scr_x):sub(1,scr_x)
 		local text = ("#"):rep(scr_x)
 		if wpath.doFlip then
-			txcol = wrap(line:reverse(), -1*math.abs(scr_y/2-y)+shift-1)
-			bgcol = wrap(line:reverse(), -1*math.abs(scr_y/2-y)+shift)
+			txcol = wrap(line:reverse(), math.abs(scr_y/2-y)+shift-1)
+			bgcol = wrap(line:reverse(), math.abs(scr_y/2-y)+shift)
 		else
 			txcol = wrap(line, -1*math.abs(y-scr_y/2)+shift-1)
 			bgcol = wrap(line, -1*math.abs(y-scr_y/2)+shift)
@@ -70,11 +70,15 @@ end
 local DOITNOW = function(KILLME, KILLMENOW)
 	local shift = 0
 	while true do
-		shift = (shift + 1)
+		if wpath.doFlip then
+			shift = (shift - 1)
+		else
+			shift = (shift + 1)
+		end
 		mons = {peripheral.find("monitor")}
 		setscales()
 		for a = 1, #mons do
-			render(shift,mons[a])
+			render(shift, mons[a])
 		end
 		sleep(wpath.delay)
 	end
