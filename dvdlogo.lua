@@ -8,6 +8,7 @@ end
 local xMargin, yMargin = 0, 0
 
 local redrawDelay = nil
+local changeColors = true
 
 local scr_x, scr_y = term.getSize()
 local max, min = math.max, math.min
@@ -137,7 +138,11 @@ local tick = function()
 		logo.yvel = -logo.yvel
 		color = math.random(1, 15)
 	end
-	render(string.sub("0123456789abcdef", color, color))
+	if changeColors then
+		render(string.sub("0123456789abcdef", color, color))
+	else
+		render()
+	end
 end
 
 term.setBackgroundColor(colors.black)
