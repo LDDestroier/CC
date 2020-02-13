@@ -3,7 +3,9 @@
 
 local brednet = {}
 
-ccemux.attach("top", "wireless_modem")
+if ccemux and not peripheral.find("modem") then
+	ccemux.attach("top", "wireless_modem")
+end
 
 -- stores the last 1000 received messages
 local USED = {}
