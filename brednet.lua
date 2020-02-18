@@ -7,11 +7,14 @@ if ccemux and not peripheral.find("modem") then
 	ccemux.attach("top", "wireless_modem")
 end
 
--- stores the last 1000 received messages
+-- stores the last 'maxUsed' amount of received messages
+local maxUsed = 1000
 local USED = {}
 
-local cycleIntoUsed = function(id)
-	USED[id] = 1000
+local computerID = os.getComputerID()
+
+local cycleIntoUsed = function(msgID)
+	USED[msgID] = maxUsed
 	for k,v in pairs(USED) do
 		if v == 0 then
 			USED[k] = nil
@@ -39,47 +42,68 @@ brednet.open = function(CHANNEL, MODEMS)
 		end
 	end
 
-	session.send = function(message, channel)
+	session.send = function(message, recipient, channel)
 		local msgID = math.random(1, 2^31-1)
 		cycleIntoUsed(msgID)
+		if channel then
+			modem.open(channel)
+		end
 		modem.transmit(
 			channel or session.channel,
 			channel or session.channel,
 			{
 				msg = message,
-				id = msgID,
+				msgID = msgID,
+				id = computerID,
+				recipient = recipient,
 				time = os.time()
 			}
 		)
 	end
 
-	session.parse = function(input)
+	session.check = function(input)
 		-- check types
 		if type(input) == "table" then
-			if type(input.id) == "number" and input.msg then
-				if not USED[input.id] then
-					return input.id, input.msg
+			if type(input.id) == "number" and type(input.msgID) == "number" and input.msg then
+				if not USED[input.msgID] then
+					return input
 				end
 			end
 		end
 	end
 
-	session.receive = function()
-		local evt, output = {}
-		while not session.parse(evt[5]) do
-			evt = {os.pullEvent("modem_message")}
+	session.receive = function(senderID, channel)
+		local evt, output
+		if channel then
+			modem.open(channel)
 		end
-		cycleIntoUsed(evt[5].id)
-		modem.transmit(
-			channel or session.channel,
-			channel or session.channel,
-			{
-				msg = evt[5].msg,
-				id = evt[5].id,
-				time = evt[5].time,
-			}
-		)
-		return evt[5].id, evt[5].msg
+		-- keep receiving and repeating all messages, regardless of recipient
+		while true do
+			-- only return if you ARE the recipient
+			output = nil
+			while not output do
+				evt = {os.pullEvent("modem_message")}
+				output = session.check(evt[5])
+			end
+			cycleIntoUsed(output.msgID)
+			modem.transmit(
+				channel or session.channel,
+				channel or session.channel,
+				{
+					msg = output.msg,
+					msgID = output.msgID,
+					id = output.id,
+					recipient = output.recipient,
+					time = output.time,
+				}
+			)
+			if (
+				((not output.recipient) or (output.recipient == computerID)) and
+				((not senderID) or (output.id == senderID))
+			) then
+				return output.msg, output.id
+			end
+		end
 	end
 
 	modem.open(session.channel)
