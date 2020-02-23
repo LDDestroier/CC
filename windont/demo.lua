@@ -41,7 +41,20 @@ local pBlit = function(t, y, str)
 	t.blit((" "):rep(#str), str, str)
 end
 
-windont = dofile("windont.lua")
+if not fs.exists("windont.lua") then
+	print("'windont.lua' not found! Downloading...")
+	local net = http.get("https://github.com/LDDestroier/CC/raw/master/windont/windont.lua")
+	if net then
+		local file = fs.open("windont.lua", "w")
+		file.write(net.readAll())
+		file.close()
+		net.close()
+	else
+		error("Could not download Windon't.", 0)
+	end
+end
+
+local windont = require "windont"
 
 windont.doClearScreen = true
 windont.default.alwaysRender = false
