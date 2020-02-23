@@ -403,15 +403,16 @@ windont.newWindow = function( x, y, width, height, misc )
 
 		-- make a new buffer (optionally uses an existing buffer as a reference)
 		newBuffer = function(width, height, char, text, back, drawAtop)
-			local output = drawAtop or {{}, {}, {}}
+			local output = {{}, {}, {}}
+			drawAtop = drawAtop or {{}, {}, {}}
 			for y = 1, height do
 				output[1][y] = output[1][y] or {}
 				output[2][y] = output[2][y] or {}
 				output[3][y] = output[3][y] or {}
 				for x = 1, width do
-					output[1][y][x] = output[1][y][x] or (char or " ")
-					output[2][y][x] = output[2][y][x] or (text or "0")
-					output[3][y][x] = output[3][y][x] or (back or "f")
+					output[1][y][x] = (drawAtop[1][y] or {})[x] or (output[1][y][x] or (char or " "))
+					output[2][y][x] = (drawAtop[2][y] or {})[x] or (output[2][y][x] or (text or "0"))
+					output[3][y][x] = (drawAtop[3][y] or {})[x] or (output[3][y][x] or (back or "f"))
 				end
 			end
 			return output
