@@ -574,7 +574,7 @@ windont.newWindow = function( x, y, width, height, misc )
 	end
 
 	output.getSize = function()
-		return width, height
+		return meta.width, meta.height
 	end
 
 	output.isColor = function()
