@@ -634,11 +634,15 @@ windont.newWindow = function( x, y, width, height, misc )
 		end
 	end
 
-	output.redraw = function(x1, x2, y)
+	output.redraw = function(x1, x2, y, options)
+		options = options or {}
+		options.onlyX1 = x1
+		options.onlyX2 = x2
+		options.onlyY = y
 		if #meta.renderBuddies > 0 then
-			windont.render({onlyX1 = x1, onlyX2 = x2, onlyY = y}, output, table.unpack(meta.renderBuddies))
+			windont.render(options, output, table.unpack(meta.renderBuddies))
 		else
-			windont.render({onlyX1 = x1, onlyX2 = x2, onlyY = y}, output)
+			windont.render(options, output)
 		end
 		output.restoreCursor()
 	end
