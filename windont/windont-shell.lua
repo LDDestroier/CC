@@ -62,6 +62,7 @@ local FocusEvents = {
 	["char"] = true,
 	["monitor_touch"] = true,
 	["paste"] = true,
+	["terminate"] = true,
 	-- mouse_scroll is intentionally excluded
 }
 
