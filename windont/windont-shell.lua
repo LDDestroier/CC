@@ -81,6 +81,75 @@ local overlay = windont.newWindow(1, 1, scr_x, scr_y, {
 })
 desktop.redraw()
 
+local instanceBoxCheck = function(i, x, y, useMain)
+	assert(type(x) == "number", "x must be number")
+	assert(type(y) == "number", "y must be number")
+	return (
+		x < 1 or x > (useMain and instances[i].mainWindow.meta.width or instances[i].termWindow.meta.width) or
+		y < 1 or y > (useMain and instances[i].mainWindow.meta.height or instances[i].termWindow.meta.height)
+	)
+end
+
+local focusInstance = function(i)
+	if instances[i or false] then
+		if i ~= 1 then
+			local instance = instances[i]
+			instances[1].focused = false
+			table.remove(instances, i)
+			table.insert(instances, 1, instance)
+			instances[1].focused = true
+		end
+	end
+end
+
+-- checks if (x, y) is within a rectangle between (rx1, ry1), (rx2, ry2)
+local rectangleCheck = function(x, y, rx1, ry1, rx2, ry2)
+	return
+		(x >= rx1 and x <= rx2) and
+		(y >= ry1 and y <= ry2)
+end
+
+-- checks which instance should be selected if you were to click on (x, y)
+local checkInstanceByPos = function(x, y, useTerm)
+	for i = 1, #instances do
+		if rectangleCheck(
+			x,
+			y,
+			instances[i].mainWindow.meta.x + (useTerm and 1 or 0),
+			instances[i].mainWindow.meta.y + (useTerm and 1 or 0),
+			instances[i].mainWindow.meta.x + (useTerm and 1 or 0) + (useTerm and instances[i].termWindow or instances[i].mainWindow).meta.width - 1,
+			instances[i].mainWindow.meta.y + (useTerm and 1 or 0) + (useTerm and instances[i].termWindow or instances[i].mainWindow).meta.height - 1
+		) then
+			return i
+		end
+	end
+	return false
+end
+
+local resumeInstance = function(i, _evt, isCoordinateEvent)
+	local evt = {}
+	for k,v in pairs(_evt) do
+		evt[k] = v
+	end
+	if isCoordinateEvent then
+		evt[3] = evt[3] - instances[i].mainWindow.meta.x
+		evt[4] = evt[4] - instances[i].mainWindow.meta.y
+	end
+	repeat
+		if (isCoordinateEvent and instanceBoxCheck(i, evt[3], evt[4])) then
+			break
+		end
+		oldTerm = term.redirect(instances[i].termWindow)
+		success, result = coroutine.resume(instances[i].coroutine, table.unpack(evt))
+		term.redirect(oldTerm)
+		if success then
+			instances[i].cFilter = result
+		else
+			instances[i].alive = false
+		end
+	until true
+end
+
 local newInstance = function(x, y, width, height, program, pName, addBorder)
 	local output = {}
 	if addBorder then
@@ -91,8 +160,10 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 		})
 		output.termWindow = windont.newWindow(1, 2, width, height, {
 			baseTerm = output.mainWindow,
-			alwaysRender = true,
+			alwaysRender = false,
 		})
+		output.oldTermPos = {1, 2, width, height}
+		output.oldMainPos = {x, y, width, height + 1}
 	else
 		output.mainWindow = windont.newWindow(x, y, width + 2, height + 2, {
 			baseTerm = desktop,
@@ -101,12 +172,40 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 		})
 		output.termWindow = windont.newWindow(2, 2, width, height, {
 			baseTerm = output.mainWindow,
-			alwaysRender = true,
+			alwaysRender = false,
 		})
+		output.oldTermPos = {2, 2, width, height}
+		output.oldMainPos = {x, y, width + 2, height + 2}
 	end
 
 	local mw = output.mainWindow	-- contains the titlebar, and is the base terminal for termWindow
 	local tw = output.termWindow	-- contains the program's terminal output
+
+	tw.meta.transformation = function(x, y, char, text, back, meta)
+		if x > mw.meta.width - 2 then
+			return {x, y, " "}, {x, y, "-"}, {x, y, "-"}
+		else
+			return {x, y, char}, {x, y, text}, {x, y, back}
+		end
+	end
+
+	output.refreshMainWindow = function()
+		for y = 1, mw.meta.height do
+			mw.setCursorPos(1, y)
+			if y == 1 or y == mw.meta.height then
+				mw.blit(
+					(" "):rep(mw.meta.width),
+					("7"):rep(mw.meta.width),
+					("7"):rep(mw.meta.width)
+				)
+			else
+				mw.blit(" ","7","7")
+				mw.setCursorPos(mw.meta.width, y)
+				mw.blit(" ","7","7")
+			end
+		end
+	end
+	output.refreshMainWindow()
 
 	-- pausing will probably be implemented later
 	output.paused = false
@@ -116,6 +215,7 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 
 	output.alive = true
 	output.focused = true
+	output.manipMode = 0
 	output.title = pName or (type(program) == "string" and (knownNames[fs.combine("", program)] or fs.getName(program))) or tostring(program)
 	output.writeTitleBar = function()
 		mw.setCursorPos(1, 1)
@@ -158,48 +258,47 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 
 	table.insert(instances, 1, output)
 
+	resumeInstance(1, {}, false)
+
 	return output
+end
+
+local moveInstance = function(i, x, y, newWidth, newHeight, relative)
+	desktop.clear()
+	newWidth = math.max(newWidth or instances[i].mainWindow.meta.width, 3)
+	newHeight = math.max(newHeight or instances[i].mainWindow.meta.height, 3)
+	if relative then
+		if x == 0 and y == 0 then
+			if (not newWidth or newWidth == instances[i].mainWindow.meta.width) and (not newHeight or newHeight == instances[i].mainWindow.meta.height) then
+				return
+			end
+		end
+		instances[i].mainWindow.reposition(instances[i].mainWindow.meta.x + x, instances[i].mainWindow.meta.y + y, newWidth, newHeight)
+	else
+		if x == instances[i].mainWindow.meta.x and y == instances[i].mainWindow.meta.y then
+			if (not newWidth or newWidth == instances[i].mainWindow.meta.width) and (not newHeight or newHeight == instances[i].mainWindow.meta.height) then
+				return
+			end
+		end
+		instances[i].mainWindow.reposition(x, y, newWidth, newHeight)
+	end
+	instances[i].termWindow.reposition(
+		2, 2,
+		math.max(instances[i].oldTermPos[3], instances[i].mainWindow.meta.width - 2),
+		math.max(instances[i].oldTermPos[4], instances[i].mainWindow.meta.height - 2)
+	)
+	instances[i].termWindow.redraw(nil,nil,nil,{force = true})
+	instances[i].refreshMainWindow()
 end
 
 local render = function()
 	local wins = {}
 	for i = 1, #instances do
 		wins[i] = instances[i].mainWindow
+		instances[i].termWindow.redraw()
 	end
 	windont.render({force = true}, table.unpack(wins))
 	windont.render({}, overlay, desktop)
-end
-
-local instanceBoxCheck = function(i, x, y)
-	return (
-		x < 1 or x > instances[i].termWindow.meta.width or
-		y < 1 or y > instances[i].termWindow.meta.height
-	)
-end
-
-local resumeInstance = function(i, _evt, isCoordinateEvent)
-	local evt = {}
-	for k,v in pairs(_evt) do
-		evt[k] = v
-	end
-	if CoordinateEvents[evt[1]] then
-		evt[3] = evt[3] - instances[i].mainWindow.meta.x + instances[i].termWindow.meta.x
-		evt[4] = evt[4] - instances[i].mainWindow.meta.y + instances[i].mainWindow.meta.y - 1
-		isCoordinateEvent = true
-	end
-	repeat
-		if (isCoordinateEvent and not instanceBoxCheck(i, evt[3], evt[4])) then
-			break
-		end
-		oldTerm = term.redirect(instances[i].termWindow)
-		success, result = coroutine.resume(instances[i].coroutine, table.unpack(evt))
-		term.redirect(oldTerm)
-		if success then
-			instances[i].cFilter = result
-		else
-			instances[i].alive = false
-		end
-	until true
 end
 
 local main = function()
@@ -211,7 +310,7 @@ local main = function()
 	local cx, cy
 	local isCoordinateEvent
 	local usedCoordinateEvent
-	local usingUI = false	-- if true, cannot send events to instances. Only set to true when interacting with the UI
+	local isManipulatingInstance = false
 	-- handles input system
 	local keyTimer = os.startTimer(0.05)
 
@@ -222,50 +321,138 @@ local main = function()
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		end
+		if evt[1] == "mouse_click" then
+			focusInstance(checkInstanceByPos(evt[3], evt[4]))
+		end
 		if evt[1] == "timer" and evt[2] == keyTimer then
 			keyTimer = os.startTimer(0.05)
 			for k,v in pairs(keysDown) do
 				keysDown[k] = v + 0.05
 			end
 
+			render()
+
 			-- move windows with arrow keys (for now)
-			if keysDown[keys.right] then
-				desktop.clear()
-				instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x + 1, instances[1].mainWindow.meta.y)
-			end
-			if keysDown[keys.left] then
-				desktop.clear()
-				instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x - 1, instances[1].mainWindow.meta.y)
-			end
-			if keysDown[keys.up] then
-				desktop.clear()
-				instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x,     instances[1].mainWindow.meta.y - 1)
-			end
-			if keysDown[keys.down] then
-				desktop.clear()
-				instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x,     instances[1].mainWindow.meta.y + 1)
+			if false then
+				if keysDown[keys.right] then
+					desktop.clear()
+					instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x + 1, instances[1].mainWindow.meta.y)
+				end
+				if keysDown[keys.left] then
+					desktop.clear()
+					instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x - 1, instances[1].mainWindow.meta.y)
+				end
+				if keysDown[keys.up] then
+					desktop.clear()
+					instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x,     instances[1].mainWindow.meta.y - 1)
+				end
+				if keysDown[keys.down] then
+					desktop.clear()
+					instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x,     instances[1].mainWindow.meta.y + 1)
+				end
 			end
 		else
 			usedCoordinateEvent = false
 			isCoordinateEvent = false
 			for i = 1, #instances do
-				instances[i].writeTitleBar()
-				if (not usingUI) and (instances[i].cFilter == evt[1] or instances[i].cFilter == "terminate" or (not instances[i].cFilter)) then
-					if (instances[i].focused or not FocusEvents[evt[1]]) then
-						resumeInstance(i, evt, isCoordinateEvent)
-						if CoordinateEvents[evt[1]] then
-							usedCoordinateEvent = true
+				if (not isManipulatingInstance) and evt[1] == "mouse_click" and (keysDown[keys.leftAlt] or (
+					(checkInstanceByPos(evt[3], evt[4], false) == i) and not (checkInstanceByPos(evt[3], evt[4], true) == i)
+				)) then
+					if evt[2] == 1 then
+						-- dragging a window
+						if instances[i].manipMode == 0 then
+							instances[i].manipMode = 1
+							isManipulatingInstance = true
+							instances[i].dragging = {instances[i].mainWindow.meta.x - evt[3], instances[i].mainWindow.meta.y - evt[4]}
 						end
-					else
-						if (not instances[i].focused) and (evt[1] == "mouse_click") then
-							if not usedCoordinateEvent then
-								instances[i].focused = true
-								instances[1].focused = false
-								resumeInstance(1, evt, isCoordinateEvent)
+					elseif evt[2] == 2 then
+						-- resizing a window
+						if instances[i].manipMode == 0 then
+							instances[i].manipMode = 2
+							isManipulatingInstance = true
+							instances[i].oldTermPos = {
+								instances[i].termWindow.meta.x,
+								instances[i].termWindow.meta.y,
+								instances[i].termWindow.meta.width,
+								instances[i].termWindow.meta.height
+							}
+							instances[i].oldMainPos = {
+								instances[i].mainWindow.meta.x,
+								instances[i].mainWindow.meta.y,
+								instances[i].mainWindow.meta.width,
+								instances[i].mainWindow.meta.height
+							}
+							if evt[3] > (instances[i].mainWindow.meta.x + (instances[i].mainWindow.meta.width) - 1) - 2 then
+								instances[i].resizingRight = (instances[i].mainWindow.meta.x + instances[i].mainWindow.meta.width - 1) - evt[3]
+							elseif evt[3] < (instances[i].mainWindow.meta.x + 2) then
+								instances[i].resizingLeft = (instances[i].mainWindow.meta.x - 1) - evt[3]
+							end
+							if evt[4] > (instances[i].mainWindow.meta.y + (instances[i].mainWindow.meta.height) - 1) - 2 then
+								instances[i].resizingBottom = (instances[i].mainWindow.meta.y + instances[i].mainWindow.meta.height - 1) - evt[4]
+							elseif evt[4] < (instances[i].mainWindow.meta.y + 2) then
+								instances[i].resizingTop = (instances[i].mainWindow.meta.y - 1) - evt[4]
+							end
+						end
+					end
+				else
+					if evt[1] == "mouse_up" then
+						if instances[i].manipMode == 2 then
+							instances[i].mainWindow.clear()
+							instances[i].termWindow.reposition(2, 2, instances[i].mainWindow.meta.width - 2, instances[i].mainWindow.meta.height - 2)
+							instances[i].termWindow.redraw(nil, nil, nil, {force = true})
+						end
+						instances[i].manipMode = 0
+						isManipulatingInstance = false
+						instances[i].dragging = nil
+						instances[i].resizingRight = nil
+						instances[i].resizingLeft = nil
+						instances[i].resizingBottom = nil
+						instances[i].resizingTop = nil
+					elseif evt[1] == "mouse_drag" then
+						if isManipulatingInstance then
+							if instances[i].manipMode == 1 then
+								moveInstance(
+									i,
+									instances[i].dragging[1] + evt[3],
+									instances[i].dragging[2] + evt[4]
+								)
+							elseif instances[i].manipMode == 2 then
+								local newX, newY = instances[i].mainWindow.meta.x, instances[i].mainWindow.meta.y
+								local newWidth, newHeight = instances[i].mainWindow.meta.width, instances[i].mainWindow.meta.height
+								if instances[i].resizingRight then
+									newWidth = instances[i].resizingRight + (evt[3] - instances[i].oldMainPos[1] + 1)
+								end
+								if instances[i].resizingLeft then
+									newX = instances[i].resizingLeft + evt[3] + 1
+									newWidth = instances[i].oldMainPos[3] + (instances[i].oldMainPos[1] - newX)
+								end
+								if instances[i].resizingBottom then
+									newHeight = instances[i].resizingBottom + (evt[4] - instances[i].oldMainPos[2] + 1)
+								end
+								if instances[i].resizingTop then
+									newY = instances[i].resizingTop + evt[4] + 1
+									newHeight = instances[i].oldMainPos[4] + (instances[i].oldMainPos[2] - newY)
+								end
+								moveInstance(
+									i,
+									newX,
+									newY,
+									newWidth,
+									newHeight
+								)
+							end
+						end
+					end
+					if (instances[i].cFilter == evt[1] or instances[i].cFilter == "terminate" or (not instances[i].cFilter)) then
+						if (instances[i].focused or not FocusEvents[evt[1]]) then
+							resumeInstance(i, evt, CoordinateEvents[evt[1]])
+							if CoordinateEvents[evt[1]] then
+								usedCoordinateEvent = true
 							end
 						end
 					end
 				end
+				instances[i].writeTitleBar()
 			end
 		end
 
@@ -291,7 +478,6 @@ local main = function()
 				break
 			end
 		end
-		render()
 	end
 end
 
