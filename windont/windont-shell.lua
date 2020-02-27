@@ -13,6 +13,7 @@ end
 local windont = require "windont"
 
 windont.default.alwaysRender = false
+windont.useSetVisible = true
 
 local scr_x, scr_y = term.getSize()
 local keysDown = {}
@@ -62,7 +63,7 @@ local FocusEvents = {
 	["char"] = true,
 	["monitor_touch"] = true,
 	["paste"] = true,
-	["terminate"] = true,
+	["terminate"] = true
 	-- mouse_scroll is intentionally excluded
 }
 
@@ -142,8 +143,10 @@ local resumeInstance = function(i, _evt, isCoordinateEvent)
 		end
 		oldTerm = term.redirect(instances[i].termWindow)
 		success, result = coroutine.resume(instances[i].coroutine, table.unpack(evt))
+		instances[i].program = shell.getRunningProgram()
+		instances[i].setTitle()
 		term.redirect(oldTerm)
-		if success then
+		if success and coroutine.status(instances[i].coroutine) ~= "dead" then
 			instances[i].cFilter = result
 		else
 			instances[i].alive = false
@@ -162,6 +165,7 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 		output.termWindow = windont.newWindow(1, 2, width, height, {
 			baseTerm = output.mainWindow,
 			alwaysRender = false,
+			blink = false
 		})
 		output.oldTermPos = {1, 2, width, height}
 		output.oldMainPos = {x, y, width, height + 1}
@@ -207,7 +211,11 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 		end
 	end
 	output.refreshMainWindow()
-
+	output.program = program or "rom/programs/shell.lua"
+	output.setTitle = function()
+		output.title = pName or (type(output.program) == "string" and (knownNames[fs.combine("", output.program)] or fs.getName(output.program))) or tostring(output.program)
+	end
+	output.setTitle()
 	-- pausing will probably be implemented later
 	output.paused = false
 	output.timeMod = 0
@@ -217,7 +225,7 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 	output.alive = true
 	output.focused = true
 	output.manipMode = 0
-	output.title = pName or (type(program) == "string" and (knownNames[fs.combine("", program)] or fs.getName(program))) or tostring(program)
+
 	output.writeTitleBar = function()
 		mw.setCursorPos(1, 1)
 		if output.focused then
@@ -233,8 +241,10 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 		else
 			mw.write(output.title:sub(1, mw.meta.width - 7) .. "...") -- draw abreviated title
 		end
-		mw.setCursorPos(mw.meta.width - 3, 1)
-		mw.write(" \22\94\215")	-- minimize / maximize / close
+--		mw.setCursorPos(mw.meta.width - 3, 1)
+--		mw.write(" \22\94\215")	-- minimize / maximize / close
+		mw.setCursorPos(mw.meta.width - 1, 1)
+		mw.write(" \215")	-- close
 	end
 
 	if type(program) == "string" then
@@ -288,7 +298,7 @@ local moveInstance = function(i, x, y, newWidth, newHeight, relative)
 		math.max(instances[i].oldTermPos[3], instances[i].mainWindow.meta.width - 2),
 		math.max(instances[i].oldTermPos[4], instances[i].mainWindow.meta.height - 2)
 	)
-	instances[i].termWindow.redraw(nil,nil,nil,{force = true})
+	instances[i].termWindow.redraw(nil, nil, nil, {force = true})
 	instances[i].refreshMainWindow()
 end
 
@@ -302,10 +312,28 @@ local render = function()
 	windont.render({}, overlay, desktop)
 end
 
+local makeNewWindow = function(program)
+	newInstance(2, 2, math.max(scr_x - 16, 8), math.max(scr_y - 6, 5), program or "rom/programs/shell.lua")
+	local good = false
+	while not good do
+		good = true
+		if #instances == 1 then
+			return
+		else
+			for i = 2, #instances do
+				if instances[1].mainWindow.meta.x == instances[i].mainWindow.meta.x and instances[1].mainWindow.meta.y == instances[i].mainWindow.meta.y then
+					instances[1].mainWindow.reposition(instances[1].mainWindow.meta.x + 2, instances[1].mainWindow.meta.y + 2)
+					good = false
+					break
+				end
+			end
+		end
+	end
+end
+
 local main = function()
 
-	newInstance(3, 3, 30, 12, "rom/programs/shell.lua", nil)
-	newInstance(8, 5, 30, 12, "rom/programs/shell.lua", nil)
+	makeNewWindow()
 
 	local evt, success, result, oldTerm
 	local cx, cy
@@ -317,6 +345,7 @@ local main = function()
 
 	while true do
 		evt = {coroutine.yield()}
+		cx, cy = term.getCursorBlink()
 		if evt[1] == "key" and not evt[3] then
 			keysDown[evt[2]] = 0
 		elseif evt[1] == "key_up" then
@@ -324,13 +353,35 @@ local main = function()
 		end
 		if evt[1] == "mouse_click" then
 			focusInstance(checkInstanceByPos(evt[3], evt[4]))
+			if not checkInstanceByPos(evt[3], evt[4]) then
+				if evt[2] == 2 then
+					makeNewWindow()
+				end
+			elseif evt[2] == 1 then
+				if evt[4] == instances[1].mainWindow.meta.y and evt[3] == (instances[1].mainWindow.meta.x + instances[1].mainWindow.meta.width - 1) then
+					instances[1].alive = false
+				end
+			end
 		end
 		if evt[1] == "timer" and evt[2] == keyTimer then
-			keyTimer = os.startTimer(0.05)
+			keyTimer = os.startTimer(0)
 			for k,v in pairs(keysDown) do
 				keysDown[k] = v + 0.05
 			end
 
+			if instances[1] then
+				term.setCursorPos(
+					instances[1].termWindow.meta.cursorX + instances[1].mainWindow.meta.x,
+					instances[1].termWindow.meta.cursorY + instances[1].mainWindow.meta.y
+				)
+				term.setCursorBlink(instances[1].termWindow.meta.blink)
+				overlay.clear()
+			else
+				local msg = "Right click to open shell."
+				term.setCursorBlink(false)
+				overlay.setCursorPos(scr_x / 2 - #msg / 2, scr_y / 2)
+				overlay.write("Right click to open shell.")
+			end
 			render()
 
 			-- move windows with arrow keys (for now)
@@ -419,7 +470,9 @@ local main = function()
 								)
 							elseif instances[i].manipMode == 2 then
 								local newX, newY = instances[i].mainWindow.meta.x, instances[i].mainWindow.meta.y
+								local oriX, oriY = instances[i].mainWindow.meta.x, instances[i].mainWindow.meta.y
 								local newWidth, newHeight = instances[i].mainWindow.meta.width, instances[i].mainWindow.meta.height
+								local oriWidth, oriHeight = instances[i].mainWindow.meta.width, instances[i].mainWindow.meta.height
 								if instances[i].resizingRight then
 									newWidth = instances[i].resizingRight + (evt[3] - instances[i].oldMainPos[1] + 1)
 								end
@@ -441,6 +494,9 @@ local main = function()
 									newWidth,
 									newHeight
 								)
+								if newWidth ~= oriWidth or newHeight ~= oriHeight then
+									resumeInstance(i, {"term_resize"}, false)
+								end
 							end
 						end
 					end
