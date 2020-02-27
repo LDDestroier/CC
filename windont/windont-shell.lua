@@ -23,7 +23,8 @@ local knownNames = {
 	["rom/programs/shell.lua"] = "CraftOS Shell",
 	["rom/programs/edit.lua"] = "Edit",
 	["rom/programs/gps.lua"] = "GPS",
-	["rom/programs/shutdown.lua"] = "Shutdown",
+	["rom/programs/shutdown.lua"] = "Shutting down...",
+	["rom/programs/reboot.lua"] = "Rebooting...",
 	["rom/programs/monitor.lua"] = "Monitor Redirect",
 	["rom/programs/emu.lua"] = "Emu (CCEmuX)",
 	["rom/programs/exit.lua"] = "Goodbye!",
@@ -79,6 +80,9 @@ local desktop = windont.newWindow(1, 1, scr_x, scr_y, {
 	backColor = "9"
 })
 local overlay = windont.newWindow(1, 1, scr_x, scr_y, {
+	backColor = "-"
+})
+local debugOverlay = windont.newWindow(1, 1, scr_x, scr_y, {
 	backColor = "-"
 })
 desktop.redraw()
@@ -143,8 +147,10 @@ local resumeInstance = function(i, _evt, isCoordinateEvent)
 		end
 		oldTerm = term.redirect(instances[i].termWindow)
 		success, result = coroutine.resume(instances[i].coroutine, table.unpack(evt))
-		instances[i].program = shell.getRunningProgram()
+
+		instances[i].program = shell.resolveProgram(instances[i].environment.multishell.getTitle(multishell.getCurrent()))
 		instances[i].setTitle()
+
 		term.redirect(oldTerm)
 		if success and coroutine.status(instances[i].coroutine) ~= "dead" then
 			instances[i].cFilter = result
@@ -256,9 +262,9 @@ local newInstance = function(x, y, width, height, program, pName, addBorder)
 		output.main = program
 	end
 
-	--local env = {}
-	--setmetatable(env, {__index = _G})
-	--setfenv(output.main, env)
+	output.environment = {}
+	setmetatable(output.environment, {__index = _ENV})
+	setfenv(output.main, output.environment)
 
 	output.coroutine = coroutine.create(output.main)
 	output.cFilter = nil
@@ -309,7 +315,7 @@ local render = function()
 		instances[i].termWindow.redraw()
 	end
 	windont.render({force = true}, table.unpack(wins))
-	windont.render({}, overlay, desktop)
+	windont.render({}, debugOverlay, overlay, desktop)
 end
 
 local makeNewWindow = function(program)
@@ -329,6 +335,13 @@ local makeNewWindow = function(program)
 			end
 		end
 	end
+end
+
+local cleanExit = function()
+	term.setBackgroundColor(colors.black)
+	term.clear()
+	term.setCursorPos(1, 1)
+	print("Thanks for using Windon't Shell!")
 end
 
 local main = function()
@@ -351,6 +364,11 @@ local main = function()
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		end
+		if evt[1] == "term_resize" then
+			scr_x, scr_y = term.getSize()
+			desktop.reposition(1, 1, scr_x, scr_y)
+			overlay.reposition(1, 1, scr_x, scr_y)
+		end
 		if evt[1] == "mouse_click" then
 			focusInstance(checkInstanceByPos(evt[3], evt[4]))
 			if not checkInstanceByPos(evt[3], evt[4]) then
@@ -362,6 +380,10 @@ local main = function()
 					instances[1].alive = false
 				end
 			end
+		end
+		if evt[1] == "terminate" and not instances[1] then
+			cleanExit()
+			return true
 		end
 		if evt[1] == "timer" and evt[2] == keyTimer then
 			keyTimer = os.startTimer(0)
