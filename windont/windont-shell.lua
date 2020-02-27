@@ -23,6 +23,7 @@ local knownNames = {
 	["rom/programs/shell.lua"] = "CraftOS Shell",
 	["rom/programs/edit.lua"] = "Edit",
 	["rom/programs/gps.lua"] = "GPS",
+	["rom/programs/list.lua"] = "List",
 	["rom/programs/shutdown.lua"] = "Shutting down...",
 	["rom/programs/reboot.lua"] = "Rebooting...",
 	["rom/programs/monitor.lua"] = "Monitor Redirect",
