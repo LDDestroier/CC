@@ -210,6 +210,8 @@ local argData = {
 	["-PB"] = false,		-- pastebin upload
 	["-t"] = false,			-- transmit file
 	["-r"] = false,			-- receive file
+	["-R"] = false,			-- include read-only files
+	["-P"] = false,			-- include Progdor2 file
 	["-S"] = false,			-- use skynet
 	["-e"] = false,			-- automatic self-extractor
 	["-s"] = false,			-- silent
@@ -240,6 +242,8 @@ local selfExtractor	 = argList["-e"]	-- boolean
 local silent		 = argList["-s"]	-- boolean
 local useCompression = argList["-c"]	-- boolean
 local justOverwrite	 = argList["-o"]	-- boolean
+local allowReadOnly  = argList["-R"]	-- boolean
+local allowPackPD	 = argList["-P"]	-- boolean
 local useSkynet		 = argList["-S"]	-- boolean
 local trMode		 = argList["-t"] and "transmit" or (argList["-r"] and "receive" or "normal")
 
@@ -288,8 +292,6 @@ local function showHelp(verboseHelp)
 	if verboseHelp then
 		helpInfo = {
 			"Progdor v" .. progdor.version,
-			"",
-			"Options:",
 			" -pb [pastebin ID] : Download from Pastebin.",			-- added
 			" -PB : Upload to pastebin.",							-- added
 			" -dd [download URL] : Download from URL.",				-- added
@@ -298,6 +300,8 @@ local function showHelp(verboseHelp)
 			" -S : Use skynet when transmitting/receiving.",		-- added
 			" -t : Transmit a folder/file.",						-- added
 			" -r : Receive a file/packed folder.",					-- added
+			" -R : Allow packing read-only files/folders.",			-- added
+			" -P : Allow packing in Progdor2 itself.",				-- added
 			" -a : Allows programs to use require() on Progdor.",	-- added
 			" -c : Enables CCA compression.",						-- added
 			" -m : Specify main executable file in archive.",		-- added
@@ -313,6 +317,7 @@ local function showHelp(verboseHelp)
 			"       progdor [options] inputFile (outputFolder)",
 			"",
 			"Progdor is a file/folder packaging program with support for CCA compression and self-extraction.",
+			"  If tacking on auto-extractor, a third argument will be the default extraction path.",
 			"",
 			"Use -h for all options.",
 			"",
@@ -393,17 +398,21 @@ local function listAll(path, includePath)
 	local list = fs.list(path)
 	local fc = fs.combine
 	for i = 1, #list do
-		if fs.isDir(fc(path, list[i])) then
-			if #fs.list(fc(path, list[i])) == 0 then
-				output[#output+1] = (includePath and fc(path, list[i]) or list[i]) .. "/"
-			else
-				local la = listAll(fc(path, list[i]))
-				for ii = 1, #la do
-					output[#output+1] = includePath and fc(path, fc(list[i], la[ii])) or fc(list[i], la[ii])
+		if allowReadOnly or (not fs.isReadOnly(fc(path, list[i]))) then
+			if allowPackPD or fc(path, list[i]) ~= shell.getRunningProgram() then
+				if fs.isDir(fc(path, list[i])) then
+					if #fs.list(fc(path, list[i])) == 0 then
+						output[#output+1] = (includePath and fc(path, list[i]) or list[i]) .. "/"
+					else
+						local la = listAll(fc(path, list[i]))
+						for ii = 1, #la do
+							output[#output+1] = includePath and fc(path, fc(list[i], la[ii])) or fc(list[i], la[ii])
+						end
+					end
+				else
+					output[#output+1] = includePath and fc(path, list[i]) or list[i]
 				end
 			end
-		else
-			output[#output+1] = includePath and fc(path, list[i]) or list[i]
 		end
 	end
 	return output
@@ -413,6 +422,12 @@ local makeFileList = function(path, doCompress)
 	local output = {}
 	local list = listAll(path, false)
 	local file
+	if not allowPackPD then
+		cPrint("Ignoring Progdor2.", colors.lightGray)
+	end
+	if not allowReadOnly then
+		cPrint("Ignoring read-only files.", colors.lightGray)
+	end
 	sPrint("Packing files...")
 	for i = 1, #list do
 		setTextColor(colors.lightGray)
