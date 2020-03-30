@@ -744,16 +744,16 @@ local gameOver = function(player, cPlayer)
 	local waitTime
 	if cPlayer.lines == 0 then
 		mino = makeNewMino("eatmyass", player.board, 12, 3 + game.boardOverflow)
-		waitTime = 130
+		waitTime = 70
 	elseif cPlayer.lines <= 5 then
 		mino = makeNewMino("yousuck", player.board, 12, 3 + game.boardOverflow)
-		waitTime = 100
+		waitTime = 60
 	elseif cPlayer.lines == 69 or cPlayer.lines == 690 then
 		mino = makeNewMino("nice", player.board, 12, 3 + game.boardOverflow)
-		waitTime = 80
+		waitTime = 50
 	else
 		mino = makeNewMino("gameover", player.board, 12, 3 + game.boardOverflow)
-		waitTime = 90
+		waitTime = 70
 	end
 	local color = 0
 	for i = 1, waitTime do
