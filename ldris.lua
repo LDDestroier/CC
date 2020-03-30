@@ -65,11 +65,17 @@ local game = {
 		skynetPath = "/skynet.lua"			-- location for Skynet API
 	},
 	timers = {},
-	timerNo = 1
+	timerNo = 1,
 }
 
 for k,v in pairs(game.control) do
 	game.revControl[v] = k
+end
+
+game.setPaletteColor = function(...)
+	if game.amountOfPlayers <= 1 then
+		term.setPaletteColor(...)
+	end
 end
 
 local getTime = function()
@@ -115,7 +121,7 @@ local tColors = tableCopy(colors)
 tColors.white = 1
 tColors.brown = nil	-- brown is now white
 tColors.special = 4096
-term.setPaletteColor(tColors.special, 0xf0f0f0)
+term.setPaletteColor(tColors.special, 0x353535)
 term.setPaletteColor(tColors.white, 0xf0f0f0)
 
 -- initializes and fixes up a board
@@ -763,7 +769,7 @@ local gameOver = function(player, cPlayer)
 		renderBoard(player.board, 0, 0, true)
 		for i = 1, 20 do
 			color = color + 0.01
-			term.setPaletteColor(4096, math.sin(color) / 2 + 0.5, math.sin(color) / 2, math.sin(color) / 2)
+			game.setPaletteColor(4096, math.sin(color) / 2 + 0.5, math.sin(color) / 2, math.sin(color) / 2)
 		end
 		sleep(0.1)
 	end
@@ -843,7 +849,7 @@ local ldPalettes = function(light)
 			if k == "c" then
 				--term.setPaletteColor(to_colors[k], 0xf0f0f0)
 			else
-				term.setPaletteColor(to_colors[k], table.unpack(v))
+				game.setPaletteColor(to_colors[k], table.unpack(v))
 			end
 		end
 	else
@@ -851,9 +857,9 @@ local ldPalettes = function(light)
 			genDarkerPalettes(i)
 			for k,v in pairs(darkerPalettes) do
 				if k == "c" then
-					--term.setPaletteColor(to_colors[k], 0xf0f0f0)
+					--game.setPaletteColor(to_colors[k], 0xf0f0f0)
 				else
-					term.setPaletteColor(to_colors[k], table.unpack(v))
+					game.setPaletteColor(to_colors[k], table.unpack(v))
 				end
 			end
 			sleep(0.05)
@@ -887,7 +893,7 @@ local startGame = function(playerNumber)
 				end
 			end
 			if canChangeSpecial then
-				term.setPaletteColor(4096, mino.ghostColor)
+				game.setPaletteColor(4096, mino.ghostColor)
 			end
 			ghostMino.x = mino.x
 			ghostMino.y = mino.y
@@ -1065,8 +1071,6 @@ local startGame = function(playerNumber)
 				)
 				m.draw()
 			end
-			sendInfo("send_info", false, playerNumber)
-			renderBoard(player.queueBoard, 0, 0, false)
 
 			-- draw held piece
 			if cPlayer.hold ~= 0 then
@@ -1096,6 +1100,11 @@ local startGame = function(playerNumber)
 				sendInfo("quit_game", false)
 				return
 			end
+
+			mino.draw()
+			ghostMino.move(0, board.ySize, true)
+			ghostMino.draw()
+			sendInfo("send_info", false, playerNumber)
 
 			draw()
 
@@ -1175,7 +1184,8 @@ local startGame = function(playerNumber)
 									else
 										mino.move(0, cPlayer.fallSteps, true)
 										if math.floor(mino.oldY) ~= math.floor(mino.y) then
-											sendInfo("send_info", false)
+											draw(false, true)
+											--sendInfo("send_info", false)
 										end
 										draw()
 									end
@@ -1239,7 +1249,7 @@ local startGame = function(playerNumber)
 				player.flashingSpecial = true
 				renderBoard(board, 0, 0, true)
 				for i = 1, 0, -0.12 do
-					term.setPaletteColor(4096, i,i,i)
+					game.setPaletteColor(4096, i,i,i)
 					sleep(0.05)
 				end
 				for i = #clearedLines, 1, -1 do
@@ -1260,11 +1270,11 @@ local startGame = function(playerNumber)
 
 			if #clearedLines == 0 and game.running and not cPlayer.didHold then
 				mino.draw(false, "c")
-				term.setPaletteColor(colors.brown, table.unpack(darkerPalettes[mino.color]))
+				game.setPaletteColor(colors.brown, table.unpack(darkerPalettes[mino.color]))
 				renderBoard(board, 0, 0, true)
 				sleep(game.appearanceDelay)
 				mino.draw(true)
-				renderBoard(board, 0, 0, true)
+				renderBoard(board, 0, 0, false)
 			end
 		end
 	else
@@ -1388,7 +1398,7 @@ local networking = function()
 									game.p = msg.p
 								end
 								if msg.specialColor then
-									term.setPaletteColor(tColors.special, table.unpack(msg.specialColor))
+									game.setPaletteColor(tColors.special, table.unpack(msg.specialColor))
 								end
 								os.queueEvent("new_player_info", msg.p)
 							end
@@ -1397,7 +1407,7 @@ local networking = function()
 							end
 							if msg.command == "flash_special" then
 								for i = 1, 0, -0.12 do
-									term.setPaletteColor(4096, i,i,i)
+									game.setPaletteColor(4096, i,i,i)
 									renderBoard(game.p[msg.you].board, 0, 0, true)
 									sleep(0.05)
 								end
