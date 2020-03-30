@@ -775,12 +775,17 @@ local normalPalettes = {}
 local darkerPalettes = {}
 for i = 1, 16 do
 	normalPalettes[("0123456789abcdef"):sub(i,i)] = {term.getPaletteColor(2 ^ (i - 1))}
-	darkerPalettes[("0123456789abcdef"):sub(i,i)] = {
-		normalPalettes[("0123456789abcdef"):sub(i,i)][1] * 0.6,
-		normalPalettes[("0123456789abcdef"):sub(i,i)][2] * 0.6,
-		normalPalettes[("0123456789abcdef"):sub(i,i)][3] * 0.6,
-	}
 end
+local genDarkerPalettes = function(mult)
+	for i = 1, 16 do
+		darkerPalettes[("0123456789abcdef"):sub(i,i)] = {
+			normalPalettes[("0123456789abcdef"):sub(i,i)][1] * (mult or 0.6),
+			normalPalettes[("0123456789abcdef"):sub(i,i)][2] * (mult or 0.6),
+			normalPalettes[("0123456789abcdef"):sub(i,i)][3] * (mult or 0.6),
+		}
+	end
+end
+genDarkerPalettes()
 
 -- calculates the amount of garbage to send
 local calculateGarbage = function(lines, combo, backToBack, didTspin)
@@ -832,6 +837,31 @@ local doleOutGarbage = function(player, cPlayer, amount)
 	cPlayer.garbage = 0
 end
 
+local ldPalettes = function(light)
+	if light then
+		for k,v in pairs(normalPalettes) do
+			if k == "c" then
+				--term.setPaletteColor(to_colors[k], 0xf0f0f0)
+			else
+				term.setPaletteColor(to_colors[k], table.unpack(v))
+			end
+		end
+	else
+		for i = 1, 0.3, -0.1 do
+			genDarkerPalettes(i)
+			for k,v in pairs(darkerPalettes) do
+				if k == "c" then
+					--term.setPaletteColor(to_colors[k], 0xf0f0f0)
+				else
+					term.setPaletteColor(to_colors[k], table.unpack(v))
+				end
+			end
+			sleep(0.05)
+		end
+	end
+	genDarkerPalettes()
+end
+
 -- initiates a game as a specific player (takes a number)
 local startGame = function(playerNumber)
 
@@ -881,30 +911,20 @@ local startGame = function(playerNumber)
 			if control.quit == 1 then
 				finished = true
 				game.running = false
+				game.paused = false
+				ldPalettes(true)
 				sendInfo("quit_game", false)
 				return
 			end
 
 			if game.paused then
 				if control.pause == 1 then
-					for k,v in pairs(normalPalettes) do
-						if k == "c" then
-							term.setPaletteColor(to_colors[k], 0x0f0f0f)
-						else
-							term.setPaletteColor(to_colors[k], table.unpack(v))
-						end
-					end
+					ldPalettes(true)
 					game.paused = false
 				end
 			else
 				if control.pause == 1 then
-					for k,v in pairs(darkerPalettes) do
-						if k == "c" then
-							term.setPaletteColor(to_colors[k], 0.1, 0.1, 0.1)
-						else
-							term.setPaletteColor(to_colors[k], table.unpack(v))
-						end
-					end
+					ldPalettes(false)
 					game.paused = true
 				end
 				if not cPlayer.frozen then
