@@ -17,6 +17,8 @@
 --  + Add random color pulsation (for effect!)
 --  + Add a proper title screen. The current one is pathetic.
 
+local sentInfos = 0
+
 local scr_x, scr_y = term.getSize()
 local keysDown = {}
 local game = {
@@ -32,8 +34,10 @@ local game = {
 	canPause = true,		-- if false, cannot pause game (such as in online multiplayer)
 	inputDelay = 0.05,		-- amount of time between each input
 	gameDelay = 0.05,		-- amount of time between game ticks
+	minimumLockTimer = 0.4,	-- shortest amount of time before a piece locks upon touching the ground
+	appearanceDelay = 0.15,	-- amount of time to wait after placing a piece
 	config = {
-		TGMlock = true,		-- replicate the piece locking from Tetris: The Grand Master
+		TGMlock = false,		-- replicate the piece locking from Tetris: The Grand Master
 		scrubMode = false,	-- gives you nothing but I-pieces
 	},
 	control = {					-- client's control scheme
@@ -149,6 +153,7 @@ local minos = {
 	[1] = {	-- I-piece
 		canRotate = true,
 		canTspin = false,
+		mainColor = "3",
 		shape = {
 			"    ",
 			"3333",
@@ -159,6 +164,7 @@ local minos = {
 	[2] = {	-- L-piece
 		canRotate = true,
 		canTspin = false,
+		mainColor = "1",
 		shape = {
 			"  1",
 			"111",
@@ -168,6 +174,7 @@ local minos = {
 	[3] = {	-- J-piece
 		canRotate = true,
 		canTspin = false,
+		mainColor = "b",
 		shape = {
 			"b  ",
 			"bbb",
@@ -177,6 +184,7 @@ local minos = {
 	[4] = {	-- O-piece
 		canRotate = true,
 		canTspin = false,
+		mainColor = "4",
 		shape = {
 			"44",
 			"44",
@@ -185,6 +193,7 @@ local minos = {
 	[5] = { -- T-piece
 		canRotate = true,
 		canTspin = true,
+		mainColor = "a",
 		shape = {
 			" a ",
 			"aaa",
@@ -194,6 +203,7 @@ local minos = {
 	[6] = { -- Z-piece
 		canRotate = true,
 		canTspin = false,
+		mainColor = "e",
 		shape = {
 			"ee ",
 			" ee",
@@ -203,6 +213,7 @@ local minos = {
 	[7] = {	-- S-piece
 		canRotate = true,
 		canTspin = false,
+		mainColor = "5",
 		shape = {
 			" 55",
 			"55 ",
@@ -340,6 +351,7 @@ local transmit = function(msg)
 end
 
 local sendInfo = function(command, doSendTime, playerNumber)
+	sentInfos = sentInfos + 1
 	if game.net.isHost then
 		transmit({
 			command = command,
@@ -375,6 +387,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 
 	mino.x = x
 	mino.y = y
+	mino.color = minos[minoType].mainColor or "c"
 	mino.didTspin = false	-- if the player has done a T-spin with this piece
 	mino.lockBreaks = 16	-- anti-infinite measure
 	mino.waitingForLock = false
@@ -415,19 +428,29 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			output[y] = table.concat(output[y])
 		end
 		mino.shape = output
+		-- check T-spin
+		local checkTspin = function(mino)
+			if (mino.checkCollision(-1, 0) and mino.checkCollision(1, 0) and mino.checkCollision(0, -1)) then
+				mino.didTspin = true
+				return true
+			else
+				return false
+			end
+		end
 		-- try to kick off wall/floor
 		if mino.checkCollision(0, 0) then
 			-- try T-spin triple rotation
 			if not mino.checkCollision(-direction, 2) then
 				mino.y = mino.y + 2
 				mino.x = mino.x - direction
-				mino.didTspin = true
+				checkTspin(mino)
 				return true
 			end
 			-- kick off floor
-			for y = 1, math.floor(#mino.shape) do
+			for y = 1, math.floor(#mino.shape / 2) do
 				if not mino.checkCollision(0, -y) then
 					mino.y = mino.y - y
+					checkTspin(mino)
 					return true
 				end
 			end
@@ -435,13 +458,15 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			for x = 0, -math.floor(#mino.shape[1] / 2), -1 do
 				if not mino.checkCollision(x, 0) then
 					mino.x = mino.x + x
+					checkTspin(mino)
 					return true
 				end
 				-- try diagonal-down
 				if not mino.checkCollision(x, 1) then
 					mino.x = mino.x + x
 					mino.y = mino.y + 1
-					mino.didTspin = true
+					sendInfo("send_info", false)
+					checkTspin(mino)
 					return true
 				end
 			end
@@ -449,13 +474,15 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			for x = 0, math.floor(#mino.shape[1] / 2) do
 				if not mino.checkCollision(x, 0) then
 					mino.x = mino.x + x
+					checkTspin(mino)
 					return true
 				end
 				-- try diagonal-down
 				if not mino.checkCollision(x, 1) then
 					mino.x = mino.x + x
 					mino.y = mino.y + 1
-					mino.didTspin = true
+					sendInfo("send_info", false)
+					checkTspin(mino)
 					return true
 				end
 			end
@@ -466,14 +493,14 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 		end
 	end
 	-- draws a mino onto a board; you'll still need to render the board, though
-	mino.draw = function(isSolid)
+	mino.draw = function(isSolid, colorReplace)
 		for y = 1, #mino.shape do
 			for x = 1, #mino.shape[y] do
 				if mino.shape[y]:sub(x,x) ~= " " then
 					if doesSpaceExist(mino.board, x + math.floor(mino.x), y + math.floor(mino.y)) then
 						mino.board[y + math.floor(mino.y)][x + math.floor(mino.x)] = {
 							isSolid or false,
-							mino.shape[y]:sub(x,x),
+							colorReplace or mino.shape[y]:sub(x,x),
 							isSolid and 0 or 0,
 							isSolid and 0 or 1
 						}
@@ -495,14 +522,18 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 					mino.x = mino.x + sx - math.abs(x) / x
 					break
 				end
-				mino.didTspin = false
+				if sx ~= 0 then
+					mino.didTspin = false
+				end
 			end
 			for sy = 0, math.ceil(y), math.abs(y) / y do
 				if mino.checkCollision(0, sy) then
 					mino.y = mino.y + sy - math.abs(y) / y
 					break
 				end
-				mino.didTspin = false
+				if sy ~= 0 then
+					mino.didTspin = false
+				end
 			end
 		else
 			return false
@@ -717,6 +748,18 @@ local gameOver = function(player, cPlayer)
 	return
 end
 
+-- used when darkening just-placed pieces
+local normalPalettes = {}
+local darkerPalettes = {}
+for i = 1, 16 do
+	normalPalettes[("0123456789abcdef"):sub(i,i)] = {term.getPaletteColor(2 ^ (i - 1))}
+	darkerPalettes[("0123456789abcdef"):sub(i,i)] = {
+		normalPalettes[("0123456789abcdef"):sub(i,i)][1] * 0.6,
+		normalPalettes[("0123456789abcdef"):sub(i,i)][2] * 0.6,
+		normalPalettes[("0123456789abcdef"):sub(i,i)][3] * 0.6,
+	}
+end
+
 -- calculates the amount of garbage to send
 local calculateGarbage = function(lines, combo, backToBack, didTspin)
 	local output = 0
@@ -783,7 +826,7 @@ local startGame = function(playerNumber)
 		board = player.board
 		control = player.control
 
-		local draw = function(isSolid)
+		local draw = function(isSolid, doSendInfo)
 			local canChangeSpecial = true
 			for k,v in pairs(game.p) do
 				if v.flashingSpecial then
@@ -799,8 +842,12 @@ local startGame = function(playerNumber)
 			ghostMino.move(0, board.ySize, true)
 			ghostMino.draw(false)
 			mino.draw(isSolid, ageSpaces)
-			sendInfo("send_info", false, playerNumber)
+			if doSendInfo then
+				sendInfo("send_info", false, playerNumber)
+			end
 			renderBoard(board, 0, 0, true)
+			term.setCursorPos(1, 1)
+			term.write(mino.didTspin)
 		end
 
 		local currentMinoType
@@ -831,28 +878,34 @@ local startGame = function(playerNumber)
 						if mino.move(-1, 0) then
 							game.cancelTimer(lockTimer or 0)
 							mino.waitingForLock = false
-							draw()
+							draw(nil, true)
 						end
 					end
 					if control.moveRight == 1 or (control.moveRight or 0) >= 1 + game.moveHoldDelay then
 						if mino.move(1, 0) then
 							game.cancelTimer(lockTimer or 0)
 							mino.waitingForLock = false
-							draw()
+							draw(nil, true)
 						end
 					end
 					if control.moveDown then
 						game.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
 						if mino.move(0, 1) then
-							draw()
+							draw(nil, true)
 						else
-							if mino.waitingForLock then
-								game.alterTimer(lockTimer, -0.1)
+							if game.config.TGMlock then
+								draw(true, true)
+								cPlayer.canHold = true
+								finished = true
 							else
-								mino.lockBreaks = mino.lockBreaks - 1
-								lockTimer = game.startTimer(math.max(0.2 / cPlayer.fallSteps, 0.5))
-								mino.waitingForLock = true
+								if mino.waitingForLock then
+									game.alterTimer(lockTimer, -0.1)
+								else
+									mino.lockBreaks = mino.lockBreaks - 1
+									lockTimer = game.startTimer(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer))
+									mino.waitingForLock = true
+								end
 							end
 						end
 					end
@@ -862,7 +915,7 @@ local startGame = function(playerNumber)
 							ghostMino.rotate(-1)
 							game.cancelTimer(lockTimer or 0)
 							mino.waitingForLock = false
-							draw()
+							draw(nil, true)
 						end
 					end
 					if control.rotateRight == 1 then
@@ -871,7 +924,7 @@ local startGame = function(playerNumber)
 							ghostMino.rotate(1)
 							game.cancelTimer(lockTimer or 0)
 							mino.waitingForLock = false
-							draw()
+							draw(nil, true)
 						end
 					end
 					if control.hold == 1 then
@@ -889,17 +942,22 @@ local startGame = function(playerNumber)
 								player.holdBoard,
 								#minos[cPlayer.hold].shape[1] == 2 and 1 or 0,
 								0
-							).draw()
+							).draw(false)
 							sendInfo("send_info", false, playerNumber)
 							renderBoard(player.holdBoard, 0, 0, false)
 							finished = true
+							cPlayer.didHold = true
 						end
 					end
 					if control.fastDrop == 1 then
 						mino.move(0, board.ySize, true)
-						draw(true)
-						cPlayer.canHold = true
-						finished = true
+						if game.config.TGMlock then
+							draw(false)
+						else
+							draw(true, true)
+							cPlayer.canHold = true
+							finished = true
+						end
 					end
 				end
 			end
@@ -914,6 +972,7 @@ local startGame = function(playerNumber)
 
 			cPlayer.level = math.ceil((1 + cPlayer.lines) / 10)
 			cPlayer.fallSteps = 0.075 * (1.33 ^ cPlayer.level)
+			cPlayer.didHold = false
 
 			if takeFromQueue then
 				currentMinoType = cPlayer.queue[1]
@@ -1048,6 +1107,7 @@ local startGame = function(playerNumber)
 							dropTimer = game.startTimer(0)
 							if not game.paused then
 								if not cPlayer.frozen then
+									mino.oldY = mino.y
 									if mino.checkCollision(0, 1) then
 										if mino.lockBreaks == 0 then
 											draw(true)
@@ -1055,11 +1115,14 @@ local startGame = function(playerNumber)
 											break
 										elseif not mino.waitingForLock then
 											mino.lockBreaks = mino.lockBreaks - 1
-											lockTimer = game.startTimer(math.max(0.2 / cPlayer.fallSteps, 0.25))
+											lockTimer = game.startTimer(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer))
 											mino.waitingForLock = true
 										end
 									else
 										mino.move(0, cPlayer.fallSteps, true)
+										if math.floor(mino.oldY) ~= math.floor(mino.y) then
+											sendInfo("send_info", false)
+										end
 										draw()
 									end
 								end
@@ -1097,7 +1160,7 @@ local startGame = function(playerNumber)
 					player.backToBack = 0
 				end
 
-				drawComboMessage(player, cPlayer, #clearedLines)
+				drawComboMessage(player, cPlayer, #clearedLines, mino.didTspin)
 
 				cPlayer.lastLinesCleared = #clearedLines
 
@@ -1139,6 +1202,15 @@ local startGame = function(playerNumber)
 
 			if cPlayer.garbage > 0 then
 				doleOutGarbage(player, cPlayer, cPlayer.garbage)
+			end
+
+			if #clearedLines == 0 and game.running and not cPlayer.didHold then
+				mino.draw(false, "c")
+				term.setPaletteColor(colors.brown, table.unpack(darkerPalettes[mino.color]))
+				renderBoard(board, 0, 0, true)
+				sleep(game.appearanceDelay)
+				mino.draw(true)
+				renderBoard(board, 0, 0, true)
 			end
 		end
 	else
