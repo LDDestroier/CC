@@ -48,7 +48,8 @@ local game = {
 		rotateRight = keys.x,	-- rotate clockwise
 		fastDrop = keys.up,		-- instantly drop and place piece
 		hold = keys.leftShift,	-- slot piece into hold buffer
-		quit = keys.q			-- fuck off
+		quit = keys.q,			-- fuck off
+		pause = keys.p
 	},
 	revControl = {},			-- a mirror of "control", but with the keys and values inverted
 	net = {									-- all network-related values
@@ -446,10 +447,31 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 				checkTspin(mino)
 				return true
 			end
+			-- kick off ceiling
+			for y = 1, #mino.shape do
+				for x = -1, 1 do
+					if not mino.checkCollision(x, y) then
+						mino.x = mino.x + x
+						mino.y = mino.y + y
+						--checkTspin(mino)
+						--return true
+					end
+				end
+			end
 			-- kick off floor
 			for y = 1, math.floor(#mino.shape / 2) do
 				if not mino.checkCollision(0, -y) then
 					mino.y = mino.y - y
+					checkTspin(mino)
+					return true
+				elseif not mino.checkCollision(-1, -y) then
+					mino.y = mino.y - y
+					mino.x = mino.x - 1
+					checkTspin(mino)
+					return true
+				elseif not mino.checkCollision(1, -y) then
+					mino.y = mino.y - y
+					mino.x = mino.x + 1
 					checkTspin(mino)
 					return true
 				end
@@ -865,10 +887,24 @@ local startGame = function(playerNumber)
 
 			if game.paused then
 				if control.pause == 1 then
+					for k,v in pairs(normalPalettes) do
+						if k == "c" then
+							term.setPaletteColor(to_colors[k], 0x0f0f0f)
+						else
+							term.setPaletteColor(to_colors[k], table.unpack(v))
+						end
+					end
 					game.paused = false
 				end
 			else
 				if control.pause == 1 then
+					for k,v in pairs(darkerPalettes) do
+						if k == "c" then
+							term.setPaletteColor(to_colors[k], 0.1, 0.1, 0.1)
+						else
+							term.setPaletteColor(to_colors[k], table.unpack(v))
+						end
+					end
 					game.paused = true
 				end
 				if not cPlayer.frozen then
