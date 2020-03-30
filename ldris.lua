@@ -846,8 +846,6 @@ local startGame = function(playerNumber)
 				sendInfo("send_info", false, playerNumber)
 			end
 			renderBoard(board, 0, 0, true)
-			term.setCursorPos(1, 1)
-			term.write(mino.didTspin)
 		end
 
 		local currentMinoType
