@@ -17,15 +17,50 @@ end
 local openChannels = {}
 local yourID = os.getComputerID()
 local uniqueID = math.random(1, 2^31 - 1) -- prevents receiving your own messages
-local msgCheckList = {} 	-- makes sure duplicate messages aren't received
-local ageToToss = 0.005		-- amount of time before a message is removed
+local msgCheckList = {} -- makes sure duplicate messages aren't received
+local ageToToss = 0.005	-- amount of time before a message is removed
 
 --	used for synching times between different emulators
 disknet._timeMod = 0
 
--- I would have used os.epoch("utc"), but not every emulator has that
+-- do not think for one second that os.epoch("utc") would be a proper substitute
 local getTime = function()
 	return (os.time() + (-1 + os.day()) * 24) + disknet._timeMod
+end
+
+local function serialize(tbl)
+	local output = "{"
+	local noKlist = {}
+	local cc = table.concat
+	for i = 1, #tbl do
+		if type(tbl[i]) == "table" then
+			output = output .. serialize(tbl[i])
+		elseif type(tbl[i]) == "string" then
+			output = cc({output, "\"", tbl[i], "\""})
+		else
+			output = output .. tbl[i]
+		end
+		noKlist[i] = true
+		output = output .. ","
+	end
+	for k,v in pairs(tbl) do
+		if not noKlist[k] then
+			if type(k) == "number" or type(k) == "table" then
+				output = cc({output, "[", k, "]="})
+			else
+				output = cc({output, k, "="})
+			end
+			if type(v) == "table" then
+				output = output .. serialize(v)
+			elseif type(v) == "string" then
+				output = cc({output, "\"", v, "\""})
+			else
+				output = output .. v
+			end
+			output = output .. ","
+		end
+	end
+	return output:sub(1, -2):gsub("\n", "\\n") .. "}"
 end
 
 local readFile = function(path)
@@ -133,9 +168,9 @@ disknet.send = function(channel, message, recipient)
 				if #contents > maximumBufferSize then
 					table.remove(contents, 1)
 				end
-				file.write(textutils.serialize(contents):gsub("\n[ ]*", ""))
+				file.write(serialize(contents))
 			else
-				file.write(textutils.serialize({{
+				file.write(serialize({{
 					time = cTime,
 					id = yourID,
 					uniqueID = uniqueID,
@@ -223,7 +258,7 @@ disknet.receive = function(channel, senderFilter)
 									end
 								end
 								if doRewrite then
-									writeFile(pList[i], textutils.serialize(contents))
+									writeFile(pList[i], serialize(contents))
 								end
 								if output then
 									break
