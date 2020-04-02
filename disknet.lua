@@ -2,21 +2,28 @@ local disknet = {}
 
 local tArg = {...}
 
-disknet.mainPath = "disk/DISKNET"
-local limitChannelsToModem = false
-local useSleepToYield = false
-local maximumBufferSize = 64
+disknet.mainPath = "disk/DISKNET"	-- path of shared file
+local limitChannelsToModem = false	-- if true, can only use number channels from 1 to 65535
+local checkDelay = 0.05				-- amount of time (seconds) between checking the file -- if 0, checks super fast so don't do that
+local maximumBufferSize = 64		-- largest amount of messages per channel buffered
+
+local isUsingTweaked = false
+if _HOST then
+	if _HOST:find("CCEmuX") or _HOST:find("CC:Tweaked") then
+		isUsingTweaked = true
+	end
+end
 
 local openChannels = {}
 local yourID = os.getComputerID()
 local uniqueID = math.random(1, 2^31 - 1) -- prevents receiving your own messages
-local msgCheckList = {} -- makes sure duplicate messages aren't received
-local ageToToss = 0.002	-- amount of time before a message is removed
+local msgCheckList = {} 	-- makes sure duplicate messages aren't received
+local ageToToss = 0.005		-- amount of time before a message is removed
 
 --	used for synching times between different emulators
 disknet._timeMod = 0
 
--- do not think for one second that os.epoch("utc") would be a proper substitute
+-- I would have used os.epoch("utc"), but not every emulator has that
 local getTime = function()
 	return (os.time() + (-1 + os.day()) * 24) + disknet._timeMod
 end
@@ -126,7 +133,7 @@ disknet.send = function(channel, message, recipient)
 				if #contents > maximumBufferSize then
 					table.remove(contents, 1)
 				end
-				file.write(textutils.serialize(contents))
+				file.write(textutils.serialize(contents):gsub("\n[ ]*", ""))
 			else
 				file.write(textutils.serialize({{
 					time = cTime,
@@ -135,7 +142,7 @@ disknet.send = function(channel, message, recipient)
 					messageID = math.random(1, 2^31 - 1),
 					channel = channel,
 					message = message,
-				}}))
+				}}):gsub("\n[ ]*", ""))
 			end
 			file.close()
 			return true
@@ -171,6 +178,7 @@ disknet.receive = function(channel, senderFilter)
 
 		local good, goddamnit = pcall(function()
 			local cTime = getTime()
+			local goWithIt = false
 			while true do
 				loadFList()
 				for i = 1, #fList do
@@ -185,7 +193,12 @@ disknet.receive = function(channel, senderFilter)
 											if (not contents[look].recipient) or contents[look].recipient == yourID then				-- make sure that messages intended for others aren't picked up
 												if (not channel) or channel == contents[look].channel then								-- make sure that messages are the same channel as the filter, if any
 													if (not senderFilter) or senderFilter == contents[look].id then						-- make sure that the sender is the same as the id filter, if any
-														if cTime - (contents[look].time or 0) <= ageToToss then						-- make sure the message isn't too old
+														if (not isUsingTweaked) and math.abs(contents[look].time - getTime()) >= ageToToss then		-- if using something besides CC:Tweaked/CCEmuX, adjust your time.
+															disknet._timeMod = contents[look].time - getTime()
+															cTime = getTime()
+															goWithIt = true
+														end
+														if cTime - (contents[look].time or 0) <= ageToToss or goWithIt then						-- make sure the message isn't too old
 															msgCheckList[contents[look].messageID] = true
 															output = {}
 															for k,v in pairs(contents[look]) do
@@ -203,7 +216,7 @@ disknet.receive = function(channel, senderFilter)
 								-- delete old msesages
 								doRewrite = false
 								for t = #contents, 1, -1 do
-									if cTime - (contents[t].time or 0) > ageToToss then
+									if cTime - (contents[t].time or 0) > ageToToss or cTime - (contents[t].time or 0) < -1 then
 										msgCheckList[contents[t].messageID] = nil
 										table.remove(contents, t)
 										doRewrite = true
@@ -222,8 +235,8 @@ disknet.receive = function(channel, senderFilter)
 				if output then
 					break
 				else
-					if useSleepToYield then
-						sleep(0)
+					if checkDelay > 0 then
+						sleep(checkDelay)
 					else
 						os.queueEvent("")
 						os.pullEvent("")
@@ -238,7 +251,7 @@ disknet.receive = function(channel, senderFilter)
 
 		if good then
 			if contents then
-				return output.message, output.channel, output.id, output.time
+				return output.message, output.channel, output.id, output.time + disknet._timeMod
 			else
 				return nil
 			end
@@ -253,6 +266,7 @@ disknet.receive = function(channel, senderFilter)
 	end
 end
 
+-- not really needed if going between CCEmuX and another emulator, but may be needed between two separate CCEmuX daemons
 disknet.receive_TS = function(...)
 	local message, channel, id, time = disknet.receive(...)
 	if time then
