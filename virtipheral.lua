@@ -1,3 +1,22 @@
+--[[
+	Virtipheral -- virtual peripheral tool
+
+	Docs:
+
+		virtipheral.activate() - Turns on Virtipheral, and overwrites _G.peripheral.
+		virtipheral.deactivate() - Turns off Virtipheral, and reverts _G.peripheral back.
+
+	Upon activation, some new functions are added into _G.peripheral.
+
+		peripheral.attach(string Side, string PeripheralType) - Adds a new virtual peripheral on the specified Side. If that side is occupied by a real peripheral, the virtual one will take precedent.
+		peripheral.detach(string Side) - Detaches a virtual peripheral from the specified Side.
+		peripheral.saveAttach(optional string Path) - Saves the current setup of attached virtual peripherals to a file (by default, "/.virtipheral/p.lson").
+		peripheral.loadAttach(optional string Path, optional boolean Additive) - Loads a saved setup of virtual peripherals from a file. If additive is true, it will add any new peripherals into the current setup instead of overwriting the setup.
+
+	Create new virtual peripherals by making a Lua script that returns a table of methods.
+	Place these files at "/.virtipheral/peripherals/ and load them with peripheral.attach()."
+--]]
+
 local virtipheral = {
 	-- path where virtual peripherals are stored
 	peripheralPath = ".virtipheral/peripherals",
@@ -158,12 +177,9 @@ local makeNewPeripheralAPI = function(old)
 	p.isPresent = function(side)
 		if virtualPeripherals[side] then
 			return true
-		elseif old.isPresent(side) then
-			return true
 		else
-			return false
+			return old.isPresent(side)
 		end
-		return true
 	end
 
 	return p
