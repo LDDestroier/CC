@@ -126,6 +126,15 @@ local nativePalette = {		-- native palette colors, since some terminals are naug
 	}
 }
 
+-- list of all completely blank characters
+local whitespace = {
+	["\9"] = true,
+	["\10"] = true,
+	["\13"] = true,
+	["\32"] = true,
+	["\128"] = true
+}
+
 -- check if space on screenBuffer is transparent
 local checkTransparent = function(buffer, x, y, blitLayer)
 	if buffer[blitLayer or 1][y] then
@@ -134,7 +143,7 @@ local checkTransparent = function(buffer, x, y, blitLayer)
 		else
 			if (not buffer[2][y][x] or buffer[2][y][x] == "-") and (not buffer[3][y][x] or buffer[3][y][x] == "-") then
 				return false
-			elseif (not buffer[3][y][x] or buffer[3][y][x] == "-") and (not buffer[1][y][x] or buffer[1][y][x] == " ") then
+			elseif (not buffer[3][y][x] or buffer[3][y][x] == "-") and (not buffer[1][y][x] or whitespace[buffer[1][y][x]]) then
 				return false
 			else
 				return buffer[1][y][x] and buffer[2][y][x] and buffer[3][y][x]
@@ -456,8 +465,8 @@ windont.newWindow = function( x, y, width, height, misc )
 		for i = 1, #char do
 			if meta.cursorX >= 1 and meta.cursorX <= meta.width and meta.cursorY >= 1 and meta.cursorY <= meta.height then
 				meta.buffer[1][meta.cursorY][meta.cursorX] = char:sub(i,i)
-				meta.buffer[2][meta.cursorY][meta.cursorX] = text:sub(i,i) == " " and windont.default.textColor or text:sub(i,i)
-				meta.buffer[3][meta.cursorY][meta.cursorX] = back:sub(i,i) == " " and windont.default.backColor or back:sub(i,i)
+				meta.buffer[2][meta.cursorY][meta.cursorX] = to_colors[text:sub(i,i)] and windont.default.textColor or text:sub(i,i)
+				meta.buffer[3][meta.cursorY][meta.cursorX] = to_colors[back:sub(i,i)] and windont.default.backColor or back:sub(i,i)
 				meta.cursorX = meta.cursorX + 1
 			end
 		end
