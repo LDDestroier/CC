@@ -904,6 +904,7 @@ local startGame = function(playerNumber)
 				sendInfo("send_info", false, playerNumber)
 			end
 			renderBoard(board, 0, 0, true)
+			renderBoard(player.queueBoard, 0, 0, false)
 		end
 
 		local currentMinoType
