@@ -398,7 +398,7 @@ windont.newWindow = function( x, y, width, height, misc )
 		isColor 		= expect(misc.isColor, term.isColor(), "boolean"),				-- if true, then it's an advanced computer
 
 		transformation 	= expect(misc.transformation, nil, "function"),			-- function that transforms the char/text/back dots of the window
-		metaTransformation = expect(misc.miscTransformation, nil, "function"),			-- function that transforms the whole output.meta function
+		metaTransformation = expect(misc.metaTransformation, nil, "function"),			-- function that transforms the whole output.meta function
 
 		cursorX 		= expect(misc.cursorX, 1),
 		cursorY 		= expect(misc.cursorY, 1),
