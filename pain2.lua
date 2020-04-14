@@ -72,6 +72,11 @@ pain.control = {
 		holdDown = true,
 		modifiers = {},
 	},
+	singleScroll = {
+		key = keys.tab,
+		holdDown = true,
+		modifiers = {},
+	},
 	resetScroll = {
 		key = keys.a,
 		holdDown = false,
@@ -106,9 +111,42 @@ pain.control = {
 		holdDown = false,
 		modifiers = {},
 	},
+	shiftDotsRight = {
+		key = keys.right,
+		holdDown = false,
+		modifiers = {
+			[keys.shift] = true
+		}
+	},
+	shiftDotsLeft = {
+		key = keys.left,
+		holdDown = false,
+		modifiers = {
+			[keys.shift] = true
+		}
+	},
+	shiftDotsUp = {
+		key = keys.up,
+		holdDown = false,
+		modifiers = {
+			[keys.shift] = true
+		}
+	},
+	shiftDotsDown = {
+		key = keys.down,
+		holdDown = false,
+		modifiers = {
+			[keys.shift] = true
+		}
+	},
+	toggleLayerMenu = {
+		key = keys.l,
+		holdDown = false,
+		modifiers = {}
+	}
 }
 
-local checkControl = function(name)
+local checkControl = function(name, forceHoldDown)
 	local modlist = {
 		keys.ctrl,
 		keys.shift,
@@ -127,7 +165,11 @@ local checkControl = function(name)
 	end
 	if pain.control[name].key then
 		if keysDown[pain.control[name].key] then
-			if pain.control[name].holdDown then
+			local holdDown = pain.control[name].holdDown
+			if forceHoldDown ~= nil then
+				holdDown = forceHoldDown
+			end
+			if holdDown then
 				return true
 			else
 				if not pain.controlHoldCheck[name] then
@@ -237,10 +279,11 @@ windont.default.alwaysRender = false
 
 local scr_x, scr_y = term.getSize()
 
-pain.windows.toolPreview 	= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
-pain.windows.menu 			= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
-pain.windows.smallPreview 	= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
-pain.windows.grid 			= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.toolPreview 	= windont.newWindow(1,          1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.mainMenu 		= windont.newWindow(1,          1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.layerMenu 		= windont.newWindow(scr_x - 20, 1, 20,    scr_y, {textColor = "-", backColor = "-"})
+pain.windows.smallPreview 	= windont.newWindow(1,          1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.grid 			= windont.newWindow(1,          1, scr_x, scr_y, {textColor = "-", backColor = "-"})
 
 local function tableCopy(tbl)
 	local output = {}
@@ -270,13 +313,13 @@ end
 
 pain.tickTimers = function()
 	local done = {}
-	for k,v in pairs(pain.timers) do
+	for k,v in next, pain.timers do
 		pain.timers[k] = v - 1
 		if pain.timers[k] <= 0 then
 			done[k] = true
 		end
 	end
-	for k,v in pairs(done) do
+	for k,v in next, done do
 		pain.timers[k] = nil
 	end
 	return done
@@ -335,29 +378,13 @@ local getDotsInLine = function( startX, startY, endX, endY )
 end
 
 pain.manip.touchDot = function(canvas, x, y)
-	if false then
-		if (x > canvas.meta.width or y > canvas.meta.height) and (x >= 1 and y >= 1) then
-			canvas.meta.width = x
-			canvas.meta.height = y
-			canvas.meta.buffer = canvas.meta.newBuffer(
-				x,
-				y,
-				" ",
-				"-",
-				"-",
-				canvas.meta.buffer
-			)
+	for c = 1, 3 do
+		canvas.meta.buffer[c][y] = canvas.meta.buffer[c][y] or {}
+		for xx = 1, x do
+			canvas.meta.buffer[c][y][xx] = canvas.meta.buffer[c][y][xx] or "-"
 		end
-		return true
-	else
-		for c = 1, 3 do
-			canvas.meta.buffer[c][y] = canvas.meta.buffer[c][y] or {}
-			for xx = 1, x do
-				canvas.meta.buffer[c][y][xx] = canvas.meta.buffer[c][y][xx] or "-"
-			end
-		end
-		return true
 	end
+	return true
 end
 
 pain.manip.setDot = function(canvas, x, y, char, text, back)
@@ -384,6 +411,19 @@ pain.manip.changePainColor = function(mode, amount, doLoop)
 		sNum = math.min(math.max(cNum + amount, 1), 16)
 	end
 	pain.color[mode] = hexColors:sub(sNum, sNum)
+end
+
+pain.manip.shiftDots = function(canvas, xDist, yDist)
+	local output = {{}, {}, {}}
+	for c = 1, 3 do
+		for y,vy in next, canvas.meta.buffer[c] do
+			output[c][y + yDist] = {}
+			for x,vx in next, vy do
+				output[c][y + yDist][x + xDist] = vx
+			end
+		end
+	end
+	canvas.meta.buffer = output
 end
 
 local whitespace = {
@@ -428,9 +468,9 @@ tools.pencil = {
 					oldY or (my - (canvas.meta.y - 1)),
 					mx - (canvas.meta.x - 1),
 					my - (canvas.meta.y - 1),
-					mode == 1 and pain.color.char or " ",
-					mode == 1 and pain.color.text or "-",
-					mode == 1 and pain.color.back or "-"
+					mode == 1 and pain.color.char or nil, -- " ",
+					mode == 1 and pain.color.text or nil, -- "-",
+					mode == 1 and pain.color.back or nil -- "-"
 				)
 			end
 			while miceDown[mode] do
@@ -463,9 +503,9 @@ tools.line = {
 					initY,
 					mx - (canvas.meta.x - 1),
 					my - (canvas.meta.y - 1),
-					mode == 1 and pain.color.char or " ",
-					mode == 1 and pain.color.text or "-",
-					mode == 1 and pain.color.back or "-"
+					mode == 1 and pain.color.char or nil, --" ",
+					mode == 1 and pain.color.text or nil, -- "-",
+					mode == 1 and pain.color.back or nil -- "-"
 				)
 			end
 		end
@@ -583,16 +623,28 @@ local drawGrid = function(canvas)
 	end
 end
 
-local makeMenu = function()
-
+local copyCanvasBuffer = function(buffer, x1, y1, x2, y2)
+	local output = {{}, {}, {}}
+	for c = 1, 3 do
+		for y = y1, y2 do
+			output[c][y] = {}
+			if buffer[c][y] then
+				for x = x1, x2 do
+					output[c][y][x] = buffer[c][y][x]
+				end
+			end
+		end
+	end
+	return output
 end
 
 local main = function()
 	local render = function(canvasList)
 		drawGrid(canvasList[1])
 		local rList = {
-			pain.windows.menu,
-			pain.windows.smallPreview,
+--			pain.windows.mainMenu,
+--			pain.windows.layerMenu,
+--			pain.windows.smallPreview,
 			pain.windows.toolPreview,
 		}
 		for i = 1, #canvasList do
@@ -623,14 +675,18 @@ local main = function()
 		showToolPreview = false		-- if true, will render the tool preview INSTEAD of the current canvas
 	}
 
-	local isToolGood = false
-
 	local resume = function(newEvent)
 		if cTool.coroutine then
 			if (cTool.lastEvent == (newEvent or evt[1])) or (not cTool.lastEvent) then
 				cTool.doQuickResume = false
 				if cTool.showToolPreview then
-					pain.windows.toolPreview.meta.buffer = tableCopy(canvas.meta.buffer)
+					pain.windows.toolPreview.meta.buffer = copyCanvasBuffer(
+						canvas.meta.buffer,
+						-canvas.meta.x,
+						-canvas.meta.y,
+						-canvas.meta.x + scr_x + 1,
+						-canvas.meta.y + scr_y + 1
+					)
 					pain.windows.toolPreview.meta.x = canvas.meta.x
 					pain.windows.toolPreview.meta.y = canvas.meta.y
 					pain.windows.toolPreview.meta.width = canvas.meta.width
@@ -671,26 +727,44 @@ local main = function()
 			mainTimer = os.startTimer(0.05)
 			tCompleted = pain.tickTimers()		-- get list of completed pain timers
 			canvas = pain.image[pain.layer]		-- 'canvas' is a term object, you smarmy cunt
-			for k,v in pairs(keysDown) do keysDown[k] = v + 1 end
+			for k,v in next, keysDown do keysDown[k] = v + 1 end
+
+			local singleScroll = checkControl("singleScroll")
 
 			if checkControl("quit") then	-- why did I call myself a cunt
 				pain.running = false
 			end
 
-			if checkControl("scrollRight") then
+			if checkControl("scrollRight", not singleScroll) then
 				canvas.meta.x = canvas.meta.x - 1
 			end
 
-			if checkControl("scrollLeft") then
+			if checkControl("scrollLeft", not singleScroll) then
 				canvas.meta.x = canvas.meta.x + 1
 			end
 
-			if checkControl("scrollDown") then
+			if checkControl("scrollDown", not singleScroll) then
 				canvas.meta.y = canvas.meta.y - 1
 			end
 
-			if checkControl("scrollUp") then
+			if checkControl("scrollUp", not singleScroll) then
 				canvas.meta.y = canvas.meta.y + 1
+			end
+
+			if checkControl("shiftDotsRight") then
+				pain.manip.shiftDots(canvas, 1, 0)
+			end
+
+			if checkControl("shiftDotsLeft") then
+				pain.manip.shiftDots(canvas, -1, 0)
+			end
+
+			if checkControl("shiftDotsUp") then
+				pain.manip.shiftDots(canvas, 0, -1)
+			end
+
+			if checkControl("shiftDotsDown") then
+				pain.manip.shiftDots(canvas, 0, 1)
 			end
 
 			if checkControl("resetScroll") then
