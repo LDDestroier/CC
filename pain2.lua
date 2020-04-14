@@ -1,3 +1,26 @@
+--[[
+
+ 8888888b.     d8888 8888888 888b    888  .d8888b.
+ 888   Y88b   d88888   888   8888b   888 d88P  Y88b
+ 888    888  d88P888   888   88888b  888        888
+ 888   d88P d88P 888   888   888Y88b 888      .d88P
+ 8888888P' d88P  888   888   888 Y88b888  .od888P"
+ 888      d88P   888   888   888  Y88888 d88P"
+ 888     d8888888888   888   888   Y8888 888"
+ 888    d88P     888 8888888 888    Y888 888888888
+
+Download with:
+	wget https://github.com/LDDestroier/CC/raw/master/pain2.lua
+
+To-do:
+	* Add more tools, such as Fill or Color Picker.
+	* Add an actual menu.
+	* Add a help screen, and don't make it as bland-looking as PAIN 1's.
+	* Add support for every possible image format under the sun.
+	* Add the ability to add/remove layers.
+
+--]]
+
 local pain = {
 	running = true,	-- if true, will run. otherwise, quit
 	layer = 1,		-- current layer selected
@@ -58,7 +81,31 @@ pain.control = {
 		key = keys.space,
 		holdDown = false,
 		modifiers = {},
-	}
+	},
+	nextTextColor = {
+		key = keys.rightBracket,
+		holdDown = false,
+		modifiers = {
+			[keys.shift] = true
+		},
+	},
+	prevTextColor = {
+		key = keys.leftBracket,
+		holdDown = false,
+		modifiers = {
+			[keys.shift] = true
+		},
+	},
+	nextBackColor = {
+		key = keys.rightBracket,
+		holdDown = false,
+		modifiers = {},
+	},
+	prevBackColor = {
+		key = keys.leftBracket,
+		holdDown = false,
+		modifiers = {},
+	},
 }
 
 local checkControl = function(name)
@@ -179,6 +226,8 @@ pain.nativePalette = {
 		0.066666670143604,
 	}
 }
+
+local hexColors = "0123456789abcdef"
 
 -- load Windon't API
 -- if you're using ATOM, feel free to minimize this whole function
@@ -326,6 +375,17 @@ pain.manip.setDotLine = function(canvas, x1, y1, x2, y2, char, text, back)
 	end
 end
 
+pain.manip.changePainColor = function(mode, amount, doLoop)
+	local cNum = hexColors:find(pain.color[mode])
+	local sNum
+	if doLoop then
+		sNum = ((cNum + amount - 1) % 16) + 1
+	else
+		sNum = math.min(math.max(cNum + amount, 1), 16)
+	end
+	pain.color[mode] = hexColors:sub(sNum, sNum)
+end
+
 local whitespace = {
 	["\009"] = true,
 	["\010"] = true,
@@ -358,27 +418,31 @@ tools.pencil = {
 		local mx, my, evt = initEvent[3], initEvent[4]
 		local oldX, oldY
 		local mode = initEvent[2]	-- 1 = draw, 2 = erase
-		local setDot = function()
-			pain.manip.setDotLine(
-				canvas,
-				oldX or (mx - (canvas.meta.x - 1)),
-				oldY or (my - (canvas.meta.y - 1)),
-				mx - (canvas.meta.x - 1),
-				my - (canvas.meta.y - 1),
-				mode == 1 and pain.color.char or " ",
-				mode == 1 and pain.color.text or "-",
-				mode == 1 and pain.color.back or "-"
-			)
-		end
-		while miceDown[mode] do
-			evt = {os.pullEvent()}
-			if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
-				oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
-				mx, my = evt[3], evt[4]
-				setDot()
-			elseif evt[1] == "refresh" then
-				oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
-				setDot()
+		if keysDown[keys.shift] then
+			return tools.line.run(canvas, initEvent, toolInfo)
+		else
+			local setDot = function()
+				pain.manip.setDotLine(
+					canvas,
+					oldX or (mx - (canvas.meta.x - 1)),
+					oldY or (my - (canvas.meta.y - 1)),
+					mx - (canvas.meta.x - 1),
+					my - (canvas.meta.y - 1),
+					mode == 1 and pain.color.char or " ",
+					mode == 1 and pain.color.text or "-",
+					mode == 1 and pain.color.back or "-"
+				)
+			end
+			while miceDown[mode] do
+				evt = {os.pullEvent()}
+				if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
+					oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
+					mx, my = evt[3], evt[4]
+					setDot()
+				elseif evt[1] == "refresh" then
+					oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
+					setDot()
+				end
 			end
 		end
 	end,
@@ -551,7 +615,7 @@ local main = function()
 	pain.image[1] = newCanvas()
 
 	local cTool = {
-		name = "line",
+		name = "pencil",
 		lastEvent = nil,
 		active = false,
 		coroutine = nil,
@@ -634,6 +698,22 @@ local main = function()
 				canvas.meta.y = 1
 			end
 
+			if checkControl("nextTextColor") then
+				pain.manip.changePainColor("text", 1, false)
+			end
+
+			if checkControl("nextBackColor") then
+				pain.manip.changePainColor("back", 1, false)
+			end
+
+			if checkControl("prevTextColor") then
+				pain.manip.changePainColor("text", -1, false)
+			end
+
+			if checkControl("prevBackColor") then
+				pain.manip.changePainColor("back", -1, false)
+			end
+
 			resume({"refresh"})
 
 			if tCompleted.render then
@@ -645,17 +725,19 @@ local main = function()
 
 			if evt[1] == "term_resize" then
 				scr_x, scr_y = term.getSize()
-			elseif evt[1] == "key" then
-				if not evt[3] then
-					keysDown[evt[2]] = 0
-					keysDown[keys.ctrl] = keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]
-					keysDown[keys.shift] = keysDown[keys.leftShift] or keysDown[keys.rightShift]
-					keysDown[keys.alt] = keysDown[keys.leftAlt] or keysDown[keys.rightAlt]
+			elseif evt[1] == "key" or evt[1] == "key_up" then
+				if evt[1] == "key" then
+					if not evt[3] then
+						keysDown[evt[2]] = 0
+					end
+				elseif evt[1] == "key_up" then
+					keysDown[evt[2]] = nil
 				end
+				keysDown[keys.ctrl] = keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]
+				keysDown[keys.shift] = keysDown[keys.leftShift] or keysDown[keys.rightShift]
+				keysDown[keys.alt] = keysDown[keys.leftAlt] or keysDown[keys.rightAlt]
 			elseif evt[1] == "mouse_up" then
 				miceDown[evt[2]] = nil
-			elseif evt[1] == "key_up" then
-				keysDown[evt[2]] = nil
 			elseif (evt[1] == "mouse_click" or evt[1] == "mouse_drag") then
 				miceDown[evt[2]] = {evt[3], evt[4]}
 				if evt[1] == "mouse_click" then
@@ -681,6 +763,5 @@ local main = function()
 	term.clearLine()
 
 end
-
 
 main()
