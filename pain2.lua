@@ -1,795 +1,27 @@
--- pain2
-
-local scr_x, scr_y = term.getSize()
-local mx, my = scr_x/2, scr_y/2		-- midpoint of screen
-local keysDown = {}					-- list of all pushed keys
-local miceDown = {}					-- list of all clicked mice buttons
-local miceQueue = {}				-- queues all mouse events for use with tool engine
-local dragPoses = {{{},{}}, {{},{}}, {{},{}}}	-- records initial and current mouse position per button while scrolling
-
-local TICKNO = 0				-- iterates every time main() loops
-local flashPaletteOnBar = 0		-- whether or not to flash the dot palette numbers on the bottom bar, 0 is false, greater than 0 is true
-
--- debug renderer is slower, but the normal one isn't functional yet
-local useDebugRenderer = false
-
-local canvas = {
-	{{},{},{}}
-}
-
-local render
 local pain = {
-	scrollX = 0,				-- x position of scroll
-	scrollY = 0,				-- y position of scroll
-	frame = 1,
-	dot = 1,
-	brushSize = 2,				-- size of brush for tools like brush or line
-	barmsg = "Started PAIN.",	-- message shown on the bottom bar for 'barlife' ticks
-	barlife = 12,				-- amount of time until barmsg will cease to render
-	showBar = true,				-- whether or not to show the bottom bar
-	doRender = true,			-- if true, will render and set doRender to false
-	isInFocus = true,			-- will not accept any non-mouse input while false
-	exportMode = "nft",			-- saving will use this format
-	limitOneMouseButton = true,	-- disallows using more than one mouse button at a time
-	size = {
-		x = 1,
-		y = 1,
-		width = scr_x,
-		height = scr_y
-	},
-	guideWidth = scr_x,
-	guideHeight = scr_y,
-	guideLeftAdj = 2,
-	dots = {
-		[0] = {
-			" ",
-			" ",
-			" "
-		},
-		[1] = {
-			" ",
-			"f",
-			"0"
-		},
-		[2] = {
-			" ",
-			"f",
-			"a"
-		},
-		[3] = {
-			" ",
-			"f",
-			"b"
-		},
-		[4] = {
-			" ",
-			"f",
-			"c"
-		},
-		[5] = {
-			" ",
-			"f",
-			"d"
-		},
-		[6] = {
-			" ",
-			"f",
-			"2"
-		},
-		[7] = {
-			" ",
-			"f",
-			"3"
-		},
-		[8] = {
-			" ",
-			"f",
-			"4"
-		},
-		[9] = {
-			" ",
-			"f",
-			"5"
-		},
-	},
-	tool = "pencil"
+	running = true,	-- if true, will run. otherwise, quit
+	layer = 1,		-- current layer selected
+	image = {},		-- table of 2D canvases
+	manip = {},		-- basic canvas manipulation functions
+	timers = {},	-- built-in timer system
+	windows = {},	-- various windows drawn to the screen
 }
 
+keys.ctrl = 256
+keys.alt = 257
+keys.shift = 258
 
--- NFTE API START --
+local keysDown = {}
+local miceDown = {}
 
-local nfte = {}
-
-local tchar = string.char(31)	-- for text colors
-local bchar = string.char(30)	-- for background colors
-local nchar = string.char(29)	-- for differentiating multiple frames in ANFT
-
--- every flippable block character that doesn't need a color swap
-local xflippable = {
-	["\129"] = "\130",
-	["\132"] = "\136",
-	["\133"] = "\138",
-	["\134"] = "\137",
-	["\137"] = "\134",
-	["\135"] = "\139",
-	["\140"] = "\140",
-	["\141"] = "\142",
-}
--- every flippable block character that needs a color swap
-local xinvertable = {
-	["\144"] = "\159",
-	["\145"] = "\157",
-	["\146"] = "\158",
-	["\147"] = "\156",
-	["\148"] = "\151",
-	["\152"] = "\155",
-	["\149"] = "\149",
-	["\150"] = "\150",
-	["\153"] = "\153",
-	["\154"] = "\154"
-}
-for k,v in pairs(xflippable) do
-	xflippable[v] = k
-end
-for k,v in pairs(xinvertable) do
-	xinvertable[v] = k
-end
-local bl = {	-- blit
-	[' '] = 0,
-	['0'] = 1,
-	['1'] = 2,
-	['2'] = 4,
-	['3'] = 8,
-	['4'] = 16,
-	['5'] = 32,
-	['6'] = 64,
-	['7'] = 128,
-	['8'] = 256,
-	['9'] = 512,
-	['a'] = 1024,
-	['b'] = 2048,
-	['c'] = 4096,
-	['d'] = 8192,
-	['e'] = 16384,
-	['f'] = 32768,
-}
-local lb = {} 	-- tilb
-for k,v in pairs(bl) do
-	lb[v] = k
-end
-local ldchart = {	-- converts colors into a lighter shade
-	["0"] = "0",
-	["1"] = "4",
-	["2"] = "6",
-	["3"] = "0",
-	["4"] = "0",
-	["5"] = "0",
-	["6"] = "0",
-	["7"] = "8",
-	["8"] = "0",
-	["9"] = "3",
-	["a"] = "2",
-	["b"] = "9",
-	["c"] = "1",
-	["d"] = "5",
-	["e"] = "2",
-	["f"] = "7"
+pain.color = {
+	char = " ",
+	text = "f",
+	back = "0"
 }
 
-local dlchart = {	-- converts colors into a darker shade
-	["0"] = "8",
-	["1"] = "c",
-	["2"] = "a",
-	["3"] = "9",
-	["4"] = "1",
-	["5"] = "d",
-	["6"] = "2",
-	["7"] = "f",
-	["8"] = "7",
-	["9"] = "b",
-	["a"] = "7",
-	["b"] = "7",
-	["c"] = "7",
-	["d"] = "7",
-	["e"] = "7",
-	["f"] = "f"
-}
-local round = function(num)
-	return math.floor(num + 0.5)
-end
-
-local deepCopy
-deepCopy = function(tbl)
-	local output = {}
-	for k,v in pairs(tbl) do
-		if type(v) == "table" then
-			output[k] = deepCopy(v)
-		else
-			output[k] = v
-		end
-	end
-	return output
-end
-
-local function stringWrite(str,pos,ins,exc)
-	str, ins = tostring(str), tostring(ins)
-	local output, fn1, fn2 = str:sub(1,pos-1)..ins..str:sub(pos+#ins)
-	if exc then
-		repeat
-			fn1, fn2 = str:find(exc,fn2 and fn2+1 or 1)
-			if fn1 then
-				output = stringWrite(output,fn1,str:sub(fn1,fn2))
-			end
-		until not fn1
-	end
-	return output
-end
-
-local checkValid = function(image)
-	if type(image) == "table" then
-		if #image == 3 then
-			return (#image[1] == #image[2] and #image[2] == #image[3])
-		end
-	end
-	return false
-end
-
-local checkIfANFT = function(image)
-	if type(image) == "table" then
-		return type(image[1][1]) == "table"
-	elseif type(image) == "string" then
-		return image:find(nchar) and true or false
-	end
-end
-
-local getSizeNFP = function(image)
-	local xsize = 0
-	if type(image) ~= "table" then return 0,0 end
-	for y = 1, #image do xsize = math.max(xsize, #image[y]) end
-	return xsize, #image
-end
-
-nfte.getSize = function(image)
-	assert(checkValid(image), "Invalid image.")
-	local x, y = 0, #image[1]
-	for y = 1, #image[1] do
-		x = math.max(x, #image[1][y])
-	end
-	return x, y
-end
-
-nfte.crop = function(image, x1, y1, x2, y2)
-	assert(checkValid(image), "Invalid image.")
-	local output = {{},{},{}}
-	for y = y1, y2 do
-		output[1][#output[1]+1] = image[1][y]:sub(x1,x2)
-		output[2][#output[2]+1] = image[2][y]:sub(x1,x2)
-		output[3][#output[3]+1] = image[3][y]:sub(x1,x2)
-	end
-	return output
-end
-
-local loadImageDataNFT = function(image, background) -- string image
-	local output = {{},{},{}} -- char, text, back
-	local y = 1
-	background = (background or " "):sub(1,1)
-	local text, back = " ", background
-	local doSkip, c1, c2 = false
-	local maxX = 0
-	local bx
-	for i = 1, #image do
-		if doSkip then
-			doSkip = false
-		else
-			output[1][y] = output[1][y] or ""
-			output[2][y] = output[2][y] or ""
-			output[3][y] = output[3][y] or ""
-			c1, c2 = image:sub(i,i), image:sub(i+1,i+1)
-			if c1 == tchar then
-				text = c2
-				doSkip = true
-			elseif c1 == bchar then
-				back = c2
-				doSkip = true
-			elseif c1 == "\n" then
-				maxX = math.max(maxX, #output[1][y])
-				y = y + 1
-				text, back = " ", background
-			else
-				output[1][y] = output[1][y]..c1
-				output[2][y] = output[2][y]..text
-				output[3][y] = output[3][y]..back
-			end
-		end
-	end
-	for y = 1, #output[1] do
-		output[1][y] = output[1][y] .. (" "):rep(maxX - #output[1][y])
-		output[2][y] = output[2][y] .. (" "):rep(maxX - #output[2][y])
-		output[3][y] = output[3][y] .. (background):rep(maxX - #output[3][y])
-	end
-	return output
-end
-
-local loadImageDataNFP = function(image, background)
-	local output = {}
-	local x, y = 1, 1
-	for i = 1, #image do
-		output[y] = output[y] or {}
-		if bl[image:sub(i,i)] then
-			output[y][x] = bl[image:sub(i,i)]
-			x = x + 1
-		elseif image:sub(i,i) == "\n" then
-			x, y = 1, y + 1
-		end
-	end
-	return output
-end
-
-nfte.convertFromNFP = function(image, background)
-	background = background or " "
-	local output = {{},{},{}}
-	if type(image) == "string" then
-		image = loadImageDataNFP(image)
-	end
-	local imageX, imageY = getSizeNFP(image)
-	local bx
-	for y = 1, imageY do
-		output[1][y] = ""
-		output[2][y] = ""
-		output[3][y] = ""
-		for x = 1, imageX do
-			if image[y][x] then
-				bx = (x % #background) + 1
-				output[1][y] = output[1][y]..lb[image[y][x] or background:sub(bx,bx)]
-				output[2][y] = output[2][y]..lb[image[y][x] or background:sub(bx,bx)]
-				output[3][y] = output[3][y]..lb[image[y][x] or background:sub(bx,bx)]
-			end
-		end
-	end
-	return output
-end
-
-nfte.loadImageData = function(image, background)
-	assert(type(image) == "string", "NFT image data must be string.")
-	local output = {}
-	-- images can be ANFT, which means they have multiple layers
-	if checkIfANFT(image) then
-		local L, R = 1, 1
-		while L do
-			R = (image:find(nchar, L + 1) or 0)
-			output[#output+1] = loadImageDataNFT(image:sub(L, R - 1), background)
-			L = image:find(nchar, R + 1)
-			if L then L = L + 2 end
-		end
-		return output, "anft"
-	elseif image:find(tchar) or image:find(bchar) then
-		return loadImageDataNFT(image, background), "nft"
-	else
-		return convertFromNFP(image), "nfp"
-	end
-end
-
-nfte.loadImage = function(path, background)
-	local file = io.open(path, "r")
-	if file then
-		io.input(file)
-		local output, format = loadImageData(io.read("*all"), background)
-		io.close()
-		return output, format
-	else
-		error("No such file exists, or is directory.")
-	end
-end
-
-local unloadImageNFT = function(image)
-	assert(checkValid(image), "Invalid image.")
-	local output = ""
-	local text, back = " ", " "
-	local c, t, b
-	for y = 1, #image[1] do
-		for x = 1, #image[1][y] do
-			c, t, b = image[1][y]:sub(x,x), image[2][y]:sub(x,x), image[3][y]:sub(x,x)
-			if (t ~= text) or (x == 1) then
-				output = output..tchar..t
-				text = t
-			end
-			if (b ~= back) or (x == 1) then
-				output = output..bchar..b
-				back = b
-			end
-			output = output..c
-		end
-		if y ~= #image[1] then
-			output = output.."\n"
-			text, back = " ", " "
-		end
-	end
-	return output
-end
-
-nfte.unloadImage = function(image)
-	assert(checkValid(image), "Invalid image.")
-	local output = ""
-	if checkIfANFT(image) then
-		for i = 1, #image do
-			output = output .. unloadImageNFT(image[i])
-			if i ~= #image then
-				output = output .. nchar .. "\n"
-			end
-		end
-	else
-		output = unloadImageNFT(image)
-	end
-	return output
-end
-
-nfte.drawImage = function(image, x, y, terminal)
-	assert(checkValid(image), "Invalid image.")
-	assert(type(x) == "number", "x value must be number, got " .. type(x))
-	assert(type(y) == "number", "y value must be number, got " .. type(y))
-	terminal = terminal or term.current()
-	local cx, cy = terminal.getCursorPos()
-	for iy = 1, #image[1] do
-		terminal.setCursorPos(x, y + (iy - 1))
-		terminal.blit(image[1][iy], image[2][iy], image[3][iy])
-	end
-	terminal.setCursorPos(cx,cy)
-end
-
-nfte.drawImageTransparent = function(image, x, y, terminal)
-	assert(checkValid(image), "Invalid image.")
-	assert(type(x) == "number", "x value must be number, got " .. type(x))
-	assert(type(y) == "number", "y value must be number, got " .. type(y))
-	terminal = terminal or term.current()
-	local cx, cy = terminal.getCursorPos()
-	local c, t, b
-	for iy = 1, #image[1] do
-		for ix = 1, #image[1][iy] do
-			c, t, b = image[1][iy]:sub(ix,ix), image[2][iy]:sub(ix,ix), image[3][iy]:sub(ix,ix)
-			if b ~= " " or c ~= " " then
-				terminal.setCursorPos(x + (ix - 1), y + (iy - 1))
-				terminal.blit(c, t, b)
-			end
-		end
-	end
-	terminal.setCursorPos(cx,cy)
-end
-
-nfte.drawImageCenter = function(image, x, y, terminal)
-	terminal = terminal or term.current()
-	local scr_x, scr_y = terminal.getSize()
-	local imageX, imageY = getSize(image)
-	return drawImage(
-		image,
-		round(0.5 + (x and x or (scr_x/2)) - imageX/2),
-		round(0.5 + (y and y or (scr_y/2)) - imageY/2),
-		terminal
-	)
-end
-
-nfte.drawImageCenterTransparent = function(image, x, y, terminal)
-	terminal = terminal or term.current()
-	local scr_x, scr_y = terminal.getSize()
-	local imageX, imageY = getSize(image)
-	return drawImageTransparent(
-		image,
-		round(0.5 + (x and x or (scr_x/2)) - imageX/2),
-		round(0.5 + (y and y or (scr_y/2)) - imageY/2),
-		terminal
-	)
-end
-
-nfte.colorSwap = function(image, text, back)
-	assert(checkValid(image), "Invalid image.")
-	local output = {{},{},{}}
-	for y = 1, #image[1] do
-		output[1][y] = image[1][y]
-		output[2][y] = image[2][y]:gsub(".", text)
-		output[3][y] = image[3][y]:gsub(".", back or text)
-	end
-	return output
-end
-
-nfte.flipX = function(image)
-	assert(checkValid(image), "Invalid image.")
-	local output = {{},{},{}}
-	for y = 1, #image[1] do
-		output[1][y] = image[1][y]:gsub(".", xinvertable):gsub(".", xflippable):reverse()
-		output[2][y] = ""
-		output[3][y] = ""
-		for x = 1, #image[1][y] do
-			if xinvertable[image[1][y]:sub(x,x)] then
-				output[2][y] = image[3][y]:sub(x,x) .. output[2][y]
-				output[3][y] = image[2][y]:sub(x,x) .. output[3][y]
-			else
-				output[2][y] = image[2][y]:sub(x,x) .. output[2][y]
-				output[3][y] = image[3][y]:sub(x,x) .. output[3][y]
-			end
-		end
-	end
-	return output
-end
-
-nfte.flipY = function(image)
-	assert(checkValid(image), "Invalid image.")
-	local output = {{},{},{}}
-	for y = #image[1], 1, -1 do
-		output[1][#output[1]+1] = image[1][y]
-		output[2][#output[2]+1] = image[2][y]
-		output[3][#output[3]+1] = image[3][y]
-	end
-	return output
-end
-
-nfte.makeRectangle = function(width, height, char, text, back)
-	assert(type(width) == "number", "width must be number")
-	assert(type(height) == "number", "height must be number")
-	local output = {{},{},{}}
-	for y = 1, height do
-		output[1][y] = (char or " "):rep(width)
-		output[2][y] = (text or " "):rep(width)
-		output[3][y] = (back or " "):rep(width)
-	end
-	return output
-end
-
-nfte.grayOut = function(image)
-	assert(checkValid(image), "Invalid image.")
-	local output = {{},{},{}}
-	local chart = {
-		["0"] = "0",
-		["1"] = "8",
-		["2"] = "8",
-		["3"] = "8",
-		["4"] = "8",
-		["5"] = "8",
-		["6"] = "8",
-		["7"] = "7",
-		["8"] = "8",
-		["9"] = "7",
-		["a"] = "7",
-		["b"] = "7",
-		["c"] = "7",
-		["d"] = "7",
-		["e"] = "7",
-		["f"] = "f"
-	}
-	for y = 1, #image[1] do
-		output[1][y] = image[1][y]
-		output[2][y] = image[2][y]:gsub(".", chart)
-		output[3][y] = image[3][y]:gsub(".", chart)
-	end
-	return output
-end
-
-nfte.lighten = function(image, amount)
-	assert(checkValid(image), "Invalid image.")
-	if (amount or 1) < 0 then
-		return nfte.darken(image, -amount)
-	else
-		local output = deepCopy(image)
-		for i = 1, amount or 1 do
-			for y = 1, #output[1] do
-				output[1][y] = output[1][y]
-				output[2][y] = output[2][y]:gsub(".",ldchart)
-				output[3][y] = output[3][y]:gsub(".",ldchart)
-			end
-		end
-		return output
-	end
-end
-
-nfte.darken = function(image, amount)
-	assert(checkValid(image), "Invalid image.")
-	if (amount or 1) < 0 then
-		return nfte.lighten(image, -amount)
-	else
-		local output = deepCopy(image)
-		for i = 1, amount or 1 do
-			for y = 1, #output[1] do
-				output[1][y] = output[1][y]
-				output[2][y] = output[2][y]:gsub(".",dlchart)
-				output[3][y] = output[3][y]:gsub(".",dlchart)
-			end
-		end
-		return output
-	end
-end
-
-nfte.stretchImage = function(_image, sx, sy, noRepeat)
-	assert(checkValid(_image), "Invalid image.")
-	local output = {{},{},{}}
-	local image = deepCopy(_image)
-	if sx < 0 then image = flipX(image) end
-	if sy < 0 then image = flipY(image) end
-	sx, sy = math.abs(sx), math.abs(sy)
-	local imageX, imageY = getSize(image)
-	local tx, ty
-	if sx == 0 or sy == 0 then
-		for y = 1, math.max(sy, 1) do
-			output[1][y] = ""
-			output[2][y] = ""
-			output[3][y] = ""
-		end
-		return output
-	else
-		for y = 1, sy do
-			for x = 1, sx do
-				tx = round((x / sx) * imageX)
-				ty = math.ceil((y / sy) * imageY)
-				if not noRepeat then
-					output[1][y] = (output[1][y] or "")..image[1][ty]:sub(tx,tx)
-				else
-					output[1][y] = (output[1][y] or "").." "
-				end
-				output[2][y] = (output[2][y] or "")..image[2][ty]:sub(tx,tx)
-				output[3][y] = (output[3][y] or "")..image[3][ty]:sub(tx,tx)
-			end
-		end
-		if noRepeat then
-			for y = 1, imageY do
-				for x = 1, imageX do
-					if image[1][y]:sub(x,x) ~= " " then
-						tx = round(((x / imageX) * sx) - ((0.5 / imageX) * sx))
-						ty = round(((y / imageY) * sy) - ((0.5 / imageY) * sx))
-						output[1][ty] = stringWrite(output[1][ty], tx, image[1][y]:sub(x,x))
-					end
-				end
-			end
-		end
-		return output
-	end
-end
-
-nfte.stretchImageKeepAspect = function(image, sx, sy, noRepeat)
-	assert(checkValid(image), "Invalid image.")
-	local imX, imY = nfte.getSize(image)
-	local aspect = sx / sy
-	local imAspect = imX / imY
-	if imAspect > aspect then
-		return nfte.stretchImage(image, sx, sx / imAspect, noRepeat)
-	elseif imAspect < aspect then
-		return nfte.stretchImage(image, sy * imAspect, sy, noRepeat)
-	else
-		return nfte.stretchImage(image, sx, sy, noRepeat)
-	end
-end
-
--- will stretch and unstretch an image to radically lower its resolution
-nfte.pixelateImage = function(image, amntX, amntY)
-	assert(checkValid(image), "Invalid image.")
-	local imageX, imageY = getSize(image)
-	return stretchImage(stretchImage(image,imageX/math.max(amntX,1), imageY/math.max(amntY,1)), imageX, imageY)
-end
-
-nfte.merge = function(...)
-	local images = {...}
-	local output = {{},{},{}}
-	local imageX, imageY = 0, 0
-	local imSX, imSY
-	for i = 1, #images do
-		imageY = math.max(
-			imageY,
-			#images[i][1][1] + (images[i][3] == true and 0 or (images[i][3] - 1))
-		)
-		for y = 1, #images[i][1][1] do
-			imageX = math.max(
-				imageX,
-				#images[i][1][1][y] + (images[i][2] == true and 0 or (images[i][2] - 1))
-			)
-		end
-	end
-	-- if either coordinate is true, center it
-	for i = 1, #images do
-		imSX, imSY = getSize(images[i][1])
-		if images[i][2] == true then
-			images[i][2] = round(1 + (imageX / 2) - (imSX / 2))
-		end
-		if images[i][3] == true then
-			images[i][3] = round(1 + (imageY / 2) - (imSY / 2))
-		end
-	end
-
-	-- will later add code to adjust X/Y positions if negative values are given
-
-	local image, xadj, yadj
-	local tx, ty
-	for y = 1, imageY do
-		output[1][y] = {}
-		output[2][y] = {}
-		output[3][y] = {}
-		for x = 1, imageX do
-			for i = #images, 1, -1 do
-				image, xadj, yadj = images[i][1], images[i][2], images[i][3]
-				tx, ty = x-(xadj-1), y-(yadj-1)
-				output[1][y][x] = output[1][y][x] or " "
-				output[2][y][x] = output[2][y][x] or " "
-				output[3][y][x] = output[3][y][x] or " "
-				if image[1][ty] then
-					if (image[1][ty]:sub(tx,tx) ~= "") and (tx >= 1) then
-						output[1][y][x] = (image[1][ty]:sub(tx,tx) == " " and output[1][y][x] or image[1][ty]:sub(tx,tx))
-						output[2][y][x] = (image[2][ty]:sub(tx,tx) == " " and output[2][y][x] or image[2][ty]:sub(tx,tx))
-						output[3][y][x] = (image[3][ty]:sub(tx,tx) == " " and output[3][y][x] or image[3][ty]:sub(tx,tx))
-					end
-				end
-			end
-		end
-		output[1][y] = table.concat(output[1][y])
-		output[2][y] = table.concat(output[2][y])
-		output[3][y] = table.concat(output[3][y])
-	end
-	return output
-end
-
-local rotatePoint = function(x, y, angle, originX, originY)
-	return
-		round( (x-originX) * math.cos(angle) - (y-originY) * math.sin(angle) ) + originX,
-		round( (x-originX) * math.sin(angle) + (y-originY) * math.cos(angle) ) + originY
-end
-
-nfte.rotateImage = function(image, angle, originX, originY)
-	assert(checkValid(image), "Invalid image.")
-	if imageX == 0 or imageY == 0 then
-		return image
-	end
-	local output = {{},{},{}}
-	local realOutput = {{},{},{}}
-	local tx, ty, corners
-	local imageX, imageY = getSize(image)
-	local originX, originY = originX or math.floor(imageX / 2), originY or math.floor(imageY / 2)
-	corners = {
-		{rotatePoint(1, 		1, 		angle, originX, originY)},
-		{rotatePoint(imageX, 	1, 		angle, originX, originY)},
-		{rotatePoint(1, 		imageY, angle, originX, originY)},
-		{rotatePoint(imageX, 	imageY, angle, originX, originY)},
-	}
-	local minX = math.min(corners[1][1], corners[2][1], corners[3][1], corners[4][1])
-	local maxX = math.max(corners[1][1], corners[2][1], corners[3][1], corners[4][1])
-	local minY = math.min(corners[1][2], corners[2][2], corners[3][2], corners[4][2])
-	local maxY = math.max(corners[1][2], corners[2][2], corners[3][2], corners[4][2])
-
-	for y = 1, (maxY - minY) + 1 do
-		output[1][y] = {}
-		output[2][y] = {}
-		output[3][y] = {}
-		for x = 1, (maxX - minX) + 1 do
-			tx, ty = rotatePoint(x + minX - 1, y + minY - 1, -angle, originX, originY)
-			output[1][y][x] = " "
-			output[2][y][x] = " "
-			output[3][y][x] = " "
-			if image[1][ty] then
-				if tx >= 1 and tx <= #image[1][ty] then
-					output[1][y][x] = image[1][ty]:sub(tx,tx)
-					output[2][y][x] = image[2][ty]:sub(tx,tx)
-					output[3][y][x] = image[3][ty]:sub(tx,tx)
-				end
-			end
-		end
-	end
-	for y = 1, #output[1] do
-		output[1][y] = table.concat(output[1][y])
-		output[2][y] = table.concat(output[2][y])
-		output[3][y] = table.concat(output[3][y])
-	end
-	return output, math.ceil(minX), math.ceil(minY)
-end
-
-
-
-
-
-
-
-
-
-local setBarMsg = function(message)
-	pain.barmsg = message
-	pain.barlife = 16
-	pain.doRender = true
-end
-
-local controlHoldCheck = {}	-- used to prevent repeated inputs on non-repeating controls
-local control = {
+pain.controlHoldCheck = {}	-- used to check if an input has just been used or not
+pain.control = {
 	quit = {
 		key = keys.q,
 		holdDown = false,
@@ -797,7 +29,7 @@ local control = {
 			[keys.leftCtrl] = true
 		},
 	},
-	scrollUp = { -- decrease scrollY
+	scrollUp = {
 		key = keys.up,
 		holdDown = true,
 		modifiers = {},
@@ -822,230 +54,21 @@ local control = {
 		holdDown = false,
 		modifiers = {},
 	},
-	switchNextFrame = {
-		key = keys.rightBracket,
-		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	switchPrevFrame = {
-		key = keys.leftBracket,
-		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	swapNextFrame = {
-		key = keys.rightBracket,
-		holdDownn = false,
-		modifiers = {
-			[keys.leftShift] = true,
-			[keys.leftAlt] = true,
-		}
-	},
-	swapPrevFrame = {
-		key = keys.leftBracket,
-		holdDownn = false,
-		modifiers = {
-			[keys.leftShift] = true,
-			[keys.leftAlt] = true,
-		}
-	},
-	increaseBrushSize = {
-		key = keys.equals,
+	cancelTool = {
+		key = keys.space,
 		holdDown = false,
 		modifiers = {},
-	},
-	increaseBrushSize_Alt = {
-		key = keys.numPadAdd,
-		holdDown = false,
-		modifiers = {},
-	},
-	decreaseBrushSize = {
-		key = keys.minus,
-		holdDown = false,
-		modifiers = {},
-	},
-	decreaseBrushSize_Alt = {
-		key = keys.numPadSubtract,
-		holdDown = false,
-		modifiers = {},
-	},
-	moveMod = {
-		key = keys.leftShift,
-		holdDown = true,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	creepMod = {
-		key = keys.leftAlt,
-		holdDown = true,
-		modifiers = {
-			[keys.leftAlt] = true
-		},
-	},
-	toolMod = {
-		key = keys.leftShift,
-		holdDown = true,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	pencilTool = {
-		key = keys.p,
-		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	brushTool = {
-		key = keys.b,
-		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	textTool = {
-		key = keys.t,
-		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	lineTool = {
-		key = keys.l,
-		holdDown = false,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	adjustPaletteTextUp = {
-		mouse = "mouse_scroll",
-		direction = 1,
-		holdDown = true,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	adjustPaletteBackgroundUp = {
-		mouse = "mouse_scroll",
-		direction = 1,
-		holdDown = true,
-		modifiers = {},
-	},
-	adjustPaletteTextDown = {
-		mouse = "mouse_scroll",
-		direction = -1,
-		holdDown = true,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	adjustPaletteBackgroundDown = {
-		mouse = "mouse_scroll",
-		direction = -1,
-		holdDown = true,
-		modifiers = {},
-	},
-	adjustPaletteTextUp_Alt = {
-		key = keys.rightBracket,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	adjustPaletteBackgroundUp_Alt = {
-		key = keys.rightBracket,
-		modifiers = {},
-	},
-	adjustPaletteTextDown_Alt = {
-		key = keys.leftBracket,
-		modifiers = {
-			[keys.leftShift] = true
-		},
-	},
-	adjustPaletteBackgroundDown_Alt = {
-		key = keys.leftBracket,
-		modifiers = {},
-	},
-	selectPalette_0 = {
-		key = keys.zero,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_1 = {
-		key = keys.one,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_2 = {
-		key = keys.two,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_3 = {
-		key = keys.three,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_4 = {
-		key = keys.four,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_5 = {
-		key = keys.five,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_6 = {
-		key = keys.six,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_7 = {
-		key = keys.seven,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_8 = {
-		key = keys.eight,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectPalette_9 = {
-		key = keys.nine,
-		holdDown = false,
-		modifiers = {},
-	},
-	selectNextPalette = {
-		key = keys.rightBracket,
-		holdDown = false,
-		modifiers = {
-			[keys.leftAlt] = true
-		},
-	},
-	selectPrevPalette = {
-		key = keys.leftBracket,
-		holdDown = false,
-		modifiers = {
-			[keys.leftAlt] = true
-		},
-	},
+	}
 }
 
 local checkControl = function(name)
 	local modlist = {
-		keys.leftCtrl,
---		keys.rightCtrl,
-		keys.leftShift,
---		keys.rightShift,
-		keys.leftAlt,
---		keys.rightAlt,
+		keys.ctrl,
+		keys.shift,
+		keys.alt,
 	}
 	for i = 1, #modlist do
-		if control[name].modifiers[modlist[i]] then
+		if pain.control[name].modifiers[modlist[i]] then
 			if not keysDown[modlist[i]] then
 				return false
 			end
@@ -1055,64 +78,166 @@ local checkControl = function(name)
 			end
 		end
 	end
-	if control[name].key then
-		if keysDown[control[name].key] then
-			if control[name].holdDown then
+	if pain.control[name].key then
+		if keysDown[pain.control[name].key] then
+			if pain.control[name].holdDown then
 				return true
 			else
-				if not controlHoldCheck[name] then
-					controlHoldCheck[name] = true
+				if not pain.controlHoldCheck[name] then
+					pain.controlHoldCheck[name] = true
 					return true
 				end
 			end
 		else
-			controlHoldCheck[name] = false
+			pain.controlHoldCheck[name] = false
 			return false
-		end
-	elseif control[name].mouse then
-		if miceQueue[#miceQueue] then
-			if miceQueue[#miceQueue][1] == control[name].mouse and miceQueue[#miceQueue][2] == control[name].direction then
-				if control[name].holdDown then
-					return true
-				else
-					if not controlHoldCheck[name] then
-						controlHoldCheck[name] = true
-						return true
-					end
-				end
-			else
-				controlHoldCheck[name] = false
-				return false
-			end
 		end
 	end
 end
 
--- converts hex colors to colors api, and back
-local to_colors, to_blit = {
-	[' '] = 0,
-	['0'] = 1,
-	['1'] = 2,
-	['2'] = 4,
-	['3'] = 8,
-	['4'] = 16,
-	['5'] = 32,
-	['6'] = 64,
-	['7'] = 128,
-	['8'] = 256,
-	['9'] = 512,
-	['a'] = 1024,
-	['b'] = 2048,
-	['c'] = 4096,
-	['d'] = 8192,
-	['e'] = 16384,
-	['f'] = 32768,
-}, {}
-for k,v in pairs(to_colors) do
-	to_blit[v] = k
+-- stores the native color palettes, in case the current iteration of ComputerCraft doesn't come with term.nativePaletteColor
+-- if you're using ATOM, feel free to minimize this whole table
+pain.nativePalette = {
+	[ 1 ] = {
+		0.94117647409439,
+		0.94117647409439,
+		0.94117647409439,
+	},
+	[ 2 ] = {
+		0.94901961088181,
+		0.69803923368454,
+		0.20000000298023,
+	},
+	[ 4 ] = {
+		0.89803922176361,
+		0.49803921580315,
+		0.84705883264542,
+	},
+	[ 8 ] = {
+		0.60000002384186,
+		0.69803923368454,
+		0.94901961088181,
+	},
+	[ 16 ] = {
+		0.87058824300766,
+		0.87058824300766,
+		0.42352941632271,
+	},
+	[ 32 ] = {
+		0.49803921580315,
+		0.80000001192093,
+		0.098039217293262,
+	},
+	[ 64 ] = {
+		0.94901961088181,
+		0.69803923368454,
+		0.80000001192093,
+	},
+	[ 128 ] = {
+		0.29803922772408,
+		0.29803922772408,
+		0.29803922772408,
+	},
+	[ 256 ] = {
+		0.60000002384186,
+		0.60000002384186,
+		0.60000002384186,
+	},
+	[ 512 ] = {
+		0.29803922772408,
+		0.60000002384186,
+		0.69803923368454,
+	},
+	[ 1024 ] = {
+		0.69803923368454,
+		0.40000000596046,
+		0.89803922176361,
+	},
+	[ 2048 ] = {
+		0.20000000298023,
+		0.40000000596046,
+		0.80000001192093,
+	},
+	[ 4096 ] = {
+		0.49803921580315,
+		0.40000000596046,
+		0.29803922772408,
+	},
+	[ 8192 ] = {
+		0.34117648005486,
+		0.65098041296005,
+		0.30588236451149,
+	},
+	[ 16384 ] = {
+		0.80000001192093,
+		0.29803922772408,
+		0.29803922772408,
+	},
+	[ 32768 ] = {
+		0.066666670143604,
+		0.066666670143604,
+		0.066666670143604,
+	}
+}
+
+-- load Windon't API
+-- if you're using ATOM, feel free to minimize this whole function
+local windont = require "windont"
+
+windont.default.alwaysRender = false
+
+local scr_x, scr_y = term.getSize()
+
+pain.windows.toolPreview 	= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.menu 			= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.smallPreview 	= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+pain.windows.grid 			= windont.newWindow(1, 1, scr_x, scr_y, {textColor = "-", backColor = "-"})
+
+local function tableCopy(tbl)
+	local output = {}
+	for k, v in next, tbl do
+		output[k] = type(v) == "table" and tableCopy(v) or v
+	end
+	return output
 end
 
--- takes two coordinates, and returns every point between the two
+pain.startTimer = function(name, duration)
+	if type(duration) ~= "number" then
+		error("duration must be number")
+	elseif type(name) ~= "string" then
+		error("name must be string")
+	else
+		pain.timers[name] = duration
+	end
+end
+
+pain.cancelTimer = function(name)
+	if type(name) ~= "string" then
+		error("name must be string")
+	else
+		pain.timers[name] = nil
+	end
+end
+
+pain.tickTimers = function()
+	local done = {}
+	for k,v in pairs(pain.timers) do
+		pain.timers[k] = v - 1
+		if pain.timers[k] <= 0 then
+			done[k] = true
+		end
+	end
+	for k,v in pairs(done) do
+		pain.timers[k] = nil
+	end
+	return done
+end
+
+-- a 'canvas' refers to a single layer only
+-- canvases are also windon't objects, like terminals
+
+
+-- stolen from the paintutils API...nwehehehe
 local getDotsInLine = function( startX, startY, endX, endY )
 	local out = {}
 	startX = math.floor(startX)
@@ -1120,7 +245,7 @@ local getDotsInLine = function( startX, startY, endX, endY )
 	endX = math.floor(endX)
 	endY = math.floor(endY)
 	if startX == endX and startY == endY then
-		out = {{x=startX,y=startY}}
+		out = {{startX, startY}}
 		return out
 	end
     local minX = math.min( startX, endX )
@@ -1139,7 +264,7 @@ local getDotsInLine = function( startX, startY, endX, endY )
         local y = minY
         local dy = yDiff / xDiff
         for x=minX,maxX do
-            out[#out+1] = {x=x,y=math.floor(y+0.5)}
+            out[#out+1] = {x, math.floor(y+0.5)}
             y = y + dy
         end
     else
@@ -1147,12 +272,12 @@ local getDotsInLine = function( startX, startY, endX, endY )
         local dx = xDiff / yDiff
         if maxY >= minY then
             for y=minY,maxY do
-                out[#out+1] = {x=math.floor(x+0.5),y=y}
+                out[#out+1] = {math.floor(x+0.5), y}
                 x = x + dx
             end
         else
             for y=minY,maxY,-1 do
-                out[#out+1] = {x=math.floor(x+0.5),y=y}
+                out[#out+1] = {math.floor(x+0.5), y}
                 x = x - dx
             end
         end
@@ -1160,660 +285,402 @@ local getDotsInLine = function( startX, startY, endX, endY )
     return out
 end
 
--- deletes a dot on the canvas, fool
-local deleteDot = function(x, y, frame)
-	x, y = 1 + x - pain.size.x, 1 + y - pain.size.y
-	if canvas[frame][1][y] then
-		if canvas[frame][1][y][x] then
-			canvas[frame][1][y][x] = nil
-			canvas[frame][2][y][x] = nil
-			canvas[frame][3][y][x] = nil
+pain.manip.touchDot = function(canvas, x, y)
+	if false then
+		if (x > canvas.meta.width or y > canvas.meta.height) and (x >= 1 and y >= 1) then
+			canvas.meta.width = x
+			canvas.meta.height = y
+			canvas.meta.buffer = canvas.meta.newBuffer(
+				x,
+				y,
+				" ",
+				"-",
+				"-",
+				canvas.meta.buffer
+			)
 		end
-	end
-end
-
--- places a dot on the canvas, predictably enough
-local placeDot = function(x, y, frame, dot)
-	x, y = 1 - pain.size.x + x, 1 - pain.size.y + y
-	if not canvas[frame][1][y] then
-		canvas[frame][1][y] = {}
-		canvas[frame][2][y] = {}
-		canvas[frame][3][y] = {}
-	end
-	canvas[frame][1][y][x] = dot[1]
-	canvas[frame][2][y][x] = dot[2]
-	canvas[frame][3][y][x] = dot[3]
-end
-
--- used for tools that involve dragging
-local dragPos = {}
-
-local getGridAtPos = function(x, y)
-	local guide1 = "SCREEN SIZE"
-	local guide2 = "BLITTLE SIZE"
-	local grid = {
-		"..%%",
-		"..%%",
-		"..%%",
-		"%%..",
-		"%%..",
-		"%%..",
-	}
-	if x < 1 or y < 1 then
-		return "/", "7", "f"
+		return true
 	else
-		if y <= pain.guideHeight then
-			if x == 1 + (pain.guideWidth) or x == 1 + 2 * pain.guideWidth then
-				return "@", "7", "f"
-			end
-		elseif y == 1 + pain.guideHeight then
-			if x == 1 + 2 * pain.guideWidth then
-				return "@", "7", "f"
-			elseif x <= pain.guideWidth - #guide1 - pain.guideLeftAdj or (x >= pain.guideWidth - pain.guideLeftAdj + 1 and x <= 1 + pain.guideWidth) then
-				return "@", "7", "f"
-			elseif x <= pain.guideWidth then
-				local xx = x - (pain.guideWidth - #guide1 - pain.guideLeftAdj)
-				return guide1:sub(xx, xx), "7", "f"
-			end
-		elseif y <= pain.guideHeight * 3 then
-			if x == 1 + 2 * pain.guideWidth then
-				return "@", "7", "f"
-			end
-		elseif y == pain.guideHeight * 3 + 1 then
-			if x <= 2 * pain.guideWidth - #guide2 + -pain.guideLeftAdj or (x >= 2 * pain.guideWidth - pain.guideLeftAdj + 1 and x <= 1 + 2 * pain.guideWidth) then
-				return "@", "7", "f"
-			elseif x <= 2 * pain.guideWidth then
-				local xx = x - (2 * pain.guideWidth - #guide2 - pain.guideLeftAdj)
-				return guide2:sub(xx, xx), "7", "f"
+		for c = 1, 3 do
+			canvas.meta.buffer[c][y] = canvas.meta.buffer[c][y] or {}
+			for xx = 1, x do
+				canvas.meta.buffer[c][y][xx] = canvas.meta.buffer[c][y][xx] or "-"
 			end
 		end
-		local sx, sy = 1 + (1 + x) % #grid[1], 1 + (2 + y) % #grid
-		return grid[sy]:sub(sx,sx), "7", "f"
+		return true
 	end
 end
 
-local getEvents = function(...)
-	local evt
-	while true do
-		evt = {os.pullEvent()}
-		for i = 1, #arg do
-			if evt[1] == arg[i] then
-				return table.unpack(evt)
-			end
-		end
+pain.manip.setDot = function(canvas, x, y, char, text, back)
+	if pain.manip.touchDot(canvas, x, y) then
+		canvas.meta.buffer[1][y][x] = char
+		canvas.meta.buffer[2][y][x] = text
+		canvas.meta.buffer[3][y][x] = back
 	end
 end
 
--- every tool at your disposal
-local tools = {
-	pencil = {
-		info = {
-			name = "Pencil",
-			swapTool = "line",	-- if swap button is held, will turn into this tool
-			altTool = "text",	-- if middle mouse button is held, will use this tool (overrides swapTool)
-			swapArg = {			-- any values in this table will override those in 'arg' if using swapTool
-				size = 1
-			},
-			altArg = {},		-- any values in this table will override those in 'arg' if using altTool
-		},
-		run = function(arg)
-			if arg.event == "mouse_click" then
-				if arg.actButton == 1 then
-					placeDot(arg.sx, arg.sy, arg.frame, arg.dot)
-				elseif arg.actButton == 2 then
-					deleteDot(arg.sx, arg.sy, arg.frame)
-				end
-				dragPos = {arg.sx, arg.sy}
-			else
-				if #dragPos == 0 then
-					dragPos = {arg.sx, arg.sy}
-				end
-				local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
-				for i = 1, #poses do
-					if arg.actButton == 1 then
-						placeDot(poses[i].x, poses[i].y, arg.frame, arg.dot)
-					elseif arg.actButton == 2 then
-						deleteDot(poses[i].x, poses[i].y, arg.frame)
-					end
-				end
-				dragPos = {arg.sx, arg.sy}
-			end
-		end
-	},
-	brush = {
-		info = {
-			name = "Brush",
-			swapTool = "line",
-			altTool = "text",
-			swapArg = {},
-			altArg = {}
-		},
-		run = function(arg)
-			if arg.event == "mouse_click" then
-				for y = -arg.size, arg.size do
-					for x = -arg.size, arg.size do
-						if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-							if arg.actButton == 1 then
-								placeDot(arg.sx + x, arg.sy + y, arg.frame, arg.dot)
-							elseif arg.actButton == 2 then
-								deleteDot(arg.sx + x, arg.sy + y, arg.frame)
-							end
-						end
-					end
-				end
-				dragPos = {arg.sx, arg.sy}
-			else
-				if #dragPos == 0 then
-					dragPos = {arg.sx, arg.sy}
-				end
-				local poses = getDotsInLine(arg.sx, arg.sy, dragPos[1], dragPos[2])
-				for i = 1, #poses do
-					for y = -arg.size, arg.size do
-						for x = -arg.size, arg.size do
-							if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-								if arg.actButton == 1 then
-									placeDot(poses[i].x + x, poses[i].y + y, arg.frame, arg.dot)
-								elseif arg.actButton == 2 then
-									deleteDot(poses[i].x + x, poses[i].y + y, arg.frame)
-								end
-							end
-						end
-					end
-				end
-				dragPos = {arg.sx, arg.sy}
-			end
-		end
-	},
-	text = {
-		info = {
-			name = "Text",
-			swapTool = "pencil",
-			altTool = "text",
-			swapArg = {},
-			altArg = {}
-		},
-		run = function(arg)
-			pain.paused = true
-			pain.barmsg = "Type text to add to canvas."
-			pain.barlife = 1
-			render()
-			term.setCursorPos(arg.x, arg.y)
-			term.setTextColor(to_colors[arg.dot[2]])
-			term.setBackgroundColor(to_colors[arg.dot[3]])
-			local text = read()
-			-- re-render every keypress, requires custom read function
-			for i = 1, #text do
-				placeDot(arg.sx + i - 1, arg.sy, arg.frame, {text:sub(i,i), pain.dots[pain.dot][2], pain.dots[pain.dot][3]})
-			end
-			pain.paused = false
-			keysDown = {}
-			miceDown = {}
-		end
-	},
-	line = {
-		info = {
-			name = "Line",
-			swapTool = "pencil",
-			altTool = "brush",
-			swapArg = {},
-			altArg = {}
-		},
-		run = function(arg)
-			local dots
-			while miceDown[arg.button] do
-				arg.size = arg.size or pain.brushSize
-				dots = getDotsInLine(
-					dragPoses[arg.button][1].x + (arg.scrollX - pain.scrollX),
-					dragPoses[arg.button][1].y + (arg.scrollY - pain.scrollY),
-					dragPoses[arg.button][2].x,
-					dragPoses[arg.button][2].y
-				)
-				render()
-				for i = 1, #dots do
-					if dots[i].x >= pain.size.x and dots[i].x < pain.size.x + pain.size.width then
-						for y = -arg.size, arg.size do
-							for x = -arg.size, arg.size do
-								if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-									if (not pain.showBar) or dots[i].y + y < -1 + pain.size.y + pain.size.height then
-										term.setCursorPos(dots[i].x + x, dots[i].y + y)
-										if arg.actButton == 1 then
-											term.blit(table.unpack(arg.dot))
-										elseif arg.actButton == 2 then
-											term.blit(getGridAtPos(dots[i].x + pain.scrollX + x, dots[i].y + pain.scrollY + y))
-										end
-									end
-								end
-							end
-						end
-					end
-				end
+pain.manip.setDotLine = function(canvas, x1, y1, x2, y2, char, text, back)
+	local dots = getDotsInLine(x1, y1, x2, y2)
+	for i = 1, #dots do
+		pain.manip.setDot(canvas, dots[i][1], dots[i][2], char, text, back)
+	end
+end
 
-				os.pullEvent()
-			end
-			-- write dots to canvas
-			for i = 1, #dots do
-				for y = -arg.size, arg.size do
-					for x = -arg.size, arg.size do
-						if math.sqrt(x^2 + y^2) <= arg.size / 2 then
-							if arg.actButton == 1 then
-								placeDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, arg.frame, arg.dot)
-							elseif arg.actButton == 2 then
-								deleteDot(dots[i].x + x + pain.scrollX, dots[i].y + y + pain.scrollY, arg.frame)
-							end
-						end
-					end
-				end
-			end
-		end
-	},
+local whitespace = {
+	["\009"] = true,
+	["\010"] = true,
+	["\013"] = true,
+	["\032"] = true,
+	["\128"] = true
 }
 
--- ran every event on separate coroutine
--- will check if you should be using a tool given mouse and key inputs, then runs said tool
-local tryTool = function()
-	local swapArg = {}
-	local t = tools[pain.tool]
-	if miceDown[3] then
-		swapArg = t.info.altArg or {}
-		t = tools[t.info.altTool]
-	end
-	if checkControl("toolMod") then
-		swapArg = t.info.swapArg or {}
-		t = tools[t.info.swapTool]
-	end
-
-	swapArg.actButton = miceDown[3] and 1
-
-	for butt = 1, 3 do
-		if miceDown[butt] and t then
-			t.run({
-				x 			= swapArg.x or miceDown[butt].x,
-				y 			= swapArg.y or miceDown[butt].y,
-				sx 			= swapArg.sx or ((swapArg.x or miceDown[butt].x) + pain.scrollX),
-				sy 			= swapArg.sy or ((swapArg.y or miceDown[butt].y) + pain.scrollY),
-				scrollX 	= swapArg.scrollX or pain.scrollX,
-				scrollY 	= swapArg.scrollY or pain.scrollY,
-				frame 		= swapArg.frame or pain.frame,
-				dot 		= swapArg.dot or pain.dots[pain.dot],
-				size 		= swapArg.size or pain.brushSize,
-				button	 	= swapArg.button or butt,
-				actButton 	= swapArg.actButton or butt,	-- will act as if this button is held, if not nil
-				event 		= swapArg.event or miceDown[butt].event
-			})
-			pain.doRender = true
-			break
-		end
-	end
-end
-
--- shows everything on screen
-render = function(x, y, width, height)
-	local buffer = {{},{},{}}
-	local cx, cy
-	x = x or pain.size.x
-	y = y or pain.size.y
-	width = width or pain.size.width
-	height = height or pain.size.height
-	-- see, it wouldn't do if I just individually set the cursor position for every dot
-	if useDebugRenderer then
-
-		term.clear()
-		local cx, cy
-		for yy, line in pairs(canvas[pain.frame][1]) do
-			for xx, dot in pairs(canvas[pain.frame][1][yy]) do
-				cx = xx - pain.scrollX
-				cy = yy - pain.scrollY
-				if cx >= x and cx <= (x + width - 1) and cy >= y and cy <= (x + width - 1) then
-					term.setCursorPos(cx, cy)
-					term.blit(
-						canvas[pain.frame][1][yy][xx],
-						canvas[pain.frame][2][yy][xx],
-						canvas[pain.frame][3][yy][xx]
-					)
-				end
-			end
-		end
-
+-- checks if a char/text/back combination should be considered "transparent"
+pain.checkTransparent = function(char, text, back)
+	if whitespace[char] then
+		return (not back) or (back == "-")
 	else
+		return ((not back) or (back == "-")) and ((not text) or (text == "-") )
+	end
+end
 
-		local gChar, gText, gBack
-		for yy = 1, -1 + height + y do
-			buffer[1][yy] = ""
-			buffer[2][yy] = ""
-			buffer[3][yy] = ""
-			if pain.showBar and yy == height then
-				term.setTextColor(colors.black)
-				term.setBackgroundColor(colors.lightGray)
-				term.setCursorPos(pain.size.x, -1 + pain.size.y + pain.size.height)
-				term.write("[" .. pain.scrollX .. "," .. pain.scrollY .. "] ")
-				for i = 1, #pain.dots do
-					if flashPaletteOnBar > 0 then
-						if i == pain.dot then
-							term.blit(tostring(i), "0", pain.dots[i][3])
-						else
-							term.blit(tostring(i), "7", pain.dots[i][3])
-						end
-					else
-						term.blit(table.unpack(pain.dots[i]))
-					end
-				end
-				if pain.barlife > 0 then
-					term.write(" " .. pain.barmsg)
-				else
-					term.write(" " .. tools[pain.tool].info.name .. " tool")
-				end
-				term.write((" "):rep(x + width - term.getCursorPos()))
-			else
-				for xx = 1, width do
-					cx = xx + pain.scrollX
-					cy = yy + pain.scrollY
-					if canvas[pain.frame][1][cy] then
-						if canvas[pain.frame][1][cy][cx] then
-							for c = 1, 3 do
-								buffer[c][yy] = buffer[c][yy] .. canvas[pain.frame][c][cy][cx]
-							end
-						else
-							gChar, gText, gBack = getGridAtPos(cx, cy)
-							buffer[1][yy] = buffer[1][yy] .. gChar
-							buffer[2][yy] = buffer[2][yy] .. gText
-							buffer[3][yy] = buffer[3][yy] .. gBack
-						end
-					else
-						gChar, gText, gBack = getGridAtPos(cx, cy)
-						buffer[1][yy] = buffer[1][yy] .. gChar
-						buffer[2][yy] = buffer[2][yy] .. gText
-						buffer[3][yy] = buffer[3][yy] .. gBack
-					end
-				end
+-- checks if a certain x,y position on the canvas exists
+pain.checkDot = function(canvas, x, y)
+	if paint.manip.touchDot(canvas, x, y) then
+		if canvas[1][y][x] then
+			return canvas[1][y][x], canvas[2][y][x], canvas[3][y][x]
+		end
+	end
+end
+
+local tools = {}
+tools.pencil = {
+	run = function(canvas, initEvent, toolInfo)
+		local mx, my, evt = initEvent[3], initEvent[4]
+		local oldX, oldY
+		local mode = initEvent[2]	-- 1 = draw, 2 = erase
+		local setDot = function()
+			pain.manip.setDotLine(
+				canvas,
+				oldX or (mx - (canvas.meta.x - 1)),
+				oldY or (my - (canvas.meta.y - 1)),
+				mx - (canvas.meta.x - 1),
+				my - (canvas.meta.y - 1),
+				mode == 1 and pain.color.char or " ",
+				mode == 1 and pain.color.text or "-",
+				mode == 1 and pain.color.back or "-"
+			)
+		end
+		while miceDown[mode] do
+			evt = {os.pullEvent()}
+			if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
+				oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
+				mx, my = evt[3], evt[4]
+				setDot()
+			elseif evt[1] == "refresh" then
+				oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
+				setDot()
 			end
 		end
-		for yy = 0, height - 1 do
-			term.setCursorPos(x, y + yy)
-			term.blit(buffer[1][yy+1], buffer[2][yy+1], buffer[3][yy+1])
+	end,
+	options = {}
+}
+
+tools.line = {
+	run = function(canvas, initEvent, toolInfo)
+		local mx, my, evt = initEvent[3], initEvent[4]
+		local initX, initY
+		local oldX, oldY
+		local mode = initEvent[2]	-- 1 = draw, 2 = erase
+		local setDot = function(sCanvas)
+			if initX and initY then
+				pain.manip.setDotLine(
+					sCanvas,
+					initX,
+					initY,
+					mx - (canvas.meta.x - 1),
+					my - (canvas.meta.y - 1),
+					mode == 1 and pain.color.char or " ",
+					mode == 1 and pain.color.text or "-",
+					mode == 1 and pain.color.back or "-"
+				)
+			end
 		end
+		toolInfo.showToolPreview = true
+		while miceDown[mode] do
+			evt = {os.pullEvent()}
+			if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
+				oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
+				mx, my = evt[3], evt[4]
+				if not (initX and initY) then
+					initX = mx - (canvas.meta.x - 1)
+					initY = my - (canvas.meta.y - 1)
+				end
+				setDot(pain.windows.toolPreview)
+			elseif evt[1] == "mouse_up" then
+				setDot(canvas)
+			elseif evt[1] == "refresh" then
+				oldX, oldY = mx - (canvas.meta.x - 1), my - (canvas.meta.y - 1)
+				setDot(pain.windows.toolPreview)
+			end
+		end
+	end,
+	options = {}
+}
 
+local genPalette = function()
+	local palette = {}
+	for i = 0, 15 do
+		palette[2^i] = pain.nativePalettes[2^i]
 	end
+	return palette
+end
 
-	if false then
-		term.setCursorPos(1,1)
-		write(textutils.serialize(miceDown))
+local newCanvas = function()
+	local canvas = windont.newWindow(1, 1, 1, 1, {textColor = "-", backColor = "-"})
+	canvas.meta.x = 1
+	canvas.meta.y = 1
+	return canvas
+end
+
+local getGridFromPos = function(x, y, scrollX, scrollY)
+	local grid
+	if (x >= 0 and y >= 0) then
+		grid = {
+			"$$..%%..%%..%%..",
+			"$$..%%..%%..%%..",
+			"$$..%%..%%..%%..",
+			"..$$..%%..%%..$$",
+			"..$$..%%..%%..$$",
+			"..$$..%%..%%..$$",
+			"%%..$$..%%..$$..",
+			"%%..$$..%%..$$..",
+			"%%..$$..%%..$$..",
+			"..%%..$$..$$..%%",
+			"..%%..$$..$$..%%",
+			"..%%..$$..$$..%%",
+			"%%..%%..$$..%%..",
+			"%%..%%..$$..%%..",
+			"%%..%%..$$..%%..",
+			"..%%..$$..$$..%%",
+			"..%%..$$..$$..%%",
+			"..%%..$$..$$..%%",
+			"%%..$$..%%..$$..",
+			"%%..$$..%%..$$..",
+			"%%..$$..%%..$$..",
+			"..$$..%%..%%..$$",
+			"..$$..%%..%%..$$",
+			"..$$..%%..%%..$$",
+		}
+	else
+		if (x < 0 and y >= 0) then
+			-- too far to the left, but not too far up
+			grid = {
+				"GO#RIGHT#",
+				"#---\16####",
+				"##---\16###",
+				"###---\16##",
+				"####---\16#",
+				"###---\16##",
+				"##---\16###",
+				"#---\16####",
+			}
+		elseif (x >= 0 and y < 0) then
+			-- too far up, but not too far to the left
+			grid = {
+				"#GO##DOWN#",
+				"#|#######|",
+				"#||#####||",
+				"#\31||###||\31",
+				"##\31||#||\31#",
+				"###\31|||\31##",
+				"####\31|\31###",
+				"#####\31####",
+				"##########",
+			}
+		else
+			grid = {
+				"\\##\\",
+				"\\\\##",
+				"#\\\\#",
+				"##\\\\",
+			}
+		end
 	end
+	local xx = (x % #grid[1]) + 1
+	return grid[(y % #grid) + 1]:sub(xx, xx), "7", "f"
+end
+
+local drawGrid = function(canvas)
+	local xx
+	for y = 1, pain.windows.grid.meta.height do
+		for x = 1, pain.windows.grid.meta.width do
+			pain.windows.grid.meta.buffer[1][y][x], pain.windows.grid.meta.buffer[2][y][x], pain.windows.grid.meta.buffer[3][y][x] = getGridFromPos(x - canvas.meta.x, y - canvas.meta.y)
+		end
+	end
+end
+
+local makeMenu = function()
 
 end
 
-local getInput = function()
-	local evt, adjX, adjY, paletteListX
-	local keySwapList = {
-		[keys.rightShift] = keys.leftShift,
-		[keys.rightAlt] = keys.leftAlt,
-		[keys.rightCtrl] = keys.leftCtrl,
+local main = function()
+	local render = function(canvasList)
+		drawGrid(canvasList[1])
+		local rList = {
+			pain.windows.menu,
+			pain.windows.smallPreview,
+			pain.windows.toolPreview,
+		}
+		for i = 1, #canvasList do
+			rList[#rList + 1] = canvasList[i]
+		end
+		rList[#rList + 1] = pain.windows.grid
+		windont.render(
+			{baseTerm = term.current()},
+			table.unpack(rList)
+		)
+	end
+	local canvas, evt
+	local tCompleted = {}
+	local mainTimer = os.startTimer(0.05)
+	local resumeTimer = os.startTimer(0.05)
+
+	pain.startTimer("render", 0.05)
+
+	-- initialize first layer
+	pain.image[1] = newCanvas()
+
+	local cTool = {
+		name = "line",
+		lastEvent = nil,
+		active = false,
+		coroutine = nil,
+		doRender = false,			-- if true after resuming the coroutine, renders directly after resuming
+		showToolPreview = false		-- if true, will render the tool preview INSTEAD of the current canvas
 	}
-	while true do
+
+	local isToolGood = false
+
+	local resume = function(newEvent)
+		if cTool.coroutine then
+			if (cTool.lastEvent == (newEvent or evt[1])) or (not cTool.lastEvent) then
+				cTool.doQuickResume = false
+				if cTool.showToolPreview then
+					pain.windows.toolPreview.meta.buffer = tableCopy(canvas.meta.buffer)
+					pain.windows.toolPreview.meta.x = canvas.meta.x
+					pain.windows.toolPreview.meta.y = canvas.meta.y
+					pain.windows.toolPreview.meta.width = canvas.meta.width
+					pain.windows.toolPreview.meta.height = canvas.meta.height
+				end
+				cTool.active, cTool.lastEvent = coroutine.resume(cTool.coroutine, table.unpack(newEvent or evt))
+			end
+			if checkControl("cancelTool") then
+				cTool.active = false
+			end
+			if (not cTool.active) or coroutine.status(cTool.coroutine) == "dead" then
+				cTool.active = false
+			end
+			if not cTool.active then
+				if type(cTool.lastEvent) == "string" then
+					if cTool.lastEvent:sub(1,4) == "ERR:" then
+						error(cTool.lastEvent:sub(5))
+					end
+				end
+				cTool.coroutine = nil
+				cTool.lastEvent = nil
+				cTool.showToolPreview = false
+				pain.windows.toolPreview.clear()
+			end
+			if cTool.doRender then
+				render({canvas})
+				cTool.doRender = false
+			end
+		end
+	end
+
+	while pain.running do
+
 		evt = {os.pullEvent()}
-		if evt[1] == "mouse_click" or evt[1] == "mouse_drag" then
 
-			-- start X for the list of color palettes to choose from
-			paletteListX = 5 + #tostring(pain.scrollX) + #tostring(pain.scrollY)
 
-			-- (x, y) relative to (pain.size.x, pain.size.y)
-			adjX, adjY = 1 + evt[3] - pain.size.x, 1 + evt[4] - pain.size.y
+		if evt[1] == "timer" and evt[2] == mainTimer then
+			mainTimer = os.startTimer(0.05)
+			tCompleted = pain.tickTimers()		-- get list of completed pain timers
+			canvas = pain.image[pain.layer]		-- 'canvas' is a term object, you smarmy cunt
+			for k,v in pairs(keysDown) do keysDown[k] = v + 1 end
 
-			if adjX >= 1 and adjX <= pain.size.width and adjY >= 1 and adjY <= pain.size.height then
-
-				pain.isInFocus = true
-
-				if adjY == pain.size.height then
-
-					if evt[1] == "mouse_click" then
-						if adjX >= paletteListX and adjX <= -1 + paletteListX + #pain.dots then
-							pain.dot = 1 + adjX - paletteListX
-							setBarMsg("Selected palette " .. pain.dot .. ".")
-						else
-							-- openBarMenu()
-						end
-					end
-
-				else
-
-					if pain.limitOneMouseButton then
-						dragPoses = {
-							dragPoses[1] or {{},{}},
-							dragPoses[2] or {{},{}},
-							dragPoses[3] or {{},{}}
-						}
-						dragPoses = {
-							[evt[2]] = {
-								{
-									x = dragPoses[evt[2]][1].x or evt[3],
-									y = dragPoses[evt[2]][1].y or evt[4]
-								},
-								{
-									x = evt[3],
-									y = evt[4]
-								}
-							}
-						}
-						if evt[1] == "mouse_click" or miceDown[evt[2]] then
-							miceDown = {{},{},{}}
-							miceDown = {
-								[evt[2]] = {
-									event = evt[1],
-									button = evt[2],
-									x = evt[3],
-									y = evt[4],
-								}
-							}
-						end
-					else
-						dragPoses[evt[2]] = {
-							{
-								x = dragPoses[evt[2]][1].x or evt[3],
-								y = dragPoses[evt[2]][1].y or evt[4]
-							},
-							{
-								x = evt[3],
-								y = evt[4]
-							}
-						}
-						if evt[1] == "mouse_click" or miceDown[evt[2]] then
-							miceDown[evt[2]] = {
-								event = evt[1],
-								button = evt[2],
-								x = evt[3],
-								y = evt[4],
-							}
-						end
-					end
-
-				end
-			else
-				pain.isInFocus = false
-			end
-		elseif evt[1] == "key" then
-			if pain.isInFocus then
-				keysDown[evt[2]] = true
-				keysDown[keySwapList[evt[2]] or evt[2]] = true
-			else
-				keysDown = {}
-			end
-		elseif evt[1] == "mouse_up" then
-			if pain.limitOneMouseButton then
-				dragPoses = {{{},{}}, {{},{}}, {{},{}}}
-			else
-				dragPoses[evt[2]] = {{},{}}, {{},{}}, {{},{}}
-			end
-			miceDown[evt[2]] = false
-		elseif evt[1] == "mouse_scroll" then
-			-- capture scroll events for special use
-			miceQueue[#miceQueue + 1] = evt
-		elseif evt[1] == "key_up" then
-			keysDown[evt[2]] = false
-			keysDown[keySwapList[evt[2]] or evt[2]] = false
-		end
-	end
-end
-
--- asynchronously renders the screen
-local asyncRender = function()
-	while true do
-		os.pullEvent("pain_main_looped")
-		if pain.doRender and not pain.paused then
-			render()
-			pain.doRender = false
-		end
-		sleep(0.05)
-		os.queueEvent("pain_render_looped")
-	end
-end
-
--- executes everything that doesn't run asynchronously
-main = function()
-	local evt
-	parallel.waitForAny(asyncRender, function()
-		while true do
-
-			if not pain.paused then
-
-				if checkControl("quit") then
-					return true
-				end
-
-				if checkControl("adjustPaletteTextDown") or checkControl("adjustPaletteTextDown_Alt") then
-					pain.dots[pain.dot][2] = to_blit[math.max(1, to_colors[pain.dots[pain.dot][2]] / 2)]
-					pain.doRender = true
-				end
-
-				if checkControl("adjustPaletteTextUp") or checkControl("adjustPaletteTextUp_Alt") then
-					pain.dots[pain.dot][2] = to_blit[math.min(2^15, to_colors[pain.dots[pain.dot][2]] * 2)]
-					pain.doRender = true
-				end
-
-				if checkControl("adjustPaletteBackgroundDown") or checkControl("adjustPaletteBackgroundDown_Alt") then
-					pain.dots[pain.dot][3] = to_blit[math.max(1, to_colors[pain.dots[pain.dot][3]] / 2)]
-					pain.doRender = true
-				end
-
-				if checkControl("adjustPaletteBackgroundUp") or checkControl("adjustPaletteBackgroundUp_Alt") then
-					pain.dots[pain.dot][3] = to_blit[math.min(2^15, to_colors[pain.dots[pain.dot][3]] * 2)]
-					pain.doRender = true
-				end
-
-				-- handle scrolling
-				if checkControl("resetScroll") then
-					pain.scrollX = 0
-					pain.scrollY = 0
-					pain.doRender = true
-				else
-					if checkControl("increaseBrushSize") or checkControl("increaseBrushSize_Alt") then
-						pain.brushSize = math.min(pain.brushSize + 1, 16)
-						setBarMsg("Increased brush size to " .. pain.brushSize .. ".")
-					elseif checkControl("decreaseBrushSize") or checkControl("decreaseBrushSize_Alt") then
-						pain.brushSize = math.max(pain.brushSize - 1, 1)
-						setBarMsg("Decreased brush size to " .. pain.brushSize .. ".")
-					elseif checkControl("scrollLeft") then
-						pain.scrollX = pain.scrollX - 1
-						pain.doRender = true
-					end
-					if checkControl("scrollRight") then
-						pain.scrollX = pain.scrollX + 1
-						pain.doRender = true
-					end
-					if checkControl("scrollUp") then
-						pain.scrollY = pain.scrollY - 1
-						pain.doRender = true
-					end
-					if checkControl("scrollDown") then
-						pain.scrollY = pain.scrollY + 1
-						pain.doRender = true
-					end
-				end
-				if checkControl("selectNextPalette") then
-					if pain.dot < #pain.dots then
-						pain.dot = pain.dot + 1
-						flashPaletteOnBar = 6
-						setBarMsg("Switched to next palette " .. pain.dot .. ".")
-					else
-						setBarMsg("Reached end of palette list.")
-					end
-				end
-				if checkControl("selectPrevPalette") then
-					if pain.dot > 1 then
-						pain.dot = pain.dot - 1
-						flashPaletteOnBar = 6
-						setBarMsg("Switched to previous palette " .. pain.dot .. ".")
-					else
-						setBarMsg("Reached beginning of palette list.")
-					end
-				end
-				for i = 0, 9 do
-					if checkControl("selectPalette_" .. i) then
-						if pain.dots[i] then
-							pain.dot = i
-							flashPaletteOnBar = 6
-							setBarMsg("Selected palette " .. pain.dot .. ".")
-							break
-						else
-							setBarMsg("There is no palette " .. i .. ".")
-							break
-						end
-					end
-				end
-				if checkControl("pencilTool") then
-					pain.tool = "pencil"
-					setBarMsg("Selected pencil tool.")
-				elseif checkControl("textTool") then
-					pain.tool = "text"
-					setBarMsg("Selected text tool.")
-				elseif checkControl("brushTool") then
-					pain.tool = "brush"
-					setBarMsg("Selected brush tool.")
-				elseif checkControl("lineTool") then
-					pain.tool = "line"
-					setBarMsg("Selected line tool.")
-				end
-
-				-- decrement bar life and palette number indicator
-				-- if it's gonna hit zero, make sure it re-renders
-
-				if pain.barlife == 1 then
-					pain.doRender = true
-				end
-				pain.barlife = math.max(pain.barlife - 1, 0)
-
-				if flashPaletteOnBar == 1 then
-					pain.doRender = true
-				end
-				flashPaletteOnBar = math.max(flashPaletteOnBar - 1, 0)
-
+			if checkControl("quit") then	-- why did I call myself a cunt
+				pain.running = false
 			end
 
-			if #miceQueue > 0 then
-				miceQueue[#miceQueue] = nil
+			if checkControl("scrollRight") then
+				canvas.meta.x = canvas.meta.x - 1
 			end
 
-			TICKNO = TICKNO + 1
+			if checkControl("scrollLeft") then
+				canvas.meta.x = canvas.meta.x + 1
+			end
 
-			os.queueEvent("pain_main_looped")
-			os.pullEvent("pain_render_looped")
+			if checkControl("scrollDown") then
+				canvas.meta.y = canvas.meta.y - 1
+			end
+
+			if checkControl("scrollUp") then
+				canvas.meta.y = canvas.meta.y + 1
+			end
+
+			if checkControl("resetScroll") then
+				canvas.meta.x = 1
+				canvas.meta.y = 1
+			end
+
+			resume({"refresh"})
+
+			if tCompleted.render then
+				pain.startTimer("render", 0.05)
+				render({cTool.showToolPreview and pain.windows.toolPreview or canvas})
+			end
+
+		else
+
+			if evt[1] == "term_resize" then
+				scr_x, scr_y = term.getSize()
+			elseif evt[1] == "key" then
+				if not evt[3] then
+					keysDown[evt[2]] = 0
+					keysDown[keys.ctrl] = keysDown[keys.leftCtrl] or keysDown[keys.rightCtrl]
+					keysDown[keys.shift] = keysDown[keys.leftShift] or keysDown[keys.rightShift]
+					keysDown[keys.alt] = keysDown[keys.leftAlt] or keysDown[keys.rightAlt]
+				end
+			elseif evt[1] == "mouse_up" then
+				miceDown[evt[2]] = nil
+			elseif evt[1] == "key_up" then
+				keysDown[evt[2]] = nil
+			elseif (evt[1] == "mouse_click" or evt[1] == "mouse_drag") then
+				miceDown[evt[2]] = {evt[3], evt[4]}
+				if evt[1] == "mouse_click" then
+					if not cTool.active then
+						cTool.coroutine = coroutine.create(function(...)
+							local result, message = pcall(tools[cTool.name].run, ...)
+							if not result then
+								error("ERR:" .. message, 2)
+							end
+						end)
+						cTool.active = coroutine.resume(cTool.coroutine, canvas, evt, cTool)
+					end
+				end
+			end
+
+			resume()
 
 		end
-	end)
-end
 
-local keepTryingTools = function()
-	while true do
-		os.pullEvent()
-		tryTool()
 	end
+
+	term.setCursorPos(1, scr_y)
+	term.clearLine()
+
 end
 
-term.clear()
 
-parallel.waitForAny( main, getInput, keepTryingTools )
-
--- exit cleanly
-
-term.setCursorPos(1, scr_y)
-term.setBackgroundColor(colors.black)
-term.setTextColor(colors.white)
-term.clearLine()
+main()
