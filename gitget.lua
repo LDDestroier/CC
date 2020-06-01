@@ -245,8 +245,9 @@ local sPrint = function(str)
 end
 
 local getFromGitHub
-getFromGitHub = function(reponame, repopath, filepath, verbose)
-	local jason = http.get("https://api.github.com/repos/" .. reponame .. "/contents/" .. (repopath or ""), {
+getFromGitHub = function(reponame, repopath, filepath, branch, verbose)
+	branch = branch or "master"
+	local jason = http.get("https://api.github.com/repos/" .. reponame .. "/contents/" .. (repopath or "") .. "?ref=" .. branch, {
 		["Authorization"] = token
 	})
 	if not jason then return false end
@@ -260,12 +261,13 @@ getFromGitHub = function(reponame, repopath, filepath, verbose)
 					sPrint("'" .. fs.combine(filepath, v.name) .. "'")
 				end
 				writeToFile(fs.combine(filepath, v.name), http.get(v.download_url).readAll())
+				os.queueEvent("gitget_got", v.name, filepath, v.download_url)
 			elseif v.type == "dir" then
 				if verbose then
 					sPrint("'" .. fs.combine(filepath,v.name) .. "'")
 				end
 				fs.makeDir(fs.combine(filepath, v.name))
-				getFromGitHub(reponame, fs.combine(repopath, v.name), fs.combine(filepath, v.name), verbose)
+				getFromGitHub(reponame, fs.combine(repopath, v.name), fs.combine(filepath, v.name), branch, verbose)
 			end
 		end
 	end
@@ -309,7 +311,7 @@ else
 	local oldtxt = (term.getTextColor and term.getTextColor()) or colors.white
 	sPrint("Downloading...")
 	term.setTextColor(term.isColor() and colors.green or colors.lightGray)
-	getFromGitHub(reponame, repopath, outpath, verbose)
+	getFromGitHub(reponame, repopath, outpath, branch, verbose)
 	term.setTextColor(oldtxt)
 	sPrint("Downloaded to /" .. fs.combine("", outpath))
 end
