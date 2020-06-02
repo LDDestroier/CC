@@ -5,6 +5,7 @@
    pastebin get TZd5PYgz gitget
                               --]]
 local verbose = true
+local programOutput
 
 local function interpretArgs(tInput, tArgs)
 	local output = {}
@@ -57,15 +58,17 @@ local token = "0f7e97e6524dcb03f79978ff88235a510f5ff4ae"
 local argList = interpretArgs({...}, argData)
 
 local reponame = argList[1]
-local repopath = argList[2]
+local repopath = argList[2] or ""
 local outpath = argList[3] or ""
 
 local branch = argList["-b"] or "master"
 local silent = argList["-s"] or false
 local autoOverwrite = argList["-y"]
 
-if outpath:sub(1,1) ~= "/" then
-	outpath = fs.combine(shell.dir(), outpath)
+if outpath and shell then
+	if outpath:sub(1,1) ~= "/" then
+		outpath = fs.combine(shell.dir(), outpath)
+	end
 end
 
 --thank you ElvishJerricco
@@ -233,48 +236,95 @@ local function decode(str)
 end
 
 local writeToFile = function(filename, contents)
-	local file = fs.open(filename,"w")
+	local file = fs.open(filename, "w")
 	file.write(contents)
 	file.close()
 end
 
-local sPrint = function(str)
+local sWrite = function(str)
 	if not silent then
-		return print(str)
+		return write(str)
 	end
 end
 
-local getFromGitHub
-getFromGitHub = function(reponame, repopath, filepath, branch, verbose)
+local sPrint = function(str)
+	return sWrite(str .. "\n")
+end
+
+-- downloads, but does not write, files from GitHub
+local function downloadFromGitHub(reponame, repopath, branch, options)
+	options = options or {}
 	branch = branch or "master"
-	local jason = http.get("https://api.github.com/repos/" .. reponame .. "/contents/" .. (repopath or "") .. "?ref=" .. branch, {
-		["Authorization"] = token
-	})
-	if not jason then return false end
-	local repo = decode(jason.readAll())
-	for k,v in pairs(repo) do
-		if v.message then
-			return false
-		else
-			if v.type == "file" then
-				if verbose then
-					sPrint("'" .. fs.combine(filepath, v.name) .. "'")
+	options.output = output or {}
+
+	local oldTextColor = term.getTextColor and term.getTextColor() or colors.white
+	term.setTextColor(term.isColor() and colors.green or colors.lightGray)
+	local headers = {
+		["Authorization"] = "token " .. token
+	}
+	local iRepoPath, iPath
+	options.loopCount = (options.loopCount or 1)
+	if options.loopCount == 1 then
+		options.initialRepoPath = options.initialRepoPath or repopath
+	end
+	local jason = http.get("https://api.github.com/repos/" .. reponame .. "/contents/" .. (repopath or "") .. "/?ref=" .. branch, headers)
+	if not jason then
+		printError("A file/folder couldn't be downloaded.")
+	else
+		local repo = decode(jason.readAll())
+		for k,v in pairs(repo) do
+			if v.message then
+				return false
+			else
+				if options.initialRepoPath then
+					iRepoPath = repopath:sub(#options.initialRepoPath + 2)
+				else
+					iRepoPath = repopath
 				end
-				writeToFile(fs.combine(filepath, v.name), http.get(v.download_url).readAll())
-				os.queueEvent("gitget_got", v.name, filepath, v.download_url)
-			elseif v.type == "dir" then
-				if verbose then
-					sPrint("'" .. fs.combine(filepath,v.name) .. "'")
+				iPath = fs.combine(iRepoPath .. "/" .. (options.filepath or ""), v.name)
+				if v.type == "file" then
+					if options.verbose then
+						sPrint("'" .. fs.combine(repopath, v.name) .. "'")
+					end
+					if options.doWrite then
+						writeToFile(iPath, http.get(v.download_url).readAll())
+						options.output[iPath] = true
+					else
+						options.output[iPath] = http.get(v.download_url).readAll()
+					end
+					os.queueEvent("gitget_got", v.name, repopath, v.download_url)
+				elseif v.type == "dir" then
+					if options.verbose then
+						sPrint("'" .. fs.combine(repopath, v.name) .. "/'")
+					end
+					options.loopCount = options.loopCount + 1
+					options.output = downloadFromGitHub(reponame, fs.combine(repopath, v.name), branch, options)
+					options.loopCount = options.loopCount - 1
 				end
-				fs.makeDir(fs.combine(filepath, v.name))
-				getFromGitHub(reponame, fs.combine(repopath, v.name), fs.combine(filepath, v.name), branch, verbose)
 			end
 		end
 	end
+	term.setTextColor(oldTextColor)
+	return options.output
+end
+
+-- downloads and writes files from GitHub
+local function getFromGitHub(reponame, repopath, filepath, branch, verbose)
+	local files = downloadFromGitHub(reponame, repopath, branch, {
+		doWrite = true,
+		filepath = filepath,
+		verbose = verbose,
+	})
+	local amnt = 0
+	for k,v in pairs(files) do
+		amnt = amnt + 1
+	end
+	sPrint("Complete.")
+	return files, amnt
 end
 
 local displayHelp = function()
-	local progname = fs.getName(shell.getRunningProgram())
+	local progname = shell and fs.getName(shell.getRunningProgram()) or "gitget"
 	sPrint(progname .. " [owner/repo] [repopath] [output dir]")
 	sPrint(" -b [branch]")
 	sPrint(" -s | runs silent unless asking to overwrite")
@@ -282,7 +332,7 @@ local displayHelp = function()
 end
 
 if not (reponame and repopath and outpath) then
-	return displayHelp()
+	displayHelp()
 else
 	if fs.exists(outpath) and not fs.isDir(outpath) then
 		if autoOverwrite then
@@ -310,8 +360,12 @@ else
 	repopath = (repopath == "*") and "" or repopath
 	local oldtxt = (term.getTextColor and term.getTextColor()) or colors.white
 	sPrint("Downloading...")
-	term.setTextColor(term.isColor() and colors.green or colors.lightGray)
-	getFromGitHub(reponame, repopath, outpath, branch, verbose)
+	local files, amnt = getFromGitHub(reponame, repopath, outpath, branch, verbose)
 	term.setTextColor(oldtxt)
-	sPrint("Downloaded to /" .. fs.combine("", outpath))
+	sPrint("Wrote to \"/" .. fs.combine("", outpath) .. "\" (" .. amnt .. " files)")
 end
+
+return {
+	getFromGitHub = getFromGitHub,
+	downloadFromGitHub = downloadFromGitHub
+}
