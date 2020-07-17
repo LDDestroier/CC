@@ -35,7 +35,7 @@ local game = {
 	inputDelay = 0.05,		-- amount of time between each input
 	gameDelay = 0.05,		-- amount of time between game ticks
 	minimumLockTimer = 0.4,	-- shortest amount of time before a piece locks upon touching the ground
-	appearanceDelay = 0.15,	-- amount of time to wait after placing a piece
+	appearanceDelay = 0.05,	-- amount of time to wait after placing a piece
 	config = {
 		TGMlock = false,		-- replicate the piece locking from Tetris: The Grand Master
 		scrubMode = false,	-- gives you nothing but I-pieces
@@ -394,6 +394,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 
 	mino.x = x
 	mino.y = y
+	mino.didWallKick = false
 	mino.color = minos[minoType].mainColor or "c"
 	mino.didTspin = false	-- if the player has done a T-spin with this piece
 	mino.lockBreaks = 16	-- anti-infinite measure
@@ -401,14 +402,14 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 	mino.board = board
 	mino.minoType = minoType
 	-- checks to see if the mino is currently clipping with a solid board space (with the offset values)
-	mino.checkCollision = function(xOffset, yOffset)
+	mino.checkCollision = function(xOffset, yOffset, doNotCountBorder)
 		local cx, cy
 		for y = 1, #mino.shape do
 			for x = 1, #mino.shape[y] do
 				cx = mino.x + x + (xOffset or 0)
 				cy = mino.y + y + (yOffset or 0)
 				if mino.shape[y]:sub(x,x) ~= " " then
-					if isSpaceSolid(mino.board, cx, cy) then
+					if isSpaceSolid(mino.board, cx, cy) and not (doNotCountBorder and not doesSpaceExist(board, cx, cy)) then
 						return true
 					end
 				end
@@ -437,12 +438,16 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 		mino.shape = output
 		-- check T-spin
 		local checkTspin = function(mino)
-			if (mino.checkCollision(-1, 0) and mino.checkCollision(1, 0) and mino.checkCollision(0, -1)) then
-				mino.didTspin = true
-				return true
+			if (mino.checkCollision(-1, 0, false) and mino.checkCollision(1, 0, false) and mino.checkCollision(0, -1, false)) then
+				if mino.didWallKick then
+					mino.didTspin = 1
+				else
+					mino.didTspin = 2
+				end
 			else
-				return false
+				mino.didTspin = false
 			end
+			return mino.didTspin
 		end
 		-- try to kick off wall/floor
 		if mino.checkCollision(0, 0) then
@@ -450,6 +455,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			if not mino.checkCollision(-direction, 2) then
 				mino.y = mino.y + 2
 				mino.x = mino.x - direction
+				mino.didWallKick = true
 				checkTspin(mino)
 				return true
 			end
@@ -459,6 +465,8 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 					if not mino.checkCollision(x, y) then
 						mino.x = mino.x + x
 						mino.y = mino.y + y
+						mino.didWallKick = true
+
 						--checkTspin(mino)
 						--return true
 					end
@@ -468,16 +476,19 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			for y = 1, math.floor(#mino.shape / 2) do
 				if not mino.checkCollision(0, -y) then
 					mino.y = mino.y - y
+					mino.didWallKick = true
 					checkTspin(mino)
 					return true
 				elseif not mino.checkCollision(-1, -y) then
 					mino.y = mino.y - y
 					mino.x = mino.x - 1
+					mino.didWallKick = true
 					checkTspin(mino)
 					return true
 				elseif not mino.checkCollision(1, -y) then
 					mino.y = mino.y - y
 					mino.x = mino.x + 1
+					mino.didWallKick = true
 					checkTspin(mino)
 					return true
 				end
@@ -502,6 +513,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			for x = 0, math.floor(#mino.shape[1] / 2) do
 				if not mino.checkCollision(x, 0) then
 					mino.x = mino.x + x
+					mino.didWallKick = true
 					checkTspin(mino)
 					return true
 				end
@@ -510,6 +522,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 					mino.x = mino.x + x
 					mino.y = mino.y + 1
 					sendInfo("send_info", false)
+					mino.didWallKick = true
 					checkTspin(mino)
 					return true
 				end
@@ -517,6 +530,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 			mino.shape = oldShape
 			return false
 		else
+			checkTspin(mino)
 			return true
 		end
 	end
@@ -540,9 +554,12 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 	-- moves a mino, making sure not to clip with solid board spaces
 	mino.move = function(x, y, doSlam)
 		if not mino.checkCollision(x, y) then
-			mino.x = mino.x + x
-			mino.y = mino.y + y
-			mino.didTspin = false
+			if not (x == 0 and y == 0) then
+				mino.x = mino.x + x
+				mino.y = mino.y + y
+				mino.didTspin = false
+				mino.didWallKick = false
+			end
 			return true
 		elseif doSlam then
 			for sx = 0, x, math.abs(x) / x do
@@ -551,6 +568,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 					break
 				end
 				if sx ~= 0 then
+					mino.didWallKick = false
 					mino.didTspin = false
 				end
 			end
@@ -560,7 +578,7 @@ local makeNewMino = function(minoType, board, x, y, replaceColor)
 					break
 				end
 				if sy ~= 0 then
-					mino.didTspin = false
+					mino.didWallKick = false
 				end
 			end
 		else
@@ -704,6 +722,7 @@ end
 -- also tells the player's combo, which is nice
 local drawComboMessage = function(player, cPlayer, lines, didTspin)
 	local msgs = {
+		[0] = "",
 		"SINGLE",
 		"DOUBLE",
 		"TRIPLE",
@@ -717,7 +736,11 @@ local drawComboMessage = function(player, cPlayer, lines, didTspin)
 	term.write((" "):rep(16))
 	term.setCursorPos(player.xmod + 2, player.ymod + 18)
 	if didTspin then
-		term.write("T-SPIN ")
+		if didTspin == 1 then
+			term.write("T-SPIN MINI ")
+		elseif didTspin == 2 then
+			term.write("T-SPIN ")
+		end
 	else
 		if lines == cPlayer.lastLinesCleared then
 			if lines == 3 then
@@ -728,7 +751,7 @@ local drawComboMessage = function(player, cPlayer, lines, didTspin)
 		end
 	end
 	term.write(msgs[lines])
-	if cPlayer.combo >= 2 then
+	if cPlayer.combo >= 2 and lines > 0 then
 		term.setCursorPos(player.xmod + 2, player.ymod + 19)
 		term.setTextColor(tColors.white)
 		term.write((" "):rep(16))
@@ -762,6 +785,10 @@ local gameOver = function(player, cPlayer)
 		waitTime = 70
 	end
 	local color = 0
+	local evt
+	local sTimer
+	local cTimer = os.startTimer(1)
+	local canSkip = false
 	for i = 1, waitTime do
 		mino.x = mino.x - 1
 		mino.draw()
@@ -771,7 +798,22 @@ local gameOver = function(player, cPlayer)
 			color = color + 0.01
 			game.setPaletteColor(4096, math.sin(color) / 2 + 0.5, math.sin(color) / 2, math.sin(color) / 2)
 		end
-		sleep(0.1)
+
+		sTimer = os.startTimer(0.05)
+		while true do
+			evt = {os.pullEvent()}
+			if evt[1] == "timer" then
+				if evt[2] == sTimer then
+					break
+				elseif evt[2] == cTimer then
+					canSkip = true
+				end
+			elseif evt[1] == "key" then
+				if canSkip then
+					return
+				end
+			end
+		end
 	end
 	return
 end
@@ -905,6 +947,8 @@ local startGame = function(playerNumber)
 			end
 			renderBoard(board, 0, 0, true)
 			renderBoard(player.queueBoard, 0, 0, false)
+			term.setCursorPos(1, 1)
+			term.write(tostring(mino.didWallKick) .. " ")
 		end
 
 		local currentMinoType
@@ -964,7 +1008,7 @@ local startGame = function(playerNumber)
 									game.alterTimer(lockTimer, -0.1)
 								else
 									mino.lockBreaks = mino.lockBreaks - 1
-									lockTimer = game.startTimer(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer))
+									lockTimer = game.startTimer(math.min(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer), 1.5))
 									mino.waitingForLock = true
 								end
 							end
@@ -1045,6 +1089,9 @@ local startGame = function(playerNumber)
 				math.floor(board.xSize / 2) - 2,
 				game.boardOverflow
 			)
+			if mino.checkCollision() then
+				mino.y = mino.y - 1
+			end
 			cPlayer.mino = mino
 
 			ghostMino = makeNewMino(
@@ -1212,6 +1259,12 @@ local startGame = function(playerNumber)
 			if #clearedLines == 0 then
 				if cPlayer.canHold then
 					cPlayer.combo = 0
+				end
+				if mino.didTspin then
+					cPlayer.drawCombo = true
+					os.cancelTimer(comboTimer or 0)
+					comboTimer = os.startTimer(2)
+					drawComboMessage(player, cPlayer, #clearedLines, mino.didTspin)
 				end
 			else
 				cPlayer.combo = cPlayer.combo + 1
