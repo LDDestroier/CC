@@ -947,8 +947,6 @@ local startGame = function(playerNumber)
 			end
 			renderBoard(board, 0, 0, true)
 			renderBoard(player.queueBoard, 0, 0, false)
-			term.setCursorPos(1, 1)
-			term.write(tostring(mino.didWallKick) .. " ")
 		end
 
 		local currentMinoType
