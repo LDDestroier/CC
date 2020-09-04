@@ -29,28 +29,31 @@ local game = {
 	amountOfPlayers = 2,	-- amount of players for the current game
 	running = true,			-- if set to false, will quit the game
 	moveHoldDelay = 0.1,	-- amount of time to hold left or right for it to keep moving that way
-	boardOverflow = 12,		-- amount of space above the board that it can overflow
+	boardOverflow = 20,		-- amount of space above the board that it can overflow
 	paused = false,			-- whether or not game is paused
 	canPause = true,		-- if false, cannot pause game (such as in online multiplayer)
 	inputDelay = 0.05,		-- amount of time between each input
 	gameDelay = 0.05,		-- amount of time between game ticks
 	minimumLockTimer = 0.4,	-- shortest amount of time before a piece locks upon touching the ground
+	maximumLockTimer = 0.6,	-- longest amount of time before a piece locks upon touching the ground
 	appearanceDelay = 0.05,	-- amount of time to wait after placing a piece
 	config = {
 		TGMlock = false,		-- replicate the piece locking from Tetris: The Grand Master
-		scrubMode = false,	-- gives you nothing but I-pieces
+		scrubMode = true,	-- gives you nothing but I-pieces
 	},
 	control = {					-- client's control scheme
 		moveLeft = keys.left,	-- shift left
 		moveRight = keys.right,	-- shift right
-		moveDown = keys.down,	-- shift downwards
+		softDrop = keys.down,	-- shift downwards
 		rotateLeft = keys.z,	-- rotate counter-clockwise
 		rotateRight = keys.x,	-- rotate clockwise
-		fastDrop = keys.up,		-- instantly drop and place piece
+		hardDrop = keys.up,		-- instantly drop and place piece
+		sonicDrop = keys.space,	-- instantly drop piece, but not place
 		hold = keys.leftShift,	-- slot piece into hold buffer
 		quit = keys.q,			-- fuck off
 		pause = keys.p
 	},
+	softDropSpeed = 2,			-- amount of spaces a soft drop will move a mino downwards
 	revControl = {},			-- a mirror of "control", but with the keys and values inverted
 	net = {									-- all network-related values
 		isHost = true,						-- the host holds all the cards
@@ -134,6 +137,7 @@ local clearBoard = function(board, xpos, ypos, newXsize, newYsize, newBGcolor, t
 	board.ySize = board.ySize or newYsize or 24 + game.boardOverflow
 	board.topCull = board.topCull or topCull or game.boardOverflow
 	board.BGcolor = board.BGcolor or newBGcolor or "f"
+	board.minoAmount = board.minoAmount or 0
 	for y = 1, board.ySize do
 		board[y] = board[y] or {}
 		for x = 1, board.xSize do
@@ -282,6 +286,17 @@ local minos = {
 		}
 	}
 }
+
+for k,mino in pairs(minos) do
+	minos[k].size = 0
+	for y = 1, #mino.shape do
+		for x = 1, #mino.shape[y] do
+			if mino.shape[y]:sub(x, x) ~= " " then
+				minos[k].size = minos[k].size + 1
+			end
+		end
+	end
+end
 
 local images = {
 	-- to do...add images...
@@ -720,7 +735,7 @@ end
 
 -- draws the player's simultaneous line clear after clearing one or more lines
 -- also tells the player's combo, which is nice
-local drawComboMessage = function(player, cPlayer, lines, didTspin)
+local drawComboMessage = function(player, cPlayer, lines, didTspin, didDoAllClear)
 	local msgs = {
 		[0] = "",
 		"SINGLE",
@@ -735,22 +750,26 @@ local drawComboMessage = function(player, cPlayer, lines, didTspin)
 	term.setTextColor(tColors.white)
 	term.write((" "):rep(16))
 	term.setCursorPos(player.xmod + 2, player.ymod + 18)
-	if didTspin then
-		if didTspin == 1 then
-			term.write("T-SPIN MINI ")
-		elseif didTspin == 2 then
-			term.write("T-SPIN ")
-		end
+	if didDoAllClear then
+		term.write("ALL CLEAR!! ")
 	else
-		if lines == cPlayer.lastLinesCleared then
-			if lines == 3 then
-				term.write("OH BABY A ")
-			else
-				term.write("ANOTHER ")
+		if didTspin then
+			if didTspin == 1 then
+				term.write("T-SPIN MINI ")
+			elseif didTspin == 2 then
+				term.write("T-SPIN ")
+			end
+		else
+			if lines == cPlayer.lastLinesCleared then
+				if lines == 3 then
+					term.write("OH BABY A ")
+				else
+					term.write("ANOTHER ")
+				end
 			end
 		end
+		term.write(msgs[lines])
 	end
-	term.write(msgs[lines])
 	if cPlayer.combo >= 2 and lines > 0 then
 		term.setCursorPos(player.xmod + 2, player.ymod + 19)
 		term.setTextColor(tColors.white)
@@ -991,22 +1010,25 @@ local startGame = function(playerNumber)
 							draw(nil, true)
 						end
 					end
-					if control.moveDown then
+					if control.softDrop then
 						game.cancelTimer(lockTimer or 0)
 						mino.waitingForLock = false
-						if mino.move(0, 1) then
+						local oldY = mino.y
+						mino.move(0, game.softDropSpeed, true)
+						if mino.y ~= oldY then
 							draw(nil, true)
 						else
 							if game.config.TGMlock then
 								draw(true, true)
 								cPlayer.canHold = true
 								finished = true
+								board.minoAmount = board.minoAmount + mino.size
 							else
 								if mino.waitingForLock then
 									game.alterTimer(lockTimer, -0.1)
 								else
 									mino.lockBreaks = mino.lockBreaks - 1
-									lockTimer = game.startTimer(math.min(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer), 1.5))
+									lockTimer = game.startTimer(math.min(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer), game.maximumLockTimer))
 									mino.waitingForLock = true
 								end
 							end
@@ -1052,7 +1074,7 @@ local startGame = function(playerNumber)
 							cPlayer.didHold = true
 						end
 					end
-					if control.fastDrop == 1 then
+					if control.hardDrop == 1 then
 						mino.move(0, board.ySize, true)
 						if game.config.TGMlock then
 							draw(false)
@@ -1060,7 +1082,11 @@ local startGame = function(playerNumber)
 							draw(true, true)
 							cPlayer.canHold = true
 							finished = true
+							board.minoAmount = board.minoAmount + mino.size
 						end
+					elseif control.sonicDrop == 1 then
+						mino.move(0, board.ySize, true)
+						draw(false)
 					end
 				end
 			end
@@ -1085,7 +1111,7 @@ local startGame = function(playerNumber)
 				currentMinoType,
 				board,
 				math.floor(board.xSize / 2) - 2,
-				game.boardOverflow
+				game.boardOverflow - 1
 			)
 			if mino.checkCollision() then
 				mino.y = mino.y - 1
@@ -1096,7 +1122,7 @@ local startGame = function(playerNumber)
 				currentMinoType,
 				board,
 				math.floor(board.xSize / 2) - 2,
-				game.boardOverflow,
+				game.boardOverflow - 1,
 				"c"
 			)
 			cPlayer.ghostMino = ghostMino
@@ -1224,7 +1250,7 @@ local startGame = function(playerNumber)
 											break
 										elseif not mino.waitingForLock then
 											mino.lockBreaks = mino.lockBreaks - 1
-											lockTimer = game.startTimer(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer))
+											lockTimer = game.startTimer(math.min(math.max(0.2 / cPlayer.fallSteps, game.minimumLockTimer), game.maximumLockTimer))
 											mino.waitingForLock = true
 										end
 									else
@@ -1252,6 +1278,7 @@ local startGame = function(playerNumber)
 			for y = 1, board.ySize do
 				if checkIfLineCleared(board, y) then
 					table.insert(clearedLines, y)
+					board.minoAmount = board.minoAmount - board.xSize
 				end
 			end
 			if #clearedLines == 0 then
@@ -1276,12 +1303,15 @@ local startGame = function(playerNumber)
 					player.backToBack = 0
 				end
 
-				drawComboMessage(player, cPlayer, #clearedLines, mino.didTspin)
+				-- check for all clear
+				local didDoAllClear = board.minoAmount == 0
+
+				drawComboMessage(player, cPlayer, #clearedLines, mino.didTspin, didDoAllClear)
 
 				cPlayer.lastLinesCleared = #clearedLines
 
 				-- give the other fucktard(s) some garbage
-				cPlayer.garbage = cPlayer.garbage - calculateGarbage(#clearedLines, cPlayer.combo, player.backToBack, mino.didTspin)	-- calculate T-spin later
+				cPlayer.garbage = (didDoAllClear and -10 or 0) + cPlayer.garbage - calculateGarbage(#clearedLines, cPlayer.combo, player.backToBack, mino.didTspin)	-- calculate T-spin later
 				if cPlayer.garbage < 0 then
 					for e, enemy in pairs(game.pp) do
 						if e ~= playerNumber then
@@ -1326,6 +1356,7 @@ local startGame = function(playerNumber)
 				renderBoard(board, 0, 0, true)
 				sleep(game.appearanceDelay)
 				mino.draw(true)
+				--board.minoAmount = board.minoAmount + mino.size
 				renderBoard(board, 0, 0, false)
 			end
 		end
