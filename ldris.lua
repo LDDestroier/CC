@@ -39,7 +39,7 @@ local game = {
 	appearanceDelay = 0.05,	-- amount of time to wait after placing a piece
 	config = {
 		TGMlock = false,		-- replicate the piece locking from Tetris: The Grand Master
-		scrubMode = true,	-- gives you nothing but I-pieces
+		scrubMode = false,	-- gives you nothing but I-pieces
 	},
 	control = {					-- client's control scheme
 		moveLeft = keys.left,	-- shift left
