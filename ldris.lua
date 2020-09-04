@@ -900,6 +900,7 @@ local doleOutGarbage = function(player, cPlayer, amount)
 		if math.random(0, 100) > repeatProbability then
 			gx = math.random(1, board.xSize)
 		end
+		board.minoAmount = board.minoAmount + board.xSize - 1
 	end
 	cPlayer.garbage = 0
 end
