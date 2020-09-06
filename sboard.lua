@@ -19,7 +19,7 @@ local newBoard = function(x, y, width, height, backgroundColor)
 	end
 
 	board.GetDot = function(x, y)
-		if x > 0 and y > 0 then
+		if (x > 0 and y > 0) and (x <= board.width and y <= board.height) then
 			if board.contents[y] then
 				if board.contents[y]:sub(x,x) ~= "" then
 					return board.contents[y]:sub(x, x)
@@ -43,7 +43,7 @@ local newBoard = function(x, y, width, height, backgroundColor)
 
 		for y = 1, board.height, 3 do
 			colorLine1, colorLine2, colorLine3 = "", "", ""
-			for x = 1, board.height do
+			for x = 1, board.width do
 				newColor1, newColor2, newColor3 = nil, nil, nil
 				for i = 1, #otherBoards do
 					otherBoard = otherBoards[i]
@@ -59,9 +59,9 @@ local newBoard = function(x, y, width, height, backgroundColor)
 						newColor3 = otherBoard.GetDot(ix, iy + 2)
 					end
 				end
-				colorLine1 = colorLine1 .. (newColor1 or (board.contents[y + 0] and board.contents[y + 0]:sub(x,x) or board.blankColor))
-				colorLine2 = colorLine2 .. (newColor2 or (board.contents[y + 1] and board.contents[y + 1]:sub(x,x) or board.blankColor))
-				colorLine3 = colorLine3 .. (newColor3 or (board.contents[y + 2] and board.contents[y + 2]:sub(x,x) or board.blankColor))
+				colorLine1 = colorLine1 .. ((newColor1 or board.GetDot(x, y + 0)) or board.blankColor)
+				colorLine2 = colorLine2 .. ((newColor2 or board.GetDot(x, y + 1)) or board.blankColor)
+				colorLine3 = colorLine3 .. ((newColor3 or board.GetDot(x, y + 2)) or board.blankColor)
 			end
 
 			if (y + 0) > board.height then
@@ -73,6 +73,8 @@ local newBoard = function(x, y, width, height, backgroundColor)
 			if (y + 2) > board.height then
 				colorLine3 = transparentLine
 			end
+
+			_G.line = {charLine1, colorLine1, colorLine2, colorLine3}
 
 			term.setCursorPos(board.x, board.y + tY)
 			term.blit(charLine1, colorLine1, colorLine2)
@@ -86,6 +88,27 @@ local newBoard = function(x, y, width, height, backgroundColor)
 	return board
 end
 
+local newBoardFromNFP = function(x, y, path, backgroundColor)
+	assert(fs.exists(path) and not fs.isDir(path), "path must be existing file")
+	local file = fs.open(path, "r")
+	local contents = {}
+	local line = file.readLine()
+	while line do
+		contents[#contents + 1] = line:gsub(" ", backgroundColor or "f")
+		line = file.readLine()
+	end
+	file.close()
+
+	local width, height = 0, #contents
+	for i = 1, #contents do
+		width = math.max(width, #contents[i])
+	end
+	local board = newBoard(x, y, width, height, backgroundColor)
+	board.contents = contents
+	return board
+end
+
 return {
-	newBoard = newBoard;
+	newBoard = newBoard,
+	newBoardFromNFP = newBoardFromNFP
 }
