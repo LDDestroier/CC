@@ -515,7 +515,7 @@ end
 local bottomPrompt = function(txt,history,cho,breakkeys,returnNumber,writeIndent)
 	local writeIndent = renderBottomBar(txt,writeIndent)
 	local out
-	sleep(0)
+	sleep(0.05)
 	if cho then
 		out = choice(cho,breakkeys,returnNumber)
 	else
@@ -1129,7 +1129,7 @@ lddfm.coolOutro = function(x1,y1,x2,y2,_bg,_txt,char)
 			_uwah = _uwah + 1
 			term.setCursorPos(x,y)
 			term.write(char or " ")
-			if _uwah >= math.ceil((x2-x1)*1.63) then sleep(0) _uwah = 0 end
+			if _uwah >= math.ceil((x2-x1)*1.63) then sleep(0.05) _uwah = 0 end
 		end
 	end
 	term.setTextColor(txt)
@@ -1354,7 +1354,7 @@ local importFromGIF = function(filename,verbose)
 			print("Flattening...")
 		end
 		rawGif = GIF.flattenGIF(rawGif)
-		sleep(0)
+		sleep(0.05)
 	end
 	local cx, cy = term.getCursorPos()
 	for a = 1, #rawGif do
@@ -1363,7 +1363,7 @@ local importFromGIF = function(filename,verbose)
 			term.setCursorPos(cx,cy)
 			write("Did "..a.."/"..#rawGif.." ")
 		end
-		if a % 1 then sleep(0) end --used to be a % 2, might change later
+		if a % 1 then sleep(0.05) end --used to be a % 2, might change later
 	end
 	return output
 end
@@ -1375,7 +1375,7 @@ local exportToGIF = function(input)
 	local outGIF = {}
 	for a = 1, #paintEncoded do
 		outGIF[a] = NFPserializeImage(exportToPaint(paintEncoded[a]))
-		sleep(0)
+		sleep(0.05)
 	end
 	if painconfig.useFlattenGIF then
 		return GIF.flattenGIF(GIF.buildGIF(table.unpack(outGIF)),true)
@@ -1878,7 +1878,7 @@ local fillTool = function(_frame,cx,cy,dot,isDeleting) -- "_frame" is the frame 
 						end
 					end
 					if step % ((painconfig.doFillAnimation and currentlyOnScreen) and 4 or 1024) == 0 then -- tries to prevent crash
-						sleep(0)
+						sleep(0.05)
 					end
 				end
 			end
@@ -2366,7 +2366,7 @@ local displayMenu = function()
 			term.setTextColor(colors.lightGray)
 			cwrite("Then, press spacebar.", nil, math.floor(scr_y/2) + 1)
 			local evt
-			sleep(0)
+			sleep(0.05)
 			repeat
 				evt = {os.pullEvent("key")}
 			until evt[2] == keys.space
@@ -2803,7 +2803,7 @@ I recommend using NFT if you don't need multiple frames, NFP if you don't need t
 		[6] = function() --Exit
 			if plc.changedImage then
 				local outcum = bottomPrompt("Abandon unsaved work? (Y/N)",_,"yn",{keys.leftCtrl,keys.rightCtrl})
-				sleep(0)
+				sleep(0.05)
 				if outcum == "y" then
 					return "exit"
 				else
@@ -2962,7 +2962,7 @@ local doNonEventDrivenMovement = function() --what a STUPID function name, dude
 				doRender = true
 			end
 		end
-		sleep(0)
+		sleep(0.05)
 	end
 end
 
@@ -2992,7 +2992,7 @@ local listAllMonitors = function()
 		term.clearLine()
 		term.write(mons[y])
 	end
-	sleep(0)
+	sleep(0.05)
 	getEvents("char","mouse_click")
 	doRender = true
 end
@@ -3551,7 +3551,7 @@ runPainEditor = function(...) --needs to be cleaned up
 	if plc.pMode == 1 then
 		doRenderBar = 0
 		renderPAIN(paintEncoded[tonumber(tArg[5]) or 1],-(tonumber(tArg[3]) or 0),-(tonumber(tArg[4]) or 0)) -- 'pain filename view X Y frame'
-		sleep(0)
+		sleep(0.05)
 		return
 	else
 		renderPAIN(paintEncoded[frame],paint.scrollX,paint.scrollY,true)
