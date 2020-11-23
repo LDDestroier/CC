@@ -139,7 +139,7 @@ local game = function()
 		if gm.hiscore < gm.score then --conglaturations
 			gm.hiscore = gm.score
 		end
-		sleep(0)
+		sleep(0.05)
 	end
 end
 
@@ -179,12 +179,12 @@ local showTitle = function()
 			term.clear()
 			paintutils.drawImage(sprite.guybig,math.floor(x),math.floor(y))
 			if t then t(true) end
-			sleep(0)
+			sleep(0.05)
 		until y <= -24
 	end
 	term.setBackgroundColor(colors.white)
 	term.clear()
-	sleep(0)
+	sleep(0.05)
 	term.setBackgroundColor(colors.black)
 	term.clear()
 	paintutils.drawImage(sprite.title,3,2)
