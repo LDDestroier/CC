@@ -1,3 +1,8 @@
+--[[
+DISKNET - by LDDestroier
+Refer to https://github.com/LDDestroier/CC/blob/master/disknet.md for documentation
+--]]
+
 local disknet = disknet or {}
 
 local tArg = {...}
