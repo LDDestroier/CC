@@ -4,7 +4,7 @@ local tArg = {...}
 
 disknet.mainPath = "disk/DISKNET"	-- path of shared file
 local limitChannelsToModem = false	-- if true, can only use number channels from 1 to 65535
-local checkDelay = 0.05			-- amount of time (seconds) between checking the file -- if 0, checks super fast so don't do that
+local checkDelay = 0.2			-- amount of time (seconds) between checking the file -- if 0, checks super fast so don't do that
 local maximumBufferSize = 64		-- largest amount of messages per channel buffered
 
 local isUsingTweaked = false
