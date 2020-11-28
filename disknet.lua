@@ -4,8 +4,8 @@ local tArg = {...}
 
 disknet.mainPath = "disk/DISKNET"	-- path of shared file
 local limitChannelsToModem = false	-- if true, can only use number channels from 1 to 65535
-local checkDelay = 0.2			-- amount of time (seconds) between checking the file -- if 0, checks super fast so don't do that
 local maximumBufferSize = 64		-- largest amount of messages per channel buffered
+disknet.checkDelay = 0.2		-- amount of time (seconds) between checking the file -- if 0, checks super fast so don't do that
 
 local isUsingTweaked = false
 if _HOST then
@@ -281,8 +281,8 @@ disknet.receive = function(channel, senderFilter)
 				if output then
 					break
 				else
-					if checkDelay > 0 then
-						sleep(checkDelay)
+					if disknet.checkDelay > 0 then
+						sleep(disknet.checkDelay)
 					else
 						os.queueEvent("")
 						os.pullEvent("")
