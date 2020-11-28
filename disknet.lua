@@ -9,7 +9,7 @@ local maximumBufferSize = 64		-- largest amount of messages per channel buffered
 
 local isUsingTweaked = false
 if _HOST then
-	if _HOST:find("CCEmuX") or _HOST:find("CC:Tweaked") then
+	if _HOST:find("CCEmuX") or _HOST:find("CC:Tweaked") or _HOST:find("(Minecraft") then
 		isUsingTweaked = true
 	end
 end
