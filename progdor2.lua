@@ -129,7 +129,7 @@ local function dc(data)
 			prefix = ""
 		else
 			entry = dic[currCode]
-			if entry then--exists in dictionary
+			if entry then -- exists in dictionary
 				ch = entry:sub(1, 1)
 				result[#result + 1] = entry
 				if prefix ~= "" then
@@ -214,6 +214,7 @@ local argData = {
 	["-P"] = false,			-- include Progdor2 file
 	["-S"] = false,			-- use skynet
 	["-e"] = false,			-- automatic self-extractor
+	["-E"] = "string",		-- specify output folder in self-extractor code
 	["-s"] = false,			-- silent
 	["-a"] = false,			-- use as API with require, also makes silent
 	["-c"] = false,			-- use CCA compression
@@ -234,18 +235,19 @@ if #argErrors > 0 then
 	end
 end
 
-local pastebinGet    = argList["-pb"]	-- string, pastebin code
-local directDownload = argList["-dd"]	-- string, download URL
-local mainFile		 = argList["-m"]	-- string, main executable file
-local pastebinUpload = argList["-PB"]	-- boolean
-local selfExtractor	 = argList["-e"]	-- boolean
-local silent		 = argList["-s"]	-- boolean
-local useCompression = argList["-c"]	-- boolean
-local justOverwrite	 = argList["-o"]	-- boolean
-local allowReadOnly  = argList["-R"]	-- boolean
-local allowPackPD	 = argList["-P"]	-- boolean
-local useSkynet		 = argList["-S"]	-- boolean
-local trMode		 = argList["-t"] and "transmit" or (argList["-r"] and "receive" or "normal")
+local pastebinGet    		= argList["-pb"] -- string, pastebin code
+local directDownload 		= argList["-dd"] -- string, download URL
+local mainFile		 		= argList["-m"]  -- string, main executable file
+local pastebinUpload 		= argList["-PB"] -- boolean
+local selfExtractor	 		= argList["-e"]  -- boolean
+local selfExtractorFolder 	= argList["-E"]  -- string, folder output for self extractor code
+local silent		 		= argList["-s"]  -- boolean
+local useCompression 		= argList["-c"]  -- boolean
+local justOverwrite	 		= argList["-o"]  -- boolean
+local allowReadOnly  		= argList["-R"]  -- boolean
+local allowPackPD	 		= argList["-P"]  -- boolean
+local useSkynet		 		= argList["-S"]  -- boolean
+local trMode		 		= argList["-t"] and "transmit" or (argList["-r"] and "receive" or "normal")
 
 local skynet
 
@@ -296,6 +298,7 @@ local function showHelp(verboseHelp)
 			" -PB : Upload to pastebin.",							-- added
 			" -dd [download URL] : Download from URL.",				-- added
 			" -e : Adds on self-extractor code to archive.",		-- added
+			" -E [folder] : Extractor extracts to folder",			-- added
 			" -s : Silences all terminal writing",					-- added
 			" -S : Use skynet when transmitting/receiving.",		-- added
 			" -t : Transmit a folder/file.",						-- added
@@ -307,8 +310,6 @@ local function showHelp(verboseHelp)
 			" -m : Specify main executable file in archive.",		-- added
 			" -i : Inspect archive without extracting.",			-- added
 			" -o : Overwrite files without asking.",				-- added
-			"",
-			"   This Progdor has Super Cow Powers."					-- not actually added
 		}
 	else
 		helpInfo = {
@@ -927,21 +928,71 @@ elseif mode == "pack" then
 			sPrint("Tacking on self-extractor.")
 			archive = ([[
 local tArg = {...}
-local outputPath, file = tArg[1] and fs.combine(shell.dir(), tArg[1]) or ]] .. ((defaultAutoExtractPath and ("\"" .. defaultAutoExtractPath .. "\"")) or "shell.getRunningProgram()") .. [[
+local selfDelete = false -- if true, deletes extractor after running
+local file
+local outputPath = ]] ..
+
+(selfExtractorFolder and (
+	"shell.resolve(\"" .. selfExtractorFolder .. "\")"
+) or (
+	"tArg[1] and shell.resolve(tArg[1]) or ]]" .. ((defaultAutoExtractPath and ("\"" .. defaultAutoExtractPath .. "\"")) or "shell.getRunningProgram()")
+)) .. [[
 
 local safeColorList = {[colors.white] = true,[colors.lightGray] = true,[colors.gray] = true,[colors.black] = true}
 local stc = function(color) if (term.isColor() or safeColorList[color]) then term.setTextColor(color) end end
+local choice = function()
+	local input = "yn"
+	write("[")
+	for a = 1, #input do
+		write(input:sub(a,a):upper())
+		if a < #input then
+			write(",")
+		end
+	end
+	print("]?")
+	local evt,char
+	repeat
+		evt,char = os.pullEvent("char")
+	until string.find(input:lower(),char:lower())
+	if verbose then
+		print(char:upper())
+	end
+	local pos = string.find(input:lower(), char:lower())
+	return pos, char:lower()
+end
 local archive = textutils.unserialize(]] ..
 
 textutils.serialize(archive) ..
 
 [[)
 if fs.isReadOnly(outputPath) then
-	error("Output path is read-only.")
+	error("Output path is read-only. Abort.")
 elseif fs.getFreeSpace(outputPath) <= #archive then
-	error("Insufficient space.")
+	error("Insufficient space. Abort.")
 end
-fs.delete(shell.getRunningProgram()) -- saves space
+
+]] .. ( justOverwrite and [[
+if fs.exists(outputPath) and fs.combine("", outputPath) ~= "" then
+	fs.delete(outputPath)
+end
+]] or [[
+if fs.exists(outputPath) and fs.combine("", outputPath) ~= "" then
+	print("File/folder already exists! Overwrite?")
+	stc(colors.lightGray)
+	print("(Use -o when making the extractor to always overwrite.)")
+	stc(colors.white)
+	if choice() ~= 1 then
+		error("Chose not to overwrite. Abort.")
+	else
+		fs.delete(outputPath)
+	end
+end
+]]
+) ..
+[[
+if selfDelete or (fs.combine("", outputPath) == shell.getRunningProgram()) then
+	fs.delete(shell.getRunningProgram())
+end
 for name, contents in pairs(archive.data) do
 	stc(colors.lightGray)
 	write("'" .. name .. "'...")
