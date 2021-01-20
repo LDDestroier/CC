@@ -694,6 +694,8 @@ local handleLineClears = function(gameState)
 		gameState.board.contents = newContents
 	end
 
+	gameState.linesCleared = gameState.linesCleared + #clearedLines
+
 	return clearedLines
 
 end
@@ -711,6 +713,7 @@ StartGame = function()
 		paused = false,
 		queue = {},
 		queueMinos = {},
+		linesCleared = 0,
 	}
 	gameState.holdBoard = makeNewBoard(
 		gameState.board.x + gameState.board.width + 1,
@@ -902,13 +905,18 @@ StartGame = function()
 
 		-- debug info
 
+		term.setCursorPos(2, scr_y - 2)
+		term.clearLine()
+		term.write("Lines cleared: " .. gameState.linesCleared)
+
 		term.setCursorPos(2, scr_y - 1)
 		term.clearLine()
-		term.write("Position: (" .. mino.x .. ":" .. mino.xFloat .. ", " .. mino.y .. "), Subheight: " .. mino.yFloat .. "    ")
+		term.write("Moves: " .. mino.movesLeft .. ", TimeToLock: " .. mino.lockTimer)
 
 		term.setCursorPos(2, scr_y - 0)
 		term.clearLine()
-		term.write("Moves: " .. mino.movesLeft .. ", TimeToLock: " .. mino.lockTimer .. "   ")
+		term.write("Position: (" .. mino.x .. ":" .. mino.xFloat .. ", " .. mino.y .. "), Subheight: " .. mino.yFloat)
+		
 	end
 
 	local checkControl = function(controlName, repeatTime, repeatDelay)
