@@ -18,12 +18,20 @@
 
 LDRIS 2 (Work in Progress)
 
+Current features:
+	+ Legitimate SRS rotation!
+	+ Line clearing! Crazy!
+	+ 7bag randomization!
+	+ Decent fucking controls!
+	+ Ghost piece!
+	+ Piece holding!
+	+ Piece queue! It's even animated!
+
 To-do:
-	+ Add proper top-off (game over)
 	+ Add score, and let lineclears and piece dropping add to it
-	+ Tweak controls, rotating the piece will cause horizontal movement to look janky
 	+ Add an actual menu, and not that shit LDRIS 1 had
-	+ Multiplayer!
+	+ Multiplayer, as well as an implementation of garbage
+	+ Cheese race mode
 	+ Change color palletes so that the ghost piece isn't the color of dirt
 	+ Add in-game menu for changing controls (some people can actually tolerate guideline)
 --]]
@@ -41,16 +49,18 @@ local clientConfig = {
 		soft_drop = keys.down,
 		hard_drop = keys.up,
 		sonic_drop = keys.space,
+		hold = keys.leftShift,
 		pause = keys.p,
 		restart = keys.r,
 		open_chat = keys.t,
 		quit = keys.q,
 	},
-	soft_drop_multiplier = 2.0,		-- (SDF) the factor in which soft dropping effects the gravity
+	soft_drop_multiplier = 4.0,		-- (SDF) the factor in which soft dropping effects the gravity
 	move_repeat_delay = 0.25,		-- (DAS) amount of time you must be holding the movement keys for it to start repeatedly moving (seconds)
 	move_repeat_interval = 0.05,	-- (ARR) speed at which the pieces move when holding the movement keys (seconds per tick)
-	appearance_delay = 0.0,			-- (ARE) amount of seconds it will take for the next piece to arrive after the current one locks into place
+	appearance_delay = 0,			-- (ARE) amount of seconds it will take for the next piece to arrive after the current one locks into place
 	lock_delay = 0.5,				-- (Lock Delay) amount of seconds it will take for a resting mino to lock into placed
+	queue_length = 5,				-- amount of pieces visible in the queue (limited by size of UI)
 }
 
 -- ideally, only clients with IDENTICAL game configs should face one another
@@ -58,9 +68,9 @@ local gameConfig = {
 	minos = {},					-- list of all the minos (pieces) that will spawn into the board
 	kickTables = {},			-- list of all kick tables for pieces
 	currentKickTable = "SRS",	-- current kick table
-	randomBag = "random",		-- current pseudorandom number generator
-								-- "7bag" = normal tetris guideline random
-								-- "14bag" = doubled bag size
+	randomBag = "singlebag",	-- current pseudorandom number generator
+								-- "singlebag" = normal tetris guideline random
+								-- "doublebag" = doubled bag size
 								-- "random" = using math.random
 	board_width = 10,			-- width of play area
 	board_height = 40,			-- height of play area
@@ -85,7 +95,6 @@ local switch = function(check)
 end
 
 -- current state of the game; can be used to perfectly recreate the current scene of a game
--- can NOT include functions, as it must be serialized and sent to a second player
 -- that includes board and mino objects, bitch
 gameState = {}
 
@@ -150,6 +159,7 @@ do	-- define minos
 		color = "4",
 		name = "O",
 		kickID = 2,
+		spawnOffsetX = 1,
 	}
 	gameConfig.minos[6] = {
 		shape = {
@@ -263,6 +273,13 @@ local makeNewBoard = function(x, y, width, height)
 		end
 	end
 
+	board.Clear = function(color)
+		color = color or board.blankColor
+		for y = 1, board.height do
+			board.contents[y] = stringrep(color, board.width)
+		end
+	end
+
 	-- used for sending board data over the network
 	board.serialize = function(includeInit)
 		return textutils.serialize({
@@ -294,14 +311,16 @@ local makeNewBoard = function(x, y, width, height)
 				minoColor1, minoColor2, minoColor3 = nil, nil, nil
 				for i = 1, #minos do
 					mino = minos[i]
-					if mino.CheckSolid(x, y - 0, true) then
-						minoColor1 = mino.color
-					end
-					if mino.CheckSolid(x, y - 1, true) then
-						minoColor2 = mino.color
-					end
-					if mino.CheckSolid(x, y - 2, true) then
-						minoColor3 = mino.color
+					if mino.visible then
+						if mino.CheckSolid(x, y - 0, true) then
+							minoColor1 = mino.color
+						end
+						if mino.CheckSolid(x, y - 1, true) then
+							minoColor2 = mino.color
+						end
+						if mino.CheckSolid(x, y - 2, true) then
+							minoColor3 = mino.color
+						end
 					end
 				end
 
@@ -311,13 +330,13 @@ local makeNewBoard = function(x, y, width, height)
 
 			end
 
-			if (y - 0) < (board.height - board.visibleHeight) then
+			if (y - 0) <= (board.height - board.visibleHeight) then
 				colorLine1 = transparentLine
 			end
-			if (y - 1) < (board.height - board.visibleHeight) then
+			if (y - 1) <= (board.height - board.visibleHeight) then
 				colorLine2 = transparentLine
 			end
-			if (y - 2) < (board.height - board.visibleHeight) then
+			if (y - 2) <= (board.height - board.visibleHeight) then
 				colorLine3 = transparentLine
 			end
 
@@ -336,7 +355,7 @@ end
 local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 	local mino = oldeMino or {}
 	if not gameConfig.minos[minoID] then
-		error("tried to spawn mino with invalid ID '" .. minoID .. "'")
+		error("tried to spawn mino with invalid ID '" .. tostring(minoID) .. "'")
 	else
 		mino.shape = gameConfig.minos[minoID].shape
 		mino.spinID = gameConfig.minos[minoID].spinID
@@ -346,6 +365,9 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 	end
 
 	mino.finished = false
+	mino.active = true
+	mino.spawnTimer = 0
+	mino.visible = true
 	mino.height = #mino.shape
 	mino.width = #mino.shape[1]
 	mino.minoID = minoID
@@ -432,50 +454,53 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 			[ 1] = "1",
 			[ 2] = "2",
 		}
-		-- get the specific offset table for the type of rotation based on the mino type
-		local kickX, kickY
-		local kickRot = kickRotTranslate[mino.rotation] .. kickRotTranslate[newRotation]
+		if mino.active then
+			-- get the specific offset table for the type of rotation based on the mino type
+			local kickX, kickY
+			local kickRot = kickRotTranslate[mino.rotation] .. kickRotTranslate[newRotation]
 
-		-- translate the mino piece
-		for y = 1, mino.width do
-			output[y] = ""
-			for x = 1, mino.height do
-				if direction == -1 then
-					output[y] = output[y] .. oldShape[x]:sub(-y, -y)
-				elseif direction == 1 then
-					output[y] = oldShape[x]:sub(y, y) .. output[y]
+			-- translate the mino piece
+			for y = 1, mino.width do
+				output[y] = ""
+				for x = 1, mino.height do
+					if direction == -1 then
+						output[y] = output[y] .. oldShape[x]:sub(-y, -y)
+					elseif direction == 1 then
+						output[y] = oldShape[x]:sub(y, y) .. output[y]
+					end
 				end
 			end
-		end
-		mino.shape = output
-		-- it's time to do some floor and wall kicking
-		if mino.CheckCollision(0, 0) then
-			for i = 1, #kickTable[mino.kickID][kickRot] do
-				kickX = kickTable[mino.kickID][kickRot][i][1]
-				kickY = -kickTable[mino.kickID][kickRot][i][2]
-				if not mino.Move(kickX, kickY, false) then
-					success = true
-					break
-				end
-			end
-		else
-			success = true
-		end
-		if success then
-			mino.rotation = newRotation
-			mino.height, mino.width = mino.width, mino.height
-		else
-			mino.shape = oldShape
-		end
-
-		if expendLockMove then
-			mino.movesLeft = mino.movesLeft - 2
-			if mino.movesLeft <= 0 then
-				if mino.CheckCollision(0, 1) then
-					mino.finished = true
+			mino.width, mino.height = mino.height, mino.width
+			mino.shape = output
+			-- it's time to do some floor and wall kicking
+			if mino.CheckCollision(0, 0) then
+				for i = 1, #kickTable[mino.kickID][kickRot] do
+					kickX = kickTable[mino.kickID][kickRot][i][1]
+					kickY = -kickTable[mino.kickID][kickRot][i][2]
+					if not mino.Move(kickX, kickY, false) then
+						success = true
+						break
+					end
 				end
 			else
-				mino.lockTimer = clientConfig.lock_delay
+				success = true
+			end
+			if success then
+				mino.rotation = newRotation
+				mino.height, mino.width = mino.width, mino.height
+			else
+				mino.shape = oldShape
+			end
+
+			if expendLockMove then
+				mino.movesLeft = mino.movesLeft - 2
+				if mino.movesLeft <= 0 then
+					if mino.CheckCollision(0, 1) then
+						mino.finished = 1
+					end
+				else
+					mino.lockTimer = clientConfig.lock_delay
+				end
 			end
 		end
 
@@ -488,90 +513,96 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 		local didMoveX = true
 		local didMoveY = true
 		local step, round
+
+		if mino.active then
 		
-		if doSlam then
+			if doSlam then
 
-			mino.xFloat = mino.xFloat + x
-			mino.yFloat = mino.yFloat + y
+				mino.xFloat = mino.xFloat + x
+				mino.yFloat = mino.yFloat + y
 
-			-- handle Y position
-			if y ~= 0 then
-				step = y / math.abs(y)
-				round = mino.yFloat > 0 and math.floor or math.ceil
-				if mino.CheckCollision(0, step) then
-					mino.yFloat = 0
+				-- handle Y position
+				if y ~= 0 then
+					step = y / math.abs(y)
+					round = mino.yFloat > 0 and math.floor or math.ceil
+					if mino.CheckCollision(0, step) then
+						mino.yFloat = 0
+						didMoveY = false
+					else
+						for iy = step, round(mino.yFloat), step do
+							if mino.CheckCollision(0, step) then
+								didCollide = true
+								mino.yFloat = 0
+								break
+							else
+								didMoveY = true
+								mino.y = mino.y + step
+								mino.yFloat = mino.yFloat - step
+							end
+						end
+					end
+				else
+					didMoveY = false
+				end
+
+				-- handle x position
+				if x ~= 0 then
+					step = x / math.abs(x)
+					round = mino.xFloat > 0 and math.floor or math.ceil
+					if mino.CheckCollision(step, 0) then
+						mino.xFloat = 0
+						didMoveX = false
+					else
+						for ix = step, round(mino.xFloat), step do
+							if mino.CheckCollision(step, 0) then
+								didCollide = true
+								mino.xFloat = 0
+								break
+							else
+								didMoveX = true
+								mino.x = mino.x + step
+								mino.xFloat = mino.xFloat - step
+							end
+						end
+					end
+				else
+					didMoveX = false
+				end
+				
+			else
+				if mino.CheckCollision(x, y) then
+					didCollide = true
+					didMoveX = false
 					didMoveY = false
 				else
-					for iy = step, round(mino.yFloat), step do
-						if mino.CheckCollision(0, step) then
-							didCollide = true
-							mino.yFloat = 0
-							break
-						else
-							didMoveY = true
-							mino.y = mino.y + step
-							mino.yFloat = mino.yFloat - step
-						end
-					end
+					mino.x = mino.x + x
+					mino.y = mino.y + y
+					didCollide = false
+					didMoveX = true
+					didMoveY = true
 				end
-			else
-				didMoveY = false
 			end
 
-			-- handle x position
-			if x ~= 0 then
-				step = x / math.abs(x)
-				round = mino.xFloat > 0 and math.floor or math.ceil
-				if mino.CheckCollision(step, 0) then
-					mino.xFloat = 0
-					didMoveX = false
+			local yHighestDidChange = (mino.y > mino.yHighest)
+			mino.yHighest = math.max(mino.yHighest, mino.y)
+
+			if yHighestDidChange then
+				mino.movesLeft = gameConfig.lock_move_limit
+			end
+
+			if expendLockMove then
+				mino.movesLeft = mino.movesLeft - 1
+				if mino.movesLeft <= 0 then
+					if mino.CheckCollision(0, 1) then
+						mino.finished = 1
+					end
 				else
-					for ix = step, round(mino.xFloat), step do
-						if mino.CheckCollision(step, 0) then
-							didCollide = true
-							mino.xFloat = 0
-							break
-						else
-							didMoveX = true
-							mino.x = mino.x + step
-							mino.xFloat = mino.xFloat - step
-						end
-					end
+					mino.lockTimer = clientConfig.lock_delay
 				end
-			else
-				didMoveX = false
 			end
-			
 		else
-			if mino.CheckCollision(x, y) then
-				didCollide = true
-				didMoveX = false
-				didMoveY = false
-			else
-				mino.x = mino.x + x
-				mino.y = mino.y + y
-				didCollide = false
-				didMoveX = true
-				didMoveY = true
-			end
-		end
-
-		local yHighestDidChange = (mino.y > mino.yHighest)
-		mino.yHighest = math.max(mino.yHighest, mino.y)
-
-		if yHighestDidChange then
-			mino.movesLeft = gameConfig.lock_move_limit
-		end
-
-		if expendLockMove then
-			mino.movesLeft = mino.movesLeft - 1
-			if mino.movesLeft <= 0 then
-				if mino.CheckCollision(0, 1) then
-					mino.finished = true
-				end
-			else
-				mino.lockTimer = clientConfig.lock_delay
-			end
+			didMoveX = false
+			didMoveY = false
 		end
 
 		return didCollide, didMoveX, didMoveY, yHighestDidChange
@@ -579,10 +610,12 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 
 	-- writes the mino to the board
 	mino.Write = function()
-		for y = 1, mino.height do
-			for x = 1, mino.width do
-				if mino.CheckSolid(x, y, false) then
-					mino.board.Write(x + mino.x - 1, y + mino.y - 1, mino.color)
+		if mino.active then
+			for y = 1, mino.height do
+				for x = 1, mino.width do
+					if mino.CheckSolid(x, y, false) then
+						mino.board.Write(x + mino.x - 1, y + mino.y - 1, mino.color)
+					end
 				end
 			end
 		end
@@ -591,18 +624,44 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 	return mino
 end
 
+local random_bag = {}
+
 local pseudoRandom = function()
 	return switch(gameConfig.randomBag) {
 		["random"] = function()
 			return math.random(1, #gameConfig.minos)
 		end,
-		["7bag"] = function()
-			-- will implement 7bag later
-			return math.random(1, #gameConfig.minos)
+		["singlebag"] = function()
+			if #random_bag == 0 then
+				for i = 1, #gameConfig.minos do
+					if math.random(0, 1) == 0 then
+						random_bag[#random_bag + 1] = i
+					else
+						table.insert(random_bag, 1, i)
+					end
+				end
+			end
+			local pick = math.random(1, #random_bag)
+			local output = random_bag[pick]
+			table.remove(random_bag, pick)
+			return output
 		end,
-		["14bag"] = function()
-			-- will implement 14bag later
-			return math.random(1, #gameConfig.minos)
+		["doublebag"] = function()
+			if #random_bag == 0 then
+				for r = 1, 2 do
+					for i = 1, #gameConfig.minos do
+						if math.random(0, 1) == 0 then
+							random_bag[#random_bag + 1] = i
+						else
+							table.insert(random_bag, 1, i)
+						end
+					end
+				end
+			end
+			local pick = math.random(1, #random_bag)
+			local output = random_bag[pick]
+			table.remove(random_bag, pick)
+			return output
 		end
 	}
 end
@@ -630,7 +689,7 @@ local handleLineClears = function(gameState)
 			end
 		end
 		for y = 1, #clearedLines do
-			newContents[y] = string.rep(board.blankColor, board.width)
+			newContents[y] = stringrep(board.blankColor, board.width)
 		end
 		gameState.board.contents = newContents
 	end
@@ -644,79 +703,228 @@ StartGame = function()
 		gravity = gameConfig.startingGravity,
 		board = makeNewBoard(2, 2, gameConfig.board_width, gameConfig.board_height),
 		score = 0,
+		antiControlRepeat = {},
+		topOut = false,
+		canHold = true,
+		didHold = false,
+		heldPiece = false,
+		paused = false,
+		queue = {},
+		queueMinos = {},
 	}
+	gameState.holdBoard = makeNewBoard(
+		gameState.board.x + gameState.board.width + 1,
+		gameState.board.y + gameState.board.visibleHeight * (1/3),
+		4, 4
+	)
+	gameState.holdBoard.visibleHeight = 4
+	gameState.queueBoard = makeNewBoard(
+		gameState.board.x + gameState.board.width + 1,
+		gameState.board.y,
+		4,
+		gameState.board.height - gameState.holdBoard.height - 8
+	)
+	-- fill the queue
+	for i = 1, clientConfig.queue_length do
+		gameState.queue[i] = pseudoRandom()
+		gameState.queueMinos[i] = makeNewMino(
+			gameState.queue[i],
+			gameState.queueBoard,
+			1,
+			i * 3 + 12
+		)
+	end
+	gameState.queue.cyclePiece = function()
+		local output = gameState.queue[1]
+		table.remove(gameState.queue, 1)
+		gameState.queue[#gameState.queue + 1] = pseudoRandom()
+		return output
+	end
 	gameState.mino = {}
 
-	local makeDefaultMino = function()
+	local qmAnim = 0
+
+	local makeDefaultMino = function(gameState)
+		local nextPiece
+		if gameState.didHold then
+			if gameState.heldPiece then
+				nextPiece, gameState.heldPiece = gameState.heldPiece, gameState.mino.minoID
+			else
+				nextPiece, gameState.heldPiece = gameState.queue.cyclePiece(), gameState.mino.minoID
+			end
+		else
+			nextPiece = gameState.queue.cyclePiece()
+		end
 		return makeNewMino(
-			pseudoRandom(),
+			nextPiece,
 			gameState.board,
-			math.floor(gameState.board.width / 2 - 1),
-			math.floor(gameConfig.board_height_visible + 0),
+			math.floor(gameState.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
+			math.floor(gameConfig.board_height_visible + 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
 			gameState.mino
 		)
 	end
 
-	gameState.mino = makeDefaultMino()
+	gameState.mino = makeDefaultMino(gameState)
 
 	local mino, board = gameState.mino, gameState.board
+	local holdBoard, queueBoard = gameState.holdBoard, gameState.queueBoard
 	local ghostMino = makeNewMino(mino.minoID, gameState.board, mino.x, mino.y, {})
 	
 	local keysDown = {}
 	local tickDelay = 0.05
 
-	local render = function()
+	local render = function(drawOtherBoards)
 		board.Render(ghostMino, mino)
+		if drawOtherBoards then
+			holdBoard.Render()
+			queueBoard.Render(table.unpack(gameState.queueMinos))
+		end
 	end
 
 	local tick = function(gameState)
 		local didCollide, didMoveX, didMoveY, yHighestDidChange = mino.Move(0, gameState.gravity, true)
-		mino.resting = (not didMoveY) and mino.CheckCollision(0, 1)
+		local doCheckStuff = false
+		local doAnimateQueue = false
+		local doMakeNewMino = false
 
-		if yHighestDidChange then
-			mino.movesLeft = gameConfig.lock_move_limit
+		qmAnim = math.max(0, qmAnim - 0.8)
+
+		-- position queue minos properly
+		for i = 1, #gameState.queueMinos do
+			gameState.queueMinos[i].y = (i * 3 + 12) + math.floor(qmAnim)
 		end
 
-		if mino.resting then
-			mino.lockTimer = mino.lockTimer - tickDelay
-			if mino.lockTimer <= 0 then
-				mino.finished = true
+		if not mino.finished then
+			mino.resting = (not didMoveY) and mino.CheckCollision(0, 1)
+
+			if yHighestDidChange then
+				mino.movesLeft = gameConfig.lock_move_limit
 			end
-		else
-			mino.lockTimer = clientConfig.lock_delay
+
+			if mino.resting then
+				mino.lockTimer = mino.lockTimer - tickDelay
+				if mino.lockTimer <= 0 then
+					mino.finished = 1
+				end
+			else
+				mino.lockTimer = clientConfig.lock_delay
+			end
+		end
+
+		gameState.mino.spawnTimer = math.max(0, gameState.mino.spawnTimer - tickDelay)
+		if gameState.mino.spawnTimer == 0 then
+			gameState.mino.active = true
+			gameState.mino.visible = true
+			ghostMino.active = true
+			ghostMino.visible = true
 		end
 
 		if mino.finished then
-			mino.Write()
-			gameState.mino = makeDefaultMino()
-			ghostMino = makeNewMino(mino.minoID, gameState.board, mino.x, mino.y, {})
+			if mino.finished == 1 then -- piece will lock
+				gameState.didHold = false
+				gameState.canHold = true
+				-- check for top-out due to placing a piece outside the visible area of its board
+				if false then	-- I'm doing that later
+					
+				else
+					doAnimateQueue = true
+					mino.Write()
+					doMakeNewMino = true
+					doCheckStuff = true
+				end
+			elseif mino.finished == 2 then -- piece will attempt hold
+				if gameState.canHold then
+					gameState.didHold = true
+					gameState.canHold = false
+					-- I would have used a ternary statement, but didn't
+					if gameState.heldPiece then
+						doAnimateQueue = false
+					else
+						doAnimateQueue = true
+					end
+					-- draw held piece
+					gameState.holdBoard.Clear()
+					makeNewMino(
+						gameState.mino.minoID,
+						gameState.holdBoard,
+						1, 2, {}
+					).Write()
 
-			handleLineClears(gameState)
+					doMakeNewMino = true
+					doCheckStuff = true
+				else
+					mino.finished = false
+				end
+			else
+				error("I don't know how, but that polyomino's finished!")
+			end
+
+			if doMakeNewMino then
+				gameState.mino = makeDefaultMino(gameState)
+				ghostMino = makeNewMino(mino.minoID, gameState.board, mino.x, mino.y, {})
+				if (not gameState.didHold) and (clientConfig.appearance_delay > 0) then
+					gameState.mino.spawnTimer = clientConfig.appearance_delay
+					gameState.mino.active = false
+					gameState.mino.visible = false
+					ghostMino.active = false
+					ghostMino.visible = false
+				end
+			end
+
+			if doAnimateQueue then
+				table.remove(gameState.queueMinos, 1)
+				gameState.queueMinos[#gameState.queueMinos + 1] = makeNewMino(
+					gameState.queue[clientConfig.queue_length],
+					gameState.queueBoard,
+					1,
+					(clientConfig.queue_length + 1) * 3 + 12
+				)
+				qmAnim = 3
+			end
+
+			-- if the hold attempt fails (say, you already held a piece), it wouldn't do to check for a top-out or line clears
+			if doCheckStuff then
+				-- check for top-out due to obstructed mino upon entry
+				-- attempt to move mino at most 2 spaces upwards before considering it fully topped out
+				gameState.topOut = true
+				for i = 0, 2 do
+					if mino.CheckCollision(0, -1) then
+						mino.y = mino.y - 1
+					else
+						gameState.topOut = false
+						break
+					end
+				end
+				
+				handleLineClears(gameState)
+			end
 		end
 
 		-- debug info
 
 		term.setCursorPos(2, scr_y - 1)
 		term.clearLine()
-		term.write("(" .. mino.x .. ":" .. mino.xFloat .. ", " .. mino.y .. ":" .. mino.yFloat .. ")   ")
+		term.write("Position: (" .. mino.x .. ":" .. mino.xFloat .. ", " .. mino.y .. "), Subheight: " .. mino.yFloat .. "    ")
 
 		term.setCursorPos(2, scr_y - 0)
 		term.clearLine()
-		term.write(mino.movesLeft .. "   ")
+		term.write("Moves: " .. mino.movesLeft .. ", TimeToLock: " .. mino.lockTimer .. "   ")
 	end
 
 	local checkControl = function(controlName, repeatTime, repeatDelay)
 		repeatDelay = repeatDelay or 1
 		if keysDown[clientConfig.controls[controlName]] then
-			if repeatTime then
-				return 	keysDown[clientConfig.controls[controlName]] == 1 or
-						(
-							keysDown[clientConfig.controls[controlName]] >= (repeatTime * (1 / tickDelay)) and (
-								repeatDelay and ((keysDown[clientConfig.controls[controlName]] * tickDelay) % repeatDelay == 0) or true
+			if not gameState.antiControlRepeat[controlName] then
+				if repeatTime then
+					return 	keysDown[clientConfig.controls[controlName]] == 1 or
+							(
+								keysDown[clientConfig.controls[controlName]] >= (repeatTime * (1 / tickDelay)) and (
+									repeatDelay and ((keysDown[clientConfig.controls[controlName]] * tickDelay) % repeatDelay == 0) or true
+								)
 							)
-						)
-			else
-				return keysDown[clientConfig.controls[controlName]] == 1
+				else
+					return keysDown[clientConfig.controls[controlName]] == 1
+				end
 			end
 		else
 			return false
@@ -726,34 +934,57 @@ StartGame = function()
 	local controlTick = function(gameState, onlyFastActions)
 		local dc, dmx, dmy	-- did collide, did move X, did move Y
 		local didSlowAction = false
-		if not onlyFastActions then
-			if checkControl("move_left", clientConfig.move_repeat_delay, clientConfig.move_repeat_interval) then
-				mino.Move(-1, 0, true, true)
-				didSlowAction = true
+		if (not gameState.paused) and gameState.mino.active then
+			if not onlyFastActions then
+				if checkControl("move_left", clientConfig.move_repeat_delay, clientConfig.move_repeat_interval) then
+					mino.Move(-1, 0, true, true)
+					didSlowAction = true
+					gameState.antiControlRepeat["move_left"] = true
+				end
+				if checkControl("move_right", clientConfig.move_repeat_delay, clientConfig.move_repeat_interval) then
+					mino.Move(1, 0, true, true)
+					didSlowAction = true
+					gameState.antiControlRepeat["move_right"] = true
+				end
+				if checkControl("soft_drop", 0) then
+					mino.Move(0, gameState.gravity * clientConfig.soft_drop_multiplier, true, false)
+					didSlowAction = true
+					gameState.antiControlRepeat["soft_drop"] = true
+				end
+				if checkControl("hard_drop", false) then
+					mino.Move(0, board.height, true, false)
+					mino.finished = 1
+					didSlowAction = true
+					gameState.antiControlRepeat["hard_drop"] = true
+				end
+				if checkControl("sonic_drop", false) then
+					mino.Move(0, board.height, true, true)
+					didSlowAction = true
+					gameState.antiControlRepeat["sonic_drop"] = true
+				end
+				if checkControl("hold", false) then
+					mino.finished = 2
+					gameState.antiControlRepeat["hold"] = true
+					didSlowAction = true
+				end
+				if checkControl("quit", false) then
+					gameState.topOut = true
+					gameState.antiControlRepeat["quit"] = true
+					didSlowAction = true
+				end
 			end
-			if checkControl("move_right", clientConfig.move_repeat_delay, clientConfig.move_repeat_interval) then
-				mino.Move(1, 0, true, true)
-				didSlowAction = true
+			if checkControl("rotate_left", false) then
+				mino.Rotate(-1, true)
+				gameState.antiControlRepeat["rotate_left"] = true
 			end
-			if checkControl("soft_drop", 0) then
-				mino.Move(0, gameState.gravity * clientConfig.soft_drop_multiplier, true, false)
-				didSlowAction = true
-			end
-			if checkControl("hard_drop", false) then
-				mino.Move(0, board.height, true, false)
-				mino.finished = true
-				didSlowAction = true
-			end
-			if checkControl("sonic_drop", false) then
-				mino.Move(0, board.height, true, true)
-				didSlowAction = true
+			if checkControl("rotate_right", false) then
+				mino.Rotate(1, true)
+				gameState.antiControlRepeat["rotate_right"] = true
 			end
 		end
-		if checkControl("rotate_left", false) then
-			mino.Rotate(-1, true)
-		end
-		if checkControl("rotate_right", false) then
-			mino.Rotate(1, true)
+		if checkControl("pause", false) then
+			gameState.paused = not gameState.paused
+			gameState.antiControlRepeat["pause"] = true
 		end
 		return didSlowAction
 	end
@@ -772,17 +1003,13 @@ StartGame = function()
 		ghostMino.Move(0, board.height, true)
 
 		-- render board
-		render()
+		render(true)
 
 		evt = {os.pullEvent()}
 
 		if evt[1] == "key" and not evt[3] then
 			keysDown[evt[2]] = 1
-			if not didControlTick then
-				didControlTick = controlTick(gameState, false)
-			else
-				controlTick(gameState, true)
-			end
+			didControlTick = controlTick(gameState, false)
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		end
@@ -793,12 +1020,18 @@ StartGame = function()
 				for k,v in pairs(keysDown) do
 					keysDown[k] = 1 + v
 				end
-				if not didControlTick then
-					controlTick(gameState, false)
+				controlTick(gameState, didControlTick)
+				if not gameState.paused then
+					tick(gameState)
 				end
-				tick(gameState)
 				didControlTick = false
+				gameState.antiControlRepeat = {}
 			end
+		end
+
+		if gameState.topOut then
+			-- this will have a more elaborate game over sequence later
+			return
 		end
 	end
 
@@ -806,3 +1039,11 @@ end
 
 term.clear()
 StartGame()
+
+term.setCursorPos(1, scr_y - 1)
+term.clearLine()
+print("Thank you for playing!")
+term.setCursorPos(1, scr_y - 0)
+term.clearLine()
+
+sleep(0.05)
