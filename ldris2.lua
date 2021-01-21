@@ -94,6 +94,10 @@ local switch = function(check)
     end
 end
 
+local roundToPlaces = function(number, places)
+	return math.floor(number * 10^places) / (10^places)
+end
+
 -- current state of the game; can be used to perfectly recreate the current scene of a game
 -- that includes board and mino objects, bitch
 gameState = {}
@@ -906,16 +910,13 @@ StartGame = function()
 		-- debug info
 
 		term.setCursorPos(2, scr_y - 2)
-		term.clearLine()
-		term.write("Lines cleared: " .. gameState.linesCleared)
+		term.write("Lines: " .. gameState.linesCleared .. "      ")
 
 		term.setCursorPos(2, scr_y - 1)
-		term.clearLine()
-		term.write("Moves: " .. mino.movesLeft .. ", TimeToLock: " .. mino.lockTimer)
+		term.write("M=" .. mino.movesLeft .. ", TTL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
 
 		term.setCursorPos(2, scr_y - 0)
-		term.clearLine()
-		term.write("Position: (" .. mino.x .. ":" .. mino.xFloat .. ", " .. mino.y .. "), Subheight: " .. mino.yFloat)
+		term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
 		
 	end
 
@@ -1045,8 +1046,14 @@ StartGame = function()
 
 end
 
+local TitleScreen = function()
+	
+	StartGame()
+end
+
 term.clear()
-StartGame()
+
+TitleScreen()
 
 term.setCursorPos(1, scr_y - 1)
 term.clearLine()
