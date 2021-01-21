@@ -32,6 +32,14 @@ local images = {
 	}
 }
 
+for k,v in pairs(images) do
+    for y = 1, #v do
+        for x = 1, #v[y] do
+            images[k][y][x] = v[y][x]:gsub(" ", "f")
+        end
+    end
+end
+
 -- start up lddterm
 local lddterm = {}
 lddterm.alwaysRender = false		-- renders after any and all screen-changing functions.
@@ -888,9 +896,9 @@ nfte.rotateImage = function(image, angle, originX, originY)
 		output[3][y] = {}
 		for x = 1, (maxX - minX) + 1 do
 			tx, ty = rotatePoint(x + minX - 1, y + minY - 1, -angle, originX, originY)
-			output[1][y][x] = " "
-			output[2][y][x] = " "
-			output[3][y][x] = " "
+			output[1][y][x] = "f"
+			output[2][y][x] = "f"
+			output[3][y][x] = "f"
 			if image[1][ty] then
 				if tx >= 1 and tx <= #image[1][ty] then
 					output[1][y][x] = image[1][ty]:sub(tx,tx)
