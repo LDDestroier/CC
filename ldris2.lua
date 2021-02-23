@@ -230,6 +230,67 @@ local function between(number, min, max)
 	return math.min(math.max(number, min), max)
 end
 
+-- image-related functions (from NFTE)
+local loadImageDataNFT = function(image, background) -- string image
+	local output = {{},{},{}} -- char, text, back
+	local y = 1
+	background = (background or "f"):sub(1,1)
+	local text, back = "f", background
+	local doSkip, c1, c2 = false
+	local tchar = string.char(31)	-- for text colors
+	local bchar = string.char(30)	-- for background colors
+	local maxX = 0
+	local bx
+	for i = 1, #image do
+		if doSkip then
+			doSkip = false
+		else
+			output[1][y] = output[1][y] or ""
+			output[2][y] = output[2][y] or ""
+			output[3][y] = output[3][y] or ""
+			c1, c2 = image:sub(i,i), image:sub(i+1,i+1)
+			if c1 == tchar then
+				text = c2
+				doSkip = true
+			elseif c1 == bchar then
+				back = c2
+				doSkip = true
+			elseif c1 == "\n" then
+				maxX = math.max(maxX, #output[1][y])
+				y = y + 1
+				text, back = " ", background
+			else
+				output[1][y] = output[1][y]..c1
+				output[2][y] = output[2][y]..text
+				output[3][y] = output[3][y]..back
+			end
+		end
+	end
+	for y = 1, #output[1] do
+		output[1][y] = output[1][y] .. (" "):rep(maxX - #output[1][y])
+		output[2][y] = output[2][y] .. (" "):rep(maxX - #output[2][y])
+		output[3][y] = output[3][y] .. (background):rep(maxX - #output[3][y])
+	end
+	return output
+end
+
+-- draws an image with the topleft corner at (x, y), with transparency
+local drawImageTransparent = function(image, x, y, terminal)
+	terminal = terminal or term.current()
+	local cx, cy = terminal.getCursorPos()
+	local c, t, b
+	for iy = 1, #image[1] do
+		for ix = 1, #image[1][iy] do
+			c, t, b = image[1][iy]:sub(ix,ix), image[2][iy]:sub(ix,ix), image[3][iy]:sub(ix,ix)
+			if b ~= " " or c ~= " " then
+				terminal.setCursorPos(x + (ix - 1), y + (iy - 1))
+				terminal.blit(c, t, b)
+			end
+		end
+	end
+	terminal.setCursorPos(cx,cy)
+end
+
 -- copies the contents of a table
 table.copy = function(tbl)
 	local output = {}
@@ -241,14 +302,14 @@ end
 local stringrep = string.rep
 
 -- generates a new board, on which polyominos can be placed and interact
-local makeNewBoard = function(x, y, width, height)
+local makeNewBoard = function(x, y, width, height, blankColor)
 	local board = {}
 	board.contents = {}
 	board.height = height or gameConfig.board_height
 	board.width = width or gameConfig.board_width
 	board.x = x
 	board.y = y
-	board.blankColor = "7"			-- color if no minos are in that spot
+	board.blankColor = blankColor or "7"			-- color if no minos are in that spot
 	board.transparentColor = "f"	-- color if the board tries to render where there is no board
 	board.garbageColor = "8"
 	board.visibleHeight = height and math.floor(height / 2) or gameConfig.board_height_visible
@@ -356,16 +417,17 @@ local makeNewBoard = function(x, y, width, height)
 	return board
 end
 
-local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
+local makeNewMino = function(minoTable, minoID, board, xPos, yPos, oldeMino)
 	local mino = oldeMino or {}
-	if not gameConfig.minos[minoID] then
+	minoTable = minoTable or gameConfig.minos
+	if not minoTable[minoID] then
 		error("tried to spawn mino with invalid ID '" .. tostring(minoID) .. "'")
 	else
-		mino.shape = gameConfig.minos[minoID].shape
-		mino.spinID = gameConfig.minos[minoID].spinID
-		mino.kickID = gameConfig.minos[minoID].kickID
-		mino.color = gameConfig.minos[minoID].color
-		mino.name = gameConfig.minos[minoID].name
+		mino.shape = minoTable[minoID].shape
+		mino.spinID = minoTable[minoID].spinID
+		mino.kickID = minoTable[minoID].kickID
+		mino.color = minoTable[minoID].color
+		mino.name = minoTable[minoID].name
 	end
 
 	mino.finished = false
@@ -397,7 +459,7 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 
 	-- takes absolute position (x, y) on board, and returns true if it exists within the bounds of the board
 	local DoesSpotExist = function(x, y)
-		return (
+		return board and (
 			x >= 1 and
 			x <= board.width and
 			y >= 1 and
@@ -477,7 +539,7 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 			mino.width, mino.height = mino.height, mino.width
 			mino.shape = output
 			-- it's time to do some floor and wall kicking
-			if mino.CheckCollision(0, 0) then
+			if mino.board and mino.CheckCollision(0, 0) then
 				for i = 1, #kickTable[mino.kickID][kickRot] do
 					kickX = kickTable[mino.kickID][kickRot][i][1]
 					kickY = -kickTable[mino.kickID][kickRot][i][2]
@@ -508,7 +570,7 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 			end
 		end
 
-		return success
+		return mino, success
 	end
 
 	mino.Move = function(x, y, doSlam, expendLockMove)
@@ -628,6 +690,8 @@ local makeNewMino = function(minoID, board, xPos, yPos, oldeMino)
 	return mino
 end
 
+_G.makeNewMino = makeNewMino
+
 local random_bag = {}
 
 local pseudoRandom = function()
@@ -734,7 +798,7 @@ StartGame = function()
 	-- fill the queue
 	for i = 1, clientConfig.queue_length do
 		gameState.queue[i] = pseudoRandom()
-		gameState.queueMinos[i] = makeNewMino(
+		gameState.queueMinos[i] = makeNewMino(nil,
 			gameState.queue[i],
 			gameState.queueBoard,
 			1,
@@ -762,7 +826,7 @@ StartGame = function()
 		else
 			nextPiece = gameState.queue.cyclePiece()
 		end
-		return makeNewMino(
+		return makeNewMino(nil,
 			nextPiece,
 			gameState.board,
 			math.floor(gameState.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
@@ -775,7 +839,7 @@ StartGame = function()
 
 	local mino, board = gameState.mino, gameState.board
 	local holdBoard, queueBoard = gameState.holdBoard, gameState.queueBoard
-	local ghostMino = makeNewMino(mino.minoID, gameState.board, mino.x, mino.y, {})
+	local ghostMino = makeNewMino(nil, mino.minoID, gameState.board, mino.x, mino.y, {})
 	
 	local keysDown = {}
 	local tickDelay = 0.05
@@ -851,7 +915,7 @@ StartGame = function()
 					end
 					-- draw held piece
 					gameState.holdBoard.Clear()
-					makeNewMino(
+					makeNewMino(nil,
 						gameState.mino.minoID,
 						gameState.holdBoard,
 						1, 2, {}
@@ -868,7 +932,7 @@ StartGame = function()
 
 			if doMakeNewMino then
 				gameState.mino = makeDefaultMino(gameState)
-				ghostMino = makeNewMino(mino.minoID, gameState.board, mino.x, mino.y, {})
+				ghostMino = makeNewMino(nil, mino.minoID, gameState.board, mino.x, mino.y, {})
 				if (not gameState.didHold) and (clientConfig.appearance_delay > 0) then
 					gameState.mino.spawnTimer = clientConfig.appearance_delay
 					gameState.mino.active = false
@@ -880,7 +944,7 @@ StartGame = function()
 
 			if doAnimateQueue then
 				table.remove(gameState.queueMinos, 1)
-				gameState.queueMinos[#gameState.queueMinos + 1] = makeNewMino(
+				gameState.queueMinos[#gameState.queueMinos + 1] = makeNewMino(nil,
 					gameState.queue[clientConfig.queue_length],
 					gameState.queueBoard,
 					1,
@@ -1047,7 +1111,107 @@ StartGame = function()
 end
 
 local TitleScreen = function()
-	
+	local animation = function()
+		local tsx = 8
+		local tsy = 10
+		--[[
+		local title = {
+			[1] = "ee\nee\neeffe",
+			[2] = "ddfdffd\ndd   dffd\nddffd",
+			[3] = "11f1ff1\n11ff1\n11   11f",
+			[4] = "affa\naffa\naf",
+			[5] = "3f3f3f\nf33ff3\n3ff3",
+			[6] = "4ff44f\n   4ff4\n4f4f"
+		}
+		--]]
+		
+		--[[
+			1 = "    ",
+				"@@@@",
+				"    ",
+				"    ",
+
+			2 = " @ ",
+				"@@@",
+				"    ",
+
+			3 = "  @",
+				"@@@",
+				"   ",
+				
+			4 = "@  ",
+				"@@@",
+				"   ",
+
+			5 = "@@",
+				"@@",
+
+			6 = " @@",
+				"@@ ",
+				"   ",
+
+			7 = "@@ ",
+				" @@",
+				"   ",
+		]]
+
+		local animBoard = makeNewBoard(1, 1, scr_x, scr_y * 10/3, "f")
+		animBoard.visibleHeight = animBoard.height / 2
+
+		local animMinos = {}
+
+		local iterate = 0
+		local mTimer = 100000
+		
+		local titleMinos = {
+			-- L
+			makeNewMino(nil, 4, animBoard, tsx + 1, tsy).Rotate(0),
+			makeNewMino(nil, 1, animBoard, tsx + 0, tsy).Rotate(3),
+			
+			-- D
+			makeNewMino(nil, 7, animBoard, tsx + 6, tsy).Rotate(3),
+			makeNewMino(nil, 3, animBoard, tsx + 4, tsy).Rotate(1),
+			nil
+		}
+
+		for i = 1, #titleMinos do
+			if titleMinos[i] then
+				table.insert(animMinos, titleMinos[i])
+			end
+		end
+
+		while true do
+			iterate = (iterate + 10) % 360
+
+			if mTimer <= 0 then
+				table.insert(animMinos, makeNewMino(nil,
+					math.random(1, 7),
+					animBoard,
+					math.random(1, animBoard.width - 4),
+					animBoard.visibleHeight - 4
+				))
+				mTimer = 4
+			else
+				mTimer = mTimer - 1
+			end
+
+			for i = 1, #animMinos do
+				animMinos[i].Move(0, 0.75, false)
+				if animMinos[i].y > animBoard.height then
+					table.remove(animMinos, i)
+				end
+			end
+
+			animBoard.Render(table.unpack(animMinos))
+
+			sleep(0.05)
+		end
+	end
+	local menu = function()
+		local options = {"Singleplayer", "How to play", "Quit"}
+		
+	end
+	--animation()
 	StartGame()
 end
 
