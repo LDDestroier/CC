@@ -72,7 +72,7 @@ local gameConfig = {
 								-- "singlebag" = normal tetris guideline random
 								-- "doublebag" = doubled bag size
 								-- "random" = using math.random
-	board_width = 10,			-- width of play area
+	board_width = 11,			-- width of play area
 	board_height = 40,			-- height of play area
 	board_height_visible = 20,	-- height of play area that will render on screen (anchored to bottom)
 	spin_mode = 1,				-- 1 = allows T-spins
@@ -83,6 +83,27 @@ local gameConfig = {
 	lock_move_limit = 30,		-- amount of moves a mino can do after descending below its lowest point yet traversed
 								-- used as a method of preventing stalling -- set it to math.huge for infinite
 }
+
+_WRITE_TO_DEBUG_MONITOR = true
+
+local cospc_debuglog = function(header, text)
+	if _WRITE_TO_DEBUG_MONITOR then
+		if ccemux then
+			ccemux.attach("right", "monitor")
+			local t = term.redirect(peripheral.wrap("right"))
+			if text == 0 then
+				term.clear()
+				term.setCursorPos(1, 1)
+			else
+				term.setTextColor(colors.yellow)
+				term.write(header or "SYS")
+				term.setTextColor(colors.white)
+				print(": " .. text)
+			end
+			term.redirect(t)
+		end
+	end	
+end
 
 local switch = function(check)
     return function(cases)
@@ -100,7 +121,7 @@ end
 
 -- current state of the game; can be used to perfectly recreate the current scene of a game
 -- that includes board and mino objects, bitch
-gameState = {}
+-- gameState = {}
 
 --[[
 	(later, I'll probably store mino data in a separate file)
@@ -313,6 +334,7 @@ local makeNewBoard = function(x, y, width, height, blankColor)
 	board.transparentColor = "f"	-- color if the board tries to render where there is no board
 	board.garbageColor = "8"
 	board.visibleHeight = height and math.floor(height / 2) or gameConfig.board_height_visible
+	board.alignFromBottom = false
 
 	for y = 1, board.height do
 		board.contents[y] = stringrep(board.blankColor, width)
@@ -365,52 +387,104 @@ local makeNewBoard = function(x, y, width, height, blankColor)
 		local colorLine1, colorLine2, colorLine3
 		local minoColor1, minoColor2, minoColor3
 		local minos = {...}
-		local mino
+		local mino, tY
 
-		local tY = board.y + math.floor((board.height - board.visibleHeight) * (2 / 3)) - 2
+		if board.alignFromBottom then
 
-		for y = board.height, 1 + (board.height - board.visibleHeight), -3 do
-			colorLine1, colorLine2, colorLine3 = "", "", ""
-			for x = 1, board.width do
+			tY = board.y + math.floor((board.height - board.visibleHeight) * (2 / 3)) - 2
 
-				minoColor1, minoColor2, minoColor3 = nil, nil, nil
-				for i = 1, #minos do
-					mino = minos[i]
-					if mino.visible then
-						if mino.CheckSolid(x, y - 0, true) then
-							minoColor1 = mino.color
-						end
-						if mino.CheckSolid(x, y - 1, true) then
-							minoColor2 = mino.color
-						end
-						if mino.CheckSolid(x, y - 2, true) then
-							minoColor3 = mino.color
+			for y = board.height, 1 + (board.height - board.visibleHeight), -3 do
+				colorLine1, colorLine2, colorLine3 = "", "", ""
+				for x = 1, board.width do
+
+					minoColor1, minoColor2, minoColor3 = nil, nil, nil
+					for i = 1, #minos do
+						mino = minos[i]
+						if mino.visible then
+							if mino.CheckSolid(x, y - 0, true) then
+								minoColor1 = mino.color
+							end
+							if mino.CheckSolid(x, y - 1, true) then
+								minoColor2 = mino.color
+							end
+							if mino.CheckSolid(x, y - 2, true) then
+								minoColor3 = mino.color
+							end
 						end
 					end
+
+					colorLine1 = colorLine1 .. (minoColor1 or ((board.contents[y - 0] and board.contents[y - 0]:sub(x, x)) or board.blankColor))
+					colorLine2 = colorLine2 .. (minoColor2 or ((board.contents[y - 1] and board.contents[y - 1]:sub(x, x)) or board.blankColor))
+					colorLine3 = colorLine3 .. (minoColor3 or ((board.contents[y - 2] and board.contents[y - 2]:sub(x, x)) or board.blankColor))
+
 				end
 
-				colorLine1 = colorLine1 .. (minoColor1 or ((board.contents[y - 0] and board.contents[y - 0]:sub(x, x)) or board.blankColor))
-				colorLine2 = colorLine2 .. (minoColor2 or ((board.contents[y - 1] and board.contents[y - 1]:sub(x, x)) or board.blankColor))
-				colorLine3 = colorLine3 .. (minoColor3 or ((board.contents[y - 2] and board.contents[y - 2]:sub(x, x)) or board.blankColor))
+				if (y - 0) <= (board.height - board.visibleHeight) then
+					colorLine1 = transparentLine
+				end
+				if (y - 1) <= (board.height - board.visibleHeight) then
+					colorLine2 = transparentLine
+				end
+				if (y - 2) <= (board.height - board.visibleHeight) then
+					colorLine3 = transparentLine
+				end
 
+				term.setCursorPos(board.x, board.y + tY)
+				term.blit(charLine1, colorLine2, colorLine1)
+				tY = tY - 1
+				term.setCursorPos(board.x, board.y + tY)
+				term.blit(charLine2, colorLine3, colorLine2)
+				tY = tY - 1
 			end
+		
+		else
 
-			if (y - 0) <= (board.height - board.visibleHeight) then
-				colorLine1 = transparentLine
-			end
-			if (y - 1) <= (board.height - board.visibleHeight) then
-				colorLine2 = transparentLine
-			end
-			if (y - 2) <= (board.height - board.visibleHeight) then
-				colorLine3 = transparentLine
-			end
+			tY = board.y
 
-			term.setCursorPos(board.x, board.y + tY)
-			term.blit(charLine1, colorLine2, colorLine1)
-			tY = tY - 1
-			term.setCursorPos(board.x, board.y + tY)
-			term.blit(charLine2, colorLine3, colorLine2)
-			tY = tY - 1
+			for y = 1 + (board.height - board.visibleHeight), board.height, 3 do
+				colorLine1, colorLine2, colorLine3 = "", "", ""
+				for x = 1, board.width do
+
+					minoColor1, minoColor2, minoColor3 = nil, nil, nil
+					for i = 1, #minos do
+						mino = minos[i]
+						if mino.visible then
+							if mino.CheckSolid(x, y + 0, true) then
+								minoColor1 = mino.color
+							end
+							if mino.CheckSolid(x, y + 1, true) then
+								minoColor2 = mino.color
+							end
+							if mino.CheckSolid(x, y + 2, true) then
+								minoColor3 = mino.color
+							end
+						end
+					end
+
+					colorLine1 = colorLine1 .. (minoColor1 or ((board.contents[y + 0] and board.contents[y + 0]:sub(x, x)) or board.blankColor))
+					colorLine2 = colorLine2 .. (minoColor2 or ((board.contents[y + 1] and board.contents[y + 1]:sub(x, x)) or board.blankColor))
+					colorLine3 = colorLine3 .. (minoColor3 or ((board.contents[y + 2] and board.contents[y + 2]:sub(x, x)) or board.blankColor))
+
+				end
+
+				if (y + 0) > board.height or (y + 0) <= (board.height - board.visibleHeight) then
+					colorLine1 = transparentLine
+				end
+				if (y + 1) > board.height or (y + 1) <= (board.height - board.visibleHeight) then
+					colorLine2 = transparentLine
+				end
+				if (y + 2) > board.height or (y + 2) <= (board.height - board.visibleHeight) then
+					colorLine3 = transparentLine
+				end
+
+				term.setCursorPos(board.x, board.y + tY)
+				term.blit(charLine2, colorLine1, colorLine2)
+				tY = tY + 1
+				term.setCursorPos(board.x, board.y + tY)
+				term.blit(charLine1, colorLine2, colorLine3)
+				tY = tY + 1
+				
+			end
 		end
 	end
 
@@ -657,13 +731,15 @@ local makeNewMino = function(minoTable, minoID, board, xPos, yPos, oldeMino)
 			end
 
 			if expendLockMove then
-				mino.movesLeft = mino.movesLeft - 1
-				if mino.movesLeft <= 0 then
-					if mino.CheckCollision(0, 1) then
-						mino.finished = 1
+				if didMoveX or didMoveY then
+					mino.movesLeft = mino.movesLeft - 1
+					if mino.movesLeft <= 0 then
+						if mino.CheckCollision(0, 1) then
+							mino.finished = 1
+						end
+					else
+						mino.lockTimer = clientConfig.lock_delay
 					end
-				else
-					mino.lockTimer = clientConfig.lock_delay
 				end
 			end
 		else
@@ -692,43 +768,43 @@ end
 
 _G.makeNewMino = makeNewMino
 
-local random_bag = {}
-
-local pseudoRandom = function()
+local pseudoRandom = function(gameState)
 	return switch(gameConfig.randomBag) {
 		["random"] = function()
 			return math.random(1, #gameConfig.minos)
 		end,
 		["singlebag"] = function()
-			if #random_bag == 0 then
+			if #gameState.random_bag == 0 then
+				-- repopulate random bag
 				for i = 1, #gameConfig.minos do
 					if math.random(0, 1) == 0 then
-						random_bag[#random_bag + 1] = i
+						gameState.random_bag[#gameState.random_bag + 1] = i
 					else
-						table.insert(random_bag, 1, i)
+						table.insert(gameState.random_bag, 1, i)
 					end
 				end
 			end
-			local pick = math.random(1, #random_bag)
-			local output = random_bag[pick]
-			table.remove(random_bag, pick)
+			local pick = math.random(1, #gameState.random_bag)
+			local output = gameState.random_bag[pick]
+			table.remove(gameState.random_bag, pick)
 			return output
 		end,
 		["doublebag"] = function()
-			if #random_bag == 0 then
+			if #gameState.random_bag == 0 then
 				for r = 1, 2 do
+					-- repopulate random bag
 					for i = 1, #gameConfig.minos do
 						if math.random(0, 1) == 0 then
-							random_bag[#random_bag + 1] = i
+							gameState.random_bag[#gameState.random_bag + 1] = i
 						else
-							table.insert(random_bag, 1, i)
+							table.insert(gameState.random_bag, 1, i)
 						end
 					end
 				end
 			end
-			local pick = math.random(1, #random_bag)
-			local output = random_bag[pick]
-			table.remove(random_bag, pick)
+			local pick = math.random(1, #gameState.random_bag)
+			local output = gameState.random_bag[pick]
+			table.remove(gameState.random_bag, pick)
 			return output
 		end
 	}
@@ -768,10 +844,13 @@ local handleLineClears = function(gameState)
 
 end
 
-StartGame = function()
-	gameState = {
+local StartGame = function(player_number, native_control, board_xmod, board_ymod)
+	board_xmod = board_xmod or 0
+	board_ymod = board_ymod or 0
+	local gameState = {
 		gravity = gameConfig.startingGravity,
-		board = makeNewBoard(2, 2, gameConfig.board_width, gameConfig.board_height),
+		pNum = player_number,
+		targetPlayer = 0,
 		score = 0,
 		antiControlRepeat = {},
 		topOut = false,
@@ -782,24 +861,63 @@ StartGame = function()
 		queue = {},
 		queueMinos = {},
 		linesCleared = 0,
+		random_bag = {},
+		gameTickCount = 0,
+		controlTickCount = 0,
+		controlsDown = {},		-- 
+		incomingGarbage = 0,	-- amount of garbage that will be added to board after non-line-clearing mino placement
+		combo = 0,				-- amount of successive line clears
+		backToBack = 0,			-- amount of tetris/t-spins comboed
+		spinLevel = 0,			-- 0 = no special spin
+								-- 1 = mini spin
+								-- 2 = Z/S/J/L spin
+								-- 3 = T spin
 	}
-	gameState.holdBoard = makeNewBoard(
-		gameState.board.x + gameState.board.width + 1,
-		gameState.board.y + gameState.board.visibleHeight * (1/3),
-		4, 4
+	-- create boards
+	-- main gameplay board
+	gameState.board = makeNewBoard(
+		7 + board_xmod,
+		1 + board_ymod,
+		gameConfig.board_width, gameConfig.board_height
 	)
-	gameState.holdBoard.visibleHeight = 4
+
+	-- queue of upcoming minos
 	gameState.queueBoard = makeNewBoard(
 		gameState.board.x + gameState.board.width + 1,
 		gameState.board.y,
 		4,
-		gameState.board.height - gameState.holdBoard.height - 8
+		28
+		--gameState.board.height - 12
 	)
-	-- fill the queue
+
+	-- display of currently held mino
+	gameState.holdBoard = makeNewBoard(
+		--gameState.board.x + gameState.board.width + 1,
+		2 + board_xmod,
+		--gameState.board.y + gameState.board.visibleHeight * (1/3),
+		1 + board_ymod,
+		gameState.queueBoard.width,
+		4
+	)
+	gameState.holdBoard.visibleHeight = 4
+
+	-- indicator of incoming garbage
+	gameState.garbageBoard = makeNewBoard(
+		gameState.board.x - 1,
+		gameState.board.y,
+		1,
+		gameState.board.visibleHeight,
+		"f"
+	)
+	gameState.garbageBoard.visibleHeight = gameState.garbageBoard.height
+
+	-- populate the queue
+	for i = 1, clientConfig.queue_length + 1 do
+		gameState.queue[i] = pseudoRandom(gameState)
+	end
 	for i = 1, clientConfig.queue_length do
-		gameState.queue[i] = pseudoRandom()
 		gameState.queueMinos[i] = makeNewMino(nil,
-			gameState.queue[i],
+			gameState.queue[i + 1],
 			gameState.queueBoard,
 			1,
 			i * 3 + 12
@@ -808,7 +926,7 @@ StartGame = function()
 	gameState.queue.cyclePiece = function()
 		local output = gameState.queue[1]
 		table.remove(gameState.queue, 1)
-		gameState.queue[#gameState.queue + 1] = pseudoRandom()
+		gameState.queue[#gameState.queue + 1] = pseudoRandom(gameState)
 		return output
 	end
 	gameState.mino = {}
@@ -835,11 +953,55 @@ StartGame = function()
 		)
 	end
 
+	local calculateGarbage = function(gameState, linesCleared)
+		local output = 0
+		local lncleartbl = {
+			[0] = 0,
+			[1] = 0,
+			[2] = 1,
+			[3] = 2,
+			[4] = 4,
+			[5] = 5,
+			[6] = 6,
+			[7] = 7,
+			[8] = 8
+		}
+
+		if (gameState.spinLevel == 3) or (gameState.spinLevel == 2 and gameConfig.spin_mode >= 2) then
+			output = output + linesCleared * 2
+		else
+			output = output + (lncleartbl[linesCleared] or 0)
+		end
+
+		-- add combo bonus
+		output = output + math.max(0, math.floor(-1 + gameState.combo / 2))
+
+		return output
+	end
+
+	local sendGameEvent = function(eventName, ...)
+		if native_control then
+			os.queueEvent(eventName, ...)
+		end
+	end
+
 	gameState.mino = makeDefaultMino(gameState)
 
 	local mino, board = gameState.mino, gameState.board
-	local holdBoard, queueBoard = gameState.holdBoard, gameState.queueBoard
+	local holdBoard, queueBoard, garbageBoard = gameState.holdBoard, gameState.queueBoard, gameState.garbageBoard
 	local ghostMino = makeNewMino(nil, mino.minoID, gameState.board, mino.x, mino.y, {})
+
+	local garbageMinoShape = {}
+	for i = 1, garbageBoard.height do
+		garbageMinoShape[#garbageMinoShape + 1] = "@"
+	end
+
+	local garbageMino = makeNewMino({
+		[1] = {
+			shape = garbageMinoShape,
+			color = "e"
+		}
+	}, 1, garbageBoard, 1, garbageBoard.height + 1)
 	
 	local keysDown = {}
 	local tickDelay = 0.05
@@ -849,6 +1011,7 @@ StartGame = function()
 		if drawOtherBoards then
 			holdBoard.Render()
 			queueBoard.Render(table.unpack(gameState.queueMinos))
+			garbageBoard.Render(garbageMino)
 		end
 	end
 
@@ -959,7 +1122,7 @@ StartGame = function()
 				-- attempt to move mino at most 2 spaces upwards before considering it fully topped out
 				gameState.topOut = true
 				for i = 0, 2 do
-					if mino.CheckCollision(0, -1) then
+					if mino.CheckCollision(0, 1) then
 						mino.y = mino.y - 1
 					else
 						gameState.topOut = false
@@ -967,40 +1130,84 @@ StartGame = function()
 					end
 				end
 				
-				handleLineClears(gameState)
+				local linesCleared = handleLineClears(gameState)
+				if #linesCleared == 0 then
+					gameState.combo = 0
+					gameState.backToBack = 0
+				else
+					gameState.combo = gameState.combo + 1
+					if #linesCleared == 4 or gameState.spinLevel >= 1 then
+						gameState.backToBack = gameState.backToBack + 1
+					else
+						gameState.backToBack = 0
+					end
+				end
+				-- calculate garbage to be sent
+				local garbage = calculateGarbage(gameState, #linesCleared)
+				if garbage > 0 then
+					cospc_debuglog(gameState.pNum, "Doled out " .. garbage .. " lines")
+				end
+				
+				-- send garbage to enemy player
+				sendGameEvent("attack", gameState.targetPlayer)
+
+				if doMakeNewMino then
+					gameState.spinLevel = 0
+				end
+
 			end
 		end
 
 		-- debug info
+		if native_control then
+			term.setCursorPos(2, scr_y - 2)
+			term.write("Lines: " .. gameState.linesCleared .. "      ")
 
-		term.setCursorPos(2, scr_y - 2)
-		term.write("Lines: " .. gameState.linesCleared .. "      ")
+			term.setCursorPos(2, scr_y - 1)
+			term.write("M=" .. mino.movesLeft .. ", TTL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
 
-		term.setCursorPos(2, scr_y - 1)
-		term.write("M=" .. mino.movesLeft .. ", TTL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
-
-		term.setCursorPos(2, scr_y - 0)
-		term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
+			term.setCursorPos(2, scr_y - 0)
+			term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
+		end
 		
 	end
 
 	local checkControl = function(controlName, repeatTime, repeatDelay)
 		repeatDelay = repeatDelay or 1
-		if keysDown[clientConfig.controls[controlName]] then
-			if not gameState.antiControlRepeat[controlName] then
-				if repeatTime then
-					return 	keysDown[clientConfig.controls[controlName]] == 1 or
-							(
-								keysDown[clientConfig.controls[controlName]] >= (repeatTime * (1 / tickDelay)) and (
-									repeatDelay and ((keysDown[clientConfig.controls[controlName]] * tickDelay) % repeatDelay == 0) or true
+		if native_control then
+			if keysDown[clientConfig.controls[controlName]] then
+				if not gameState.antiControlRepeat[controlName] then
+					if repeatTime then
+						return 	keysDown[clientConfig.controls[controlName]] == 1 or
+								(
+									keysDown[clientConfig.controls[controlName]] >= (repeatTime * (1 / tickDelay)) and (
+										repeatDelay and ((keysDown[clientConfig.controls[controlName]] * tickDelay) % repeatDelay == 0) or true
+									)
 								)
-							)
-				else
-					return keysDown[clientConfig.controls[controlName]] == 1
+					else
+						return keysDown[clientConfig.controls[controlName]] == 1
+					end
 				end
+			else
+				return false
 			end
 		else
-			return false
+			if gameState.controlsDown[controlName] then
+				if not gameState.antiControlRepeat[controlName] then
+					if repeatTime then
+						return 	gameState.controlsDown[controlName] == 1 or
+								(
+									gameState.controlsDown[controlName] >= (repeatTime * (1 / tickDelay)) and (
+										repeatDelay and ((gameState.controlsDown[controlName] * tickDelay) % repeatDelay == 0) or true
+									)
+								)
+					else
+						return gameState.controlsDown[controlName] == 1
+					end
+				end
+			else
+				return false
+			end
 		end
 	end
 
@@ -1010,14 +1217,18 @@ StartGame = function()
 		if (not gameState.paused) and gameState.mino.active then
 			if not onlyFastActions then
 				if checkControl("move_left", clientConfig.move_repeat_delay, clientConfig.move_repeat_interval) then
-					mino.Move(-1, 0, true, true)
-					didSlowAction = true
-					gameState.antiControlRepeat["move_left"] = true
+					if not mino.finished then
+						mino.Move(-1, 0, true, true)
+						didSlowAction = true
+						gameState.antiControlRepeat["move_left"] = true
+					end
 				end
 				if checkControl("move_right", clientConfig.move_repeat_delay, clientConfig.move_repeat_interval) then
-					mino.Move(1, 0, true, true)
-					didSlowAction = true
-					gameState.antiControlRepeat["move_right"] = true
+					if not mino.finished then
+						mino.Move(1, 0, true, true)
+						didSlowAction = true
+						gameState.antiControlRepeat["move_right"] = true
+					end
 				end
 				if checkControl("soft_drop", 0) then
 					mino.Move(0, gameState.gravity * clientConfig.soft_drop_multiplier, true, false)
@@ -1036,9 +1247,11 @@ StartGame = function()
 					gameState.antiControlRepeat["sonic_drop"] = true
 				end
 				if checkControl("hold", false) then
-					mino.finished = 2
-					gameState.antiControlRepeat["hold"] = true
-					didSlowAction = true
+					if not mino.finished then
+						mino.finished = 2
+						gameState.antiControlRepeat["hold"] = true
+						didSlowAction = true
+					end
 				end
 				if checkControl("quit", false) then
 					gameState.topOut = true
@@ -1048,10 +1261,32 @@ StartGame = function()
 			end
 			if checkControl("rotate_left", false) then
 				mino.Rotate(-1, true)
+				if mino.spinID <= gameConfig.spin_mode then
+					if (
+						mino.CheckCollision(1, 0) and
+						mino.CheckCollision(-1, 0) and
+						mino.CheckCollision(0, -1)
+					) then
+						gameState.spinLevel = 3
+					else
+						gameState.spinLevel = 0
+					end
+				end
 				gameState.antiControlRepeat["rotate_left"] = true
 			end
 			if checkControl("rotate_right", false) then
 				mino.Rotate(1, true)
+				if mino.spinID <= gameConfig.spin_mode then
+					if (
+						mino.CheckCollision(1, 0) and
+						mino.CheckCollision(-1, 0) and
+						mino.CheckCollision(0, -1)
+					) then
+						gameState.spinLevel = 3
+					else
+						gameState.spinLevel = 0
+					end
+				end
 				gameState.antiControlRepeat["rotate_right"] = true
 			end
 		end
@@ -1075,6 +1310,8 @@ StartGame = function()
 		ghostMino.y = mino.y
 		ghostMino.Move(0, board.height, true)
 
+		garbageMino.y = 1 + garbageBoard.height - gameState.incomingGarbage
+
 		-- render board
 		render(true)
 
@@ -1083,6 +1320,7 @@ StartGame = function()
 		if evt[1] == "key" and not evt[3] then
 			keysDown[evt[2]] = 1
 			didControlTick = controlTick(gameState, false)
+			gameState.controlTickCount = gameState.controlTickCount + 1
 		elseif evt[1] == "key_up" then
 			keysDown[evt[2]] = nil
 		end
@@ -1094,8 +1332,10 @@ StartGame = function()
 					keysDown[k] = 1 + v
 				end
 				controlTick(gameState, didControlTick)
+				gameState.controlTickCount = gameState.controlTickCount + 1
 				if not gameState.paused then
 					tick(gameState)
+					gameState.gameTickCount = gameState.gameTickCount + 1
 				end
 				didControlTick = false
 				gameState.antiControlRepeat = {}
@@ -1212,12 +1452,29 @@ local TitleScreen = function()
 		
 	end
 	--animation()
-	StartGame()
+	--StartGame(true, 0, 0)
+	parallel.waitForAny(function()
+		cospc_debuglog(1, "Starting game.")
+		StartGame(1, true, 0, 0)
+		cospc_debuglog(1, "Game concluded.")
+	end, function()
+		while true do
+			cospc_debuglog(2, "Starting game.")
+			StartGame(2, false, 24, 0)
+			cospc_debuglog(2, "Game concluded.")
+		end
+	end)
 end
 
 term.clear()
 
+cospc_debuglog(nil, 0)
+
+cospc_debuglog(nil, "Opened LDRIS2.")
+
 TitleScreen()
+
+cospc_debuglog(nil, "Closed LDRIS2.")
 
 term.setCursorPos(1, scr_y - 1)
 term.clearLine()
