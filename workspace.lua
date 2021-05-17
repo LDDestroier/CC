@@ -1348,7 +1348,7 @@ local main = function()
 						instances[focus[2]][focus[1]].paused = not instances[focus[2]][focus[1]].paused
 						enteringCommand = true
 						doDrawWorkspaceIndicator = instances[focus[2]][focus[1]].paused and 2 or 3
-						os.cancelTimer(wID)
+						
 						wID = os.startTimer(workspaceIndicatorDuration)
 						if config.doPauseClockAndTime then
 							if instances[focus[2]][focus[1]].paused then
@@ -1377,7 +1377,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				correctPalette(focus[1], focus[2])
 				enteringCommand = true
@@ -1395,7 +1395,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				correctPalette(focus[1], focus[2])
 				enteringCommand = true
@@ -1415,7 +1415,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				correctPalette(focus[1], focus[2])
 				enteringCommand = true
@@ -1435,7 +1435,7 @@ local main = function()
 					end
 				end
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				correctPalette(focus[1], focus[2])
 				enteringCommand = true
@@ -1443,7 +1443,7 @@ local main = function()
 			if keysDown[keys.w] then
 				addWorkspace(0, -1)
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.w] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -1451,7 +1451,7 @@ local main = function()
 			if keysDown[keys.s] then
 				addWorkspace(0, 1)
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.s] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -1459,7 +1459,7 @@ local main = function()
 			if keysDown[keys.a] then
 				addWorkspace(-1, 0)
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.a] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
@@ -1467,14 +1467,14 @@ local main = function()
 			if keysDown[keys.d] then
 				addWorkspace(1, 0)
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.d] = false
 				gridWidth, gridHeight, gridMinX, gridMinY = getMapSize()
 			end
 			if keysDown[keys.q] then
 				doDrawWorkspaceIndicator = 1
-				os.cancelTimer(wID)
+				
 				wID = os.startTimer(workspaceIndicatorDuration)
 				keysDown[keys.q] = false
 				local good = false
