@@ -400,7 +400,7 @@ local function listAll(path, includePath)
 	local fc = fs.combine
 	for i = 1, #list do
 		if allowReadOnly or (not fs.isReadOnly(fc(path, list[i]))) then
-			if allowPackPD or fc(path, list[i]) ~= shell.getRunningProgram() then
+			if allowPackPD or fc(path, list[i]) ~= (shell and shell.getRunningProgram()) then
 				if fs.isDir(fc(path, list[i])) then
 					if #fs.list(fc(path, list[i])) == 0 then
 						output[#output+1] = (includePath and fc(path, list[i]) or list[i]) .. "/"
