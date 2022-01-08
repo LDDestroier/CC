@@ -7,13 +7,15 @@ local function checkOption(argName, argInfo, isShort)
     return false
 end
 
-function argParse(argInput, argInfo)
+local function argParse(argInput, argInfo)
     local sDelim = "-"
     local lDelim = "--"
 
-    optOutput = {}
-    argOutput = {}
-    argError = {}
+    local optOutput = {}
+    local argOutput = {}
+    local argError = {}
+
+    local usedTokens = {}
 
     local lOpt, sOpt, optNum
 
@@ -33,11 +35,13 @@ function argParse(argInput, argInfo)
                     for ii = 1, argInfo[optNum][1] do
                         if argInput[i + ii] then
                             optOutput[optNum][#optOutput[optNum] + 1] = argInput[i + ii]
+                            usedTokens[i + ii] = true
                         else
                             argError[#argError + 1] = "expected parameter " .. tostring(ii) .. " for argument " .. lDelim .. lOpt
                             break
                         end
                     end
+                    i = i + argInfo[optNum][1]
                 end
 
             else
@@ -60,11 +64,13 @@ function argParse(argInput, argInfo)
                         for ii = 1, argInfo[optNum][1] do
                             if argInput[i + ii] then
                                 optOutput[optNum][#optOutput[optNum] + 1] = argInput[i + ii]
+                                usedTokens[i + ii] = true
                             else
                                 argError[#argError + 1] = "expected parameter " .. tostring(ii) .. " for argument " .. sDelim .. sOpt
                                 break
                             end
                         end
+                        i = i + argInfo[optNum][1]
                     else
                         argError[#argError + 1] = "options with parameters must be at the end of their group"
                         break
@@ -74,10 +80,9 @@ function argParse(argInput, argInfo)
                     break
                 end
                 
-
             end
 
-        else
+        elseif not usedTokens[i] then
             argOutput[#argOutput + 1] = lOpt
         end
     end
@@ -85,19 +90,64 @@ function argParse(argInput, argInfo)
     return argOutput, optOutput, argError
 end
 
-local tArg = {...}
+local function demoArgParse(...)
 
--- {amount of parameters for the option, short option, long option}
-local argInfo = {
-    [1] = {0, "h", "help"},
-    [2] = {0, "w", "what"},
-    [3] = {1, "n", "name"}
-}
+    --[[
+    argInfo is structured as such:
+    {
+        amount of parameters for the option (usually 0 or 1),
+        short option,
+        long option
+    }
+    --]]
 
-arguments, options, errors = argParse(tArg, argInfo)
+    local argInfo = {
+        [1] = {0, "h", "help"},
+        [2] = {0, "w", "what"},
+        [3] = {1, "n", "name"}
+    }
 
-print(textutils.serialise(arguments))
-print(textutils.serialise(options))
-if #errors > 0 then
-    printError(textutils.serialise(errors))
+    --[[
+    with this, you can do the following:
+        "argparse.lua --help --what --name LDD"
+        "argparse.lua -hwn LDD"
+        "argparse.lua --help -wn LDD"
+
+    return 1 is a table of arguments (not options)
+    return 2 is a table of options (not regular arguments)
+    return 3 is a table of errors (invalid inputs)
+    --]]
+
+    arguments, options, errors = argParse({...}, argInfo)
+
+    if #errors > 0 then
+        for i = 1, #errors do
+            printError(errors[i])
+        end
+    else
+        for i = 1, #arguments do
+            write(arguments[i])
+            if i == #arguments then
+                write("\n")
+            else
+                write(", ")
+            end
+        end
+        for i,v in pairs(options) do
+            write("--" .. argInfo[i][3] .. " ")
+            if argInfo[i][1] > 0 then
+                for ii = 1, #options[i] do
+                    write(options[i][ii])
+                    if ii == #options[i] then
+                        write("\n")
+                    else
+                        write(", ")
+                    end
+                end
+            end
+            
+        end
+    end
 end
+
+return argParse
