@@ -1,3 +1,13 @@
+--[[
+Lua Argument Parser
+written by LDDestroier
+
+Features:
+    + Full/abbreviated options in addition to regular arguments
+    + Abbreviated option grouping
+    + Option parameters (of which there can be more than one per option)
+--]]
+
 local function checkOption(argName, argInfo, isShort)
     for i = 1, #argInfo do
         if argInfo[i][isShort and 2 or 3] == argName then
