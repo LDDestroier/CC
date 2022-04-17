@@ -935,7 +935,7 @@ local outputPath = ]] ..
 (selfExtractorFolder and (
 	"shell.resolve(\"" .. selfExtractorFolder .. "\")"
 ) or (
-	"tArg[1] and shell.resolve(tArg[1]) or ]]" .. ((defaultAutoExtractPath and ("\"" .. defaultAutoExtractPath .. "\"")) or "shell.getRunningProgram()")
+	"tArg[1] and shell.resolve(tArg[1]) or " .. ((defaultAutoExtractPath and ("\"" .. defaultAutoExtractPath .. "\"")) or "shell.getRunningProgram()")
 )) .. [[
 
 local safeColorList = {[colors.white] = true,[colors.lightGray] = true,[colors.gray] = true,[colors.black] = true}
