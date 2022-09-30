@@ -9,10 +9,10 @@ local function netrequire(_name, alwaysDownload, ...)
 		name = _name
 	end
 	
-	if fs.exists(fs.combine(DL_path .. "/require", name)) and not alwaysDownload then
+	if (not alwaysDownload) and fs.exists(fs.combine(DL_path .. "/require", name)) then
 		return loadfile(fs.combine(DL_path .. "/require", name))(...)
 		
-	elseif fs.exists(fs.combine(DL_path .. "/loadAPI", name)) and not alwaysDownload then
+	elseif (not alwaysDownload) and fs.exists(fs.combine(DL_path .. "/loadAPI", name)) then
 		os.loadAPI(fs.combine(DL_path .. "/loadAPI", name))
 		return _ENV[fs.getName(name)]
 		
