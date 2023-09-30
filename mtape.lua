@@ -2,7 +2,7 @@
 -- tape managing program
 -- made by LDDestroier
 
-local _DEBUG = true
+local _DEBUG = false
 
 local function checkOption(argName, argInfo, isShort)
     for i = 1, #argInfo do
@@ -350,6 +350,9 @@ if fileName:sub(1,8) == "https://" then
     success, contents = getFileContents(fileName, true)
     print("Done.")
 else
+    if not fs.exists(fileName) then
+        fileName = fileName .. ".dfpwm"
+    end
     success, contents = getFileContents(fileName, false)
 end
 
