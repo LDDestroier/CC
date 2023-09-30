@@ -2,7 +2,7 @@
 -- tape managing program
 -- made by LDDestroier
 
-local _DEBUG = false
+local _DEBUG = true
 
 local function checkOption(argName, argInfo, isShort)
     for i = 1, #argInfo do
@@ -336,6 +336,7 @@ end
 
 if getFromGithub then
     print("Pulling from CC-Media.")
+    tapeName = arguments[1]
     fileName = "https://github.com/LDDestroier/CC-Media/raw/master/DFPWM/" .. getFromGithub .. ".dfpwm"
 end
 
@@ -373,6 +374,7 @@ else
 end
 
 write("Writing...")
+
 success = writeToTape(tape, contents, tapeName)
 if success then
     print("\n" .. success)
