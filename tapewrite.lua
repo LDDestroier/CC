@@ -1,4 +1,8 @@
 local tArg = {...}
+
+-- this doesn't work very well, keep it false
+local doByteByByte = false
+
 local fileName = tArg[1]
 local tapeName = tArg[2]
 local tape = peripheral.find("tape_drive")
@@ -11,22 +15,39 @@ end
 
 local byte = 0
 tape.seek(-tape.getPosition())
+
 if tapeName then
     tape.setLabel(tapeName)
 end
 local counter = 0
 
-while true do
-    byte = file.read()
-    if not byte then break end
-    counter = counter + 1
-    tape.write(byte:byte())
-    if counter == 4096 then
-        counter = 0
-        os.queueEvent("yield")
-        os.pullEvent("yield")
-        write(".")
+local totalSize = tape.getSize()
+
+if doByteByByte then
+
+    while true do
+        byte = file.read()
+        if not byte then break end
+        counter = counter + 1
+        tape.write(byte:byte())
+        if counter == 4096 then
+            counter = 0
+            os.queueEvent("yield")
+            os.pullEvent("yield")
+            write(".")
+        end
     end
+
+else
+
+    print("Writing...")
+    local contents = file.readAll()
+    if #contents > totalSize then
+        contents = contents:sub(1, totalSize)
+        print("Tape too small. Audio was written incompletely.")
+    end
+    tape.write(contents)
+
 end
 
 tape.seek(-tape.getPosition())
