@@ -5,9 +5,17 @@ local doByteByByte = false
 
 local fileName = tArg[1]
 local tapeName = tArg[2]
+
+local function getHelp()
+    print("tapewrite [file / url] [name]")
+end
+
+assert(fileName, getHelp())
+
 local tape = peripheral.find("tape_drive")
 local file
 if fileName:sub(1,8) == "https://" then
+    print("Downloading...")
     file = http.get(fileName)
 else
     file = fs.open(fs.combine(shell.dir(),fileName), "r")
@@ -27,7 +35,9 @@ if doByteByByte then
 
     while true do
         byte = file.read()
-        if not byte then break end
+        if not byte then
+            break
+        end
         counter = counter + 1
         tape.write(byte:byte())
         if counter == 4096 then
