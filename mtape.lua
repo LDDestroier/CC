@@ -106,6 +106,7 @@ local function getHelp(specify)
         print("mtape [-e --erase]")
         print("mtape [-u --unclean]")
         print("mtape [-c --cc-media]")
+        print("Use -h with other options for details")
     else
         if specify == "--info" then
             print("Prints information about the connected tape drive.")
