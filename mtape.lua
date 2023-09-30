@@ -129,7 +129,7 @@ local function getFileContents(path, isURL)
     if isURL then
         file = http.get(path, nil, true)
     else
-        file = fs.open(fs.combine(shell.dir(), path))
+        file = fs.open(fs.combine(shell.dir(), path), "r")
     end
     if not file then
         return false, ""
