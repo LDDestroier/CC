@@ -2,7 +2,7 @@
 -- tape managing program
 -- made by LDDestroier
 
-local _DEBUG = true
+local _DEBUG = false
 
 local function checkOption(argName, argInfo, isShort)
     for i = 1, #argInfo do
