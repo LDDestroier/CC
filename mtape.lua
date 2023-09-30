@@ -2,6 +2,8 @@
 -- tape managing program
 -- made by LDDestroier
 
+local _DEBUG = true
+
 local function checkOption(argName, argInfo, isShort)
     for i = 1, #argInfo do
         if argInfo[i][isShort and 2 or 3] == argName then
@@ -106,6 +108,7 @@ local function getHelp(specify)
         print("mtape [-e --erase]")
         print("mtape [-u --unclean]")
         print("mtape [-c --cc-media]")
+        print("mtape [-u]")
         print("Use -h with other options for details")
     else
         if specify == "--info" then
@@ -116,20 +119,35 @@ local function getHelp(specify)
         elseif specify == "--unclean" then
             print("Normally, tapes are erased before writing them anew. Use this option to not erase them first.")
             print("If the tape has something longer written to it beforehand, you'll hear it after whatever is written now.")
-    elseif specify == "--ldd-github" then
+        elseif specify == "--ldd-github" then
             print("Adds URL info from LDDestroier's personal CC-Media github to make it easier to pull from there.")
             print("Ex. 'tapey -c krabii'")
             print("    'tapey -c simple'")
+        elseif specify == "--reinstall" then
+            print("Updates Mtape to the latest version on the LDDestroier/CC github.")
         end
     end
 end
+
+local tierInfo = {
+    -- damage value indicates type of tape
+    -- value of tierInfo indicates minutes of storage
+    [0] = 4,
+    [1] = 8,
+    [2] = 16,
+    [3] = 32,
+    [4] = 64,
+    [5] = 2,
+    [6] = 6,
+    [8] = 128
+}
 
 local function getFileContents(path, isURL)
     local file, contents
     if isURL then
         file = http.get(path, nil, true)
     else
-        file = fs.open(fs.combine(shell.dir(), path), "r")
+        file = fs.open(fs.combine(shell.dir(), path), "rb")
     end
     if not file then
         return false, ""
@@ -171,14 +189,26 @@ local function writeToTape(tape, contents, tapeName)
     if tapeName then
         tape.setLabel(tapeName)
     end
-    
+
+    tape.stop()
     tape.seek(-tape.getPosition())
     if #contents > totalTapeSize then
+        output = "Tape too small, audio truncated."
+        for i = 0, 8 do
+            if tierInfo[i] then
+                if tierInfo[i] * 360000 >= #contents then
+                    output = output .. "\nIt would fit on a" .. (tierInfo[i] == 8 and "n " or " ") .. tostring(tierInfo[i]) .. " minute tape."
+                    break
+                end
+            end
+        end
         contents = contents:sub(1, totalTapeSize)
-        output = "Tape too small. Audio was written incompletely."
     end
     tape.write(contents)
     tape.seek(-tape.getPosition())
+    tape.stop()
+
+    return output
 end
 
 local function infoMode(tape)
@@ -190,19 +220,6 @@ local function infoMode(tape)
 
     local info = {
         inserted = gi ~= nil
-    }
-
-    local tierInfo = {
-        -- damage value indicates type of tape
-        -- value of tierInfo indicates minutes of storage
-        [0] = 4,
-        [1] = 8,
-        [2] = 16,
-        [3] = 32,
-        [4] = 64,
-        [5] = 2,
-        [6] = 6,
-        [8] = 128
     }
 
     local minute = 360000
@@ -233,7 +250,8 @@ local argInfo = {
     [3] = {1, "d", "drive"},
     [4] = {0, "e", "erase"},
     [5] = {0, "u", "unclean"},
-    [6] = {1, "c", "cc-media"}
+    [6] = {1, "c", "cc-media"},
+    [7] = {0, "r", "reinstall"}
 }
 
 local arguments, options, errors = argParse({...}, argInfo)
@@ -255,6 +273,7 @@ local wantedInfo = options[2] == true
 local wantedErase = options[4] == true
 local doUnclean = options[5] == true
 local getFromGithub = options[6][1]
+local wantedUpdate = options[7] == true
 
 if wantedHelp then
     if wantedInfo then
@@ -265,10 +284,36 @@ if wantedHelp then
         getHelp("--unclean")
     elseif getFromGithub then
         getHelp("--ldd-github")
+    elseif wantedUpdate then
+        getHelp("--reinstall")
     else
         getHelp()
     end
     return
+end
+
+if wantedUpdate then
+    print("Redownloading Mtape...")
+    local cpath = shell.getRunningProgram()
+    local file = http.get("https://github.com/LDDestroier/CC/raw/master/mtape.lua")
+    local contents
+
+    local sizeBefore = fs.getSize(cpath)
+    local sizeAfter = 0
+    
+    if file then
+        contents = file.readAll()
+        sizeAfter = #contents
+        file.close()
+        file = fs.open(cpath, "w")
+        file.write(contents)
+        file.close()
+        print("Done! (diff: " .. tostring(sizeAfter - sizeBefore) .. " bytes)")
+        return
+    else
+        print("Couldn't update.")
+        return
+    end
 end
 
 -- Try to wrap specified tape drive OR find tape drive
@@ -310,22 +355,27 @@ end
 
 if not success then
     error("Could not get file. Abort.")
+else
+    if _DEBUG then
+        print("File size: " .. tostring(#contents) .. " bytes")
+        print("Tape size: " .. tostring(tape.getSize()) .. " bytes")
+    end
 end
 
 -- Adds null data to the end of the file if you want a clean tape write
 if doUnclean then
     print("Won't clean up tape first.")
 else
-    contents = contents .. string.char(0):rep(totalTapeSize - #contents)
+    contents = contents .. string.char(0):rep(math.max(0, totalTapeSize - #contents))
 end
 
-print("Writing...")
+write("Writing...")
 success = writeToTape(tape, contents, tapeName)
 if success then
-    print(success)
+    print("\n" .. success)
     print("Nonetheless, it is written.")
 else
-    print("\nIt is written.")
+    print("done!")
 end
 
 return true
