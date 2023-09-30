@@ -1,8 +1,5 @@
 local tArg = {...}
 
--- this doesn't work very well, keep it false
-local doByteByByte = false
-
 local fileName = tArg[1]
 local tapeName = tArg[2]
 
@@ -10,57 +7,45 @@ local function getHelp()
     print("tapewrite [file / url] [name]")
 end
 
-assert(fileName, getHelp())
-
-local tape = peripheral.find("tape_drive")
-local file
-if fileName:sub(1,8) == "https://" then
-    print("Downloading...")
-    file = http.get(fileName)
-else
-    file = fs.open(fs.combine(shell.dir(),fileName), "r")
+if not fileName then
+    getHelp()
+    return
 end
 
-local byte = 0
-tape.seek(-tape.getPosition())
+local tape = peripheral.find("tape_drive")
+if not tape then
+    print("Tape drive not connected.")
+    return
+end
+
+local totalSize = tape.getSize()
+
+-- Make file, and detect URL
+local file, contents
+if fileName:sub(1,8) == "https://" then
+    write("Downloading...")
+    file = http.get(fileName, nil, true)
+    print("Done.")
+else
+    file = fs.open(fs.combine(shell.dir(), fileName), "r")
+end
+contents = file.readAll()
+file.close()
 
 if tapeName then
     tape.setLabel(tapeName)
 end
-local counter = 0
-
-local totalSize = tape.getSize()
-
-if doByteByByte then
-
-    while true do
-        byte = file.read()
-        if not byte then
-            break
-        end
-        counter = counter + 1
-        tape.write(byte:byte())
-        if counter == 4096 then
-            counter = 0
-            os.queueEvent("yield")
-            os.pullEvent("yield")
-            write(".")
-        end
-    end
-
-else
-
-    print("Writing...")
-    local contents = file.readAll()
-    if #contents > totalSize then
-        contents = contents:sub(1, totalSize)
-        print("Tape too small. Audio was written incompletely.")
-    end
-    tape.write(contents)
-
-end
 
 tape.seek(-tape.getPosition())
-file.close()
 
-print("\nIt is written.")
+print("Writing...")
+
+if #contents > totalSize then
+    contents = contents:sub(1, totalSize)
+    print("Tape too small. Audio was written incompletely.")
+end
+tape.write(contents)
+
+tape.seek(-tape.getPosition())
+
+print("\nIt is written. (" .. tostring(#contents) .. " bytes)")
