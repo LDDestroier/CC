@@ -1,5 +1,6 @@
 -- ed text editor
 -- Port to ComputerCraft by LDDestroier
+-- wget https://raw.githubusercontent.com/LDDestroier/CC/master/ed.lua
 
 local state = {
     output = 0,
