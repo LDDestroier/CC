@@ -1,15 +1,16 @@
 -- ed text editor
 -- Port to ComputerCraft by LDDestroier
--- wget https://raw.githubusercontent.com/LDDestroier/CC/master/ed.lua
 
 local state = {
     output = 0,
     halt = false,
-    debug = true,
+    debug = false,
 
     mode = "command", -- command or input
 
     buffer = {},
+    line = 1,
+    filepath = nil,
 
     show_help = false,
     show_version = false,
@@ -275,6 +276,8 @@ state.strip_trailing_cr = t_options_list.strip_trailing_cr.value or state.strip_
 state.show_help         = t_options_list.help.value and (t_options_list.help.order < t_options_list.version.order)
 state.show_version      = t_options_list.version.value and (t_options_list.version.order < t_options_list.help.order)
 
+state.filepath = shell.resolve(n_args[1])
+
 if state.halt then
     return state.output
 end
@@ -388,30 +391,166 @@ local function fn_input()
     return text, interrupt
 end
 
+local function fn_check_valid_path(path, ignore_nonexist)
+    local good, err = true, ""
+
+    if not path then
+        good, err = false, ""
+    
+    elseif not fs.exists(path) then
+        good, err = false, "No such file or directory"
+        if ignore_nonexist then
+            good = true
+        end
+
+    elseif fs.isDir(path) then
+        good, err = false, "Is a directory"
+
+    end
+
+    return good, err
+end
+
+local function fn_file_read(path)
+    -- reads file and puts each line in a table
+
+    local valid = true
+    local err = ""
+
+    if not path then
+        return {}, false, "", 0
+    else
+        valid, err = fn_check_valid_path(path)
+        if not valid then
+            return {}, false, err, 0
+        end
+    end
+
+    local output = {}
+    local size = fs.getSize(path)
+    local file = fs.open(path, "r")
+    local line
+    repeat
+        line = file.readLine()
+        if line then
+            output[#output + 1] = line
+        end
+    until not line
+
+    return output, true, err, size
+end
+
+local function fn_file_write(path, buffer)
+    if not fn_check_valid_path(path, true) then
+        return false
+    end
+
+    local file = fs.open(path, "w")
+    for i = 1, #buffer do
+        file.write(buffer[i])
+        if i < #buffer then
+            file.write("\n")
+        end
+    end
+    file.close()
+
+    return fs.getSize(path)
+end
+
 local function fn_shell_resolve(command)
     -- TODO: make dynamically resizing window object
     -- set every pixel of window to black-on-black, then always make window draw white-on-white text to mark written regions
     -- then, return a table of lines from the window that are just as long as needed to represent the "marked" portions
+    -- ... or, I could figure out how to use lua's stdout functionality
     return {}
 end
 
 local function fn_command_parse(text)
     local valid = false
+    text = text:sub(text:find("[^%s]") or 0, -1) -- strip leading spaces
+    local command = text:match("^[^%s]+") or "" -- first word
+    local argument = text:sub(text:find("[^%s]", #command + 1) or (#text + 1), -1) -- rest of sentence
 
-    if text == "P" then
+    local whole = false
+    local program_output
+
+    -- TODO: add every command and every subcommand
+    -- TODO: implement Regex somehow (or settle on Lua patterns)
+
+    if #command == 0 then
+        if state.line < #state.buffer then
+            state.line = state.line + 1
+            valid = true
+            print(state.buffer[state.line])
+        end
+    end
+
+    if command:sub(1, 1) == "!" then -- shell evaluate
+        program_output = fn_shell_resolve(command:sub(2))
+        for i = 1, #program_output do
+            print(program_output[i])
+        end
+
+    elseif command:sub(1, 1) == "," then
+        whole = true
+        command = command:match("[^,]+.*")
+    end
+
+    if tonumber(command) then -- set edit line number
+        if state.buffer[tonumber(command)] then
+            state.line = tonumber(command)
+            print(state.buffer[state.line])
+            valid = true
+        end
+    end
+
+    if command == "p" then -- print
+        if whole then
+            for i = 1, #state.buffer do
+                print(state.buffer[i])
+            end
+            state.line = #state.buffer
+        else
+            print(state.buffer[state.line])
+        end
+        valid = true
+    end
+
+    if command == "w" then -- write to file
+        local p_valid, err
+
+        if #argument > 0 then
+            state.filepath = shell.resolve(argument)
+        end
+
+        if state.filepath then
+            p_valid, err = fn_check_valid_path(state.filepath, true)
+            if p_valid then
+                if fs.isReadOnly(state.filepath) then
+                    print(state.filepath .. ": Permission denied")
+                else
+                    print(fn_file_write(state.filepath, state.buffer)) -- print size of written
+                    valid = true
+                end
+            else
+                print(state.filepath .. ": " .. err)
+            end
+        end
+    end
+
+    if command == "P" then -- toggle prompt
         valid = true
         state.show_prompt = not state.show_prompt
     end
-    if text == "q" then
+    if command == "q" then -- get the fuck outta heeereeeee
         valid = true
         return false
     end
-    if text == "i" then
+    if command == "i" then -- enter input mode
         valid = true
         state.mode = "input"
     end
-
-    -- TODO: inplement every command
+    
 
     if not valid then
         print("?")
@@ -422,7 +561,7 @@ end
 
 local function fn_input_parse(text, interrupt)
     if interrupt then
-        state.mode == "command"
+        state.mode = "command"
         return true
     else
         print("WIP")
@@ -434,6 +573,23 @@ local function main()
     state.mode = "command"
     local running = true
     local text, interrupt
+
+    if state.filepath then
+        local valid, err, size
+        state.buffer, valid, err, size = fn_file_read(state.filepath)
+        if valid then
+            if state.filepath then
+                print(size)
+            end
+        else
+            print(state.filepath .. ": " .. err)
+            if fs.isDir(state.filepath) then
+                print("?") -- ed does it, I do it
+            end
+            state.filepath = nil
+        end
+    end
+
     while running do
         text, interrupt = fn_input()
         if interrupt then
@@ -452,8 +608,9 @@ local function main()
 
         end
     end
+
+    return state.output
+
 end
 
-main()
-
-return state.output
+return main()
