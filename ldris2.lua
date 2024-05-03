@@ -34,33 +34,45 @@ To-do:
 	+ Cheese race mode
 	+ Change color palletes so that the ghost piece isn't the color of dirt
 	+ Add in-game menu for changing controls (some people can actually tolerate guideline)
---]]
+]]
 
+_WRITE_TO_DEBUG_MONITOR = true
 
 local scr_x, scr_y = term.getSize()
 
 -- client config can be changed however you please
 local clientConfig = {
 	controls = {
-		rotate_left = keys.z,		-- by left, I mean counter-clockwise
-		rotate_right = keys.x,		-- by right, I mean clockwise
+		rotate_ccw = keys.z,		-- by left, I mean counter-clockwise
+		rotate_cw = keys.x,			-- by right, I mean clockwise
 		move_left = keys.left,
 		move_right = keys.right,
 		soft_drop = keys.down,
 		hard_drop = keys.up,
-		sonic_drop = keys.space,
+		sonic_drop = keys.space,	-- drop mino to bottom, but don't lock
 		hold = keys.leftShift,
 		pause = keys.p,
 		restart = keys.r,
 		open_chat = keys.t,
 		quit = keys.q,
 	},
-	soft_drop_multiplier = 4.0,		-- (SDF) the factor in which soft dropping effects the gravity
-	move_repeat_delay = 0.25,		-- (DAS) amount of time you must be holding the movement keys for it to start repeatedly moving (seconds)
-	move_repeat_interval = 0.05,	-- (ARR) speed at which the pieces move when holding the movement keys (seconds per tick)
-	appearance_delay = 0,			-- (ARE) amount of seconds it will take for the next piece to arrive after the current one locks into place
-	lock_delay = 0.5,				-- (Lock Delay) amount of seconds it will take for a resting mino to lock into placed
-	queue_length = 5,				-- amount of pieces visible in the queue (limited by size of UI)
+	-- (SDF) the factor in which soft dropping effects the gravity
+	soft_drop_multiplier = 4.0,
+	
+	-- (DAS) amount of time you must be holding the movement keys for it to start repeatedly moving (seconds)
+	move_repeat_delay = 0.25,
+	
+	-- (ARR) speed at which the pieces move when holding the movement keys (seconds per tick)
+	move_repeat_interval = 0.05,
+	
+	-- (ARE) amount of seconds it will take for the next piece to arrive after the current one locks into place
+	appearance_delay = 0,
+	
+	-- (Lock Delay) amount of seconds it will take for a resting mino to lock into placed
+	lock_delay = 0.5,
+	
+	-- amount of pieces visible in the queue (limited by size of UI)
+	queue_length = 5,
 }
 
 -- ideally, only clients with IDENTICAL game configs should face one another
@@ -72,7 +84,7 @@ local gameConfig = {
 								-- "singlebag" = normal tetris guideline random
 								-- "doublebag" = doubled bag size
 								-- "random" = using math.random
-	board_width = 11,			-- width of play area
+	board_width = 10,			-- width of play area
 	board_height = 40,			-- height of play area
 	board_height_visible = 20,	-- height of play area that will render on screen (anchored to bottom)
 	spin_mode = 1,				-- 1 = allows T-spins
@@ -84,12 +96,12 @@ local gameConfig = {
 								-- used as a method of preventing stalling -- set it to math.huge for infinite
 }
 
-_WRITE_TO_DEBUG_MONITOR = true
-
 local cospc_debuglog = function(header, text)
 	if _WRITE_TO_DEBUG_MONITOR then
 		if ccemux then
-			ccemux.attach("right", "monitor")
+			if not peripheral.find("monitor") then
+				ccemux.attach("right", "monitor")
+			end
 			local t = term.redirect(peripheral.wrap("right"))
 			if text == 0 then
 				term.clear()
@@ -864,6 +876,8 @@ local StartGame = function(player_number, native_control, board_xmod, board_ymod
 		random_bag = {},
 		gameTickCount = 0,
 		controlTickCount = 0,
+		animFrame = 0,
+		state = "halt",
 		controlsDown = {},		-- 
 		incomingGarbage = 0,	-- amount of garbage that will be added to board after non-line-clearing mino placement
 		combo = 0,				-- amount of successive line clears
@@ -1259,7 +1273,7 @@ local StartGame = function(player_number, native_control, board_xmod, board_ymod
 					didSlowAction = true
 				end
 			end
-			if checkControl("rotate_left", false) then
+			if checkControl("rotate_ccw", false) then
 				mino.Rotate(-1, true)
 				if mino.spinID <= gameConfig.spin_mode then
 					if (
@@ -1272,9 +1286,9 @@ local StartGame = function(player_number, native_control, board_xmod, board_ymod
 						gameState.spinLevel = 0
 					end
 				end
-				gameState.antiControlRepeat["rotate_left"] = true
+				gameState.antiControlRepeat["rotate_ccw"] = true
 			end
-			if checkControl("rotate_right", false) then
+			if checkControl("rotate_cw", false) then
 				mino.Rotate(1, true)
 				if mino.spinID <= gameConfig.spin_mode then
 					if (
@@ -1287,7 +1301,7 @@ local StartGame = function(player_number, native_control, board_xmod, board_ymod
 						gameState.spinLevel = 0
 					end
 				end
-				gameState.antiControlRepeat["rotate_right"] = true
+				gameState.antiControlRepeat["rotate_cw"] = true
 			end
 		end
 		if checkControl("pause", false) then
