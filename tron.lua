@@ -354,7 +354,7 @@ if useSkynet and (not http.websocket) then
 end
 
 local skynetPath = fs.combine(fs.getDir(shell.getRunningProgram()), "skynet.lua")
-local skynetURL = "https://github.com/LDDestroier/CC/raw/master/API/skynet.lua"
+local skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua"
 
 if argumentName then
 	argumentName = argumentName:sub(1, 15) -- gotta enforce that limit
