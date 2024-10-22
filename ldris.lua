@@ -64,7 +64,7 @@ local game = {
 		modem = peripheral.find("modem"),	-- modem transmit object
 		useSkynet = false,					-- if true, uses Skynet instead of modems
 		skynet = nil,						-- skynet transmit object
-		skynetURL = "https://github.com/LDDestroier/CC/raw/master/API/skynet.lua",	-- exactly what it looks like
+		skynetURL = "https://raw.githubusercontent.com/osmarks/skynet/master/client.lua",	-- exactly what it looks like
 		skynetPath = "/skynet.lua"			-- location for Skynet API
 	},
 	timers = {},
