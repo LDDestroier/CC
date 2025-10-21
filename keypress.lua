@@ -99,33 +99,38 @@ function keypress.resume(...)
 	local evt = {...}
 	local output = {}
 
-	if evt[1] == "keypress" and _DEMO then
-		-- exit demo with CTRL-C
-		if evt[2].key == keys.c and evt[2].ctrl then
-			return "keypress_terminatedemo"
+	if evt[1] == "keypress" then
+		if _DEMO then
+			-- exit demo with CTRL-C
+			if evt[2].key == keys.c and evt[2].ctrl then
+				return "keypress_terminatedemo"
 
-		else
-			print("key  = keys." .. (r_keys[evt[2]  .key] or "???"))
-			
-			if evt[2].char then
-				write("char = '" .. evt[2].char .. "'")
 			else
-				write("char = nil")
-			end
+				print("key  = keys." .. (r_keys[evt[2]  .key] or "???"))
+				
+				if evt[2].char then
+					write("char = '" .. evt[2].char .. "'")
+				else
+					write("char = nil")
+				end
 
-			if evt[2].char_pressed then
-				print(" ('" .. evt[2].char_pressed .. "')")
-			else
+				if evt[2].char_pressed then
+					print(" ('" .. evt[2].char_pressed .. "')")
+				else
+					print("")
+				end
+
+				print("note = " .. (evt[2].notation or "(NONE)"))
+				write("mods = ")
+				write(evt[2].ctrl and "ctrl " or "")
+				write(evt[2].alt and "alt " or "")
+				print(evt[2].shift and "shift" or "")
 				print("")
 			end
-
-			print("note = " .. (evt[2].notation or "(NONE)"))
-			write("mods = ")
-			write(evt[2].ctrl and "ctrl " or "")
-			write(evt[2].alt and "alt " or "")
-			print(evt[2].shift and "shift" or "")
-			print("")
 		end
+
+		-- keypress events should die when fed back into keypress.resume()
+		return
 
 	elseif evt[1] == "key" then
 		keys_down[evt[2]] = true
@@ -434,7 +439,7 @@ function keypress.process()
 		if evt == "keypress" then
 			os.queueEvent(evt, kp)
 
-		elseif evt == "keypress_terminatedemo" then
+		elseif _DEMO and evt == "keypress_terminatedemo" then
 			print("Demo ended.")
 			return
 		end
