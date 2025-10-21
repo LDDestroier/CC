@@ -97,7 +97,7 @@ local modfier_lookup = {
 function keypress.resume(...)
 
 	local evt = {...}
-	local output1, output2
+	local output = {}
 
 	if evt[1] == "keypress" and _DEMO then
 		-- exit demo with CTRL-C
@@ -106,10 +106,19 @@ function keypress.resume(...)
 
 		else
 			print("key  = keys." .. (r_keys[evt[2]  .key] or "???"))
-			write("char = " .. (evt[2].char or "nil"))
+			
+			if evt[2].char then
+				write("char = '" .. evt[2].char .. "'")
+			else
+				write("char = nil")
+			end
+
 			if evt[2].char_pressed then
-				print(" (" .. evt[2].char_pressed .. ")")
-			else print("") end
+				print(" ('" .. evt[2].char_pressed .. "')")
+			else
+				print("")
+			end
+
 			print("note = " .. (evt[2].notation or "(NONE)"))
 			write("mods = ")
 			write(evt[2].ctrl and "ctrl " or "")
@@ -122,52 +131,56 @@ function keypress.resume(...)
 		keys_down[evt[2]] = true
 		modifier_keydowns()
 
-		if nonprintable_keys[evt[2]] or (
-			keys_down[keys.ctrl] or keys_down[keys.alt]
-		) then
-		output1, output2 = "keypress", {
-			key = evt[2],
-			char = nil, -- represents a printable character -- use this if you're using keypress API for text input
-			char_pressed = nil, -- represents the character pressed regardless of if it should print
-			time = os.epoch(),
-			ctrl = keys_down[keys.ctrl],
-			shift = keys_down[keys.shift],
-			alt = keys_down[keys.alt]
-		}
+		if nonprintable_keys[evt[2]] or (keys_down[keys.ctrl] or keys_down[keys.alt]) then
+			output[1] = "keypress"
+			output[2] = {
+				key = evt[2],
+				char = nil, -- represents a printable character -- use this if you're using keypress API for text input
+				char_pressed = nil, -- represents the character pressed regardless of if it should print
+				time = os.epoch(),
+				ctrl = keys_down[keys.ctrl],
+				shift = keys_down[keys.shift],
+				alt = keys_down[keys.alt]
+			}
 
-		output2.notation = keypress.to_vim_notation(output2)
+			output[2].notation = keypress.to_vim_notation(output[2])
+		else
+			last_epoch = os.epoch()
+			last_key = evt[2]
+		end
+
+	elseif evt[1] == "key_up" then
+		keys_down[evt[2]] = false
+		modifier_keydowns()
+
+	elseif evt[1] == "char" and last_evt == "key" then
+		delta = os.epoch() - last_epoch
+		if delta <= 90 then
+			output[1] = "keypress"
+			output[2] = {
+				key = last_key,
+				char = evt[2],
+				char_pressed = evt[2],
+				time = os.epoch(),
+				ctrl = keys_down[keys.ctrl],
+				shift = keys_down[keys.shift],
+				alt = keys_down[keys.alt]
+			}
+
+			output[2].notation = keypress.to_vim_notation(output[2])
+		end
+
 	else
-		last_epoch = os.epoch()
-		last_key = evt[2]
+		last_key = nil
 	end
 
-elseif evt[1] == "key_up" then
-	keys_down[evt[2]] = false
-	modifier_keydowns()
-
-elseif evt[1] == "char" and last_evt == "key" then
-	delta = os.epoch() - last_epoch
-	if delta <= 90 then
-		output1, output2 = "keypress", {
-			key = last_key,
-			char = evt[2],
-			char_pressed = evt[2],
-			time = os.epoch(),
-			ctrl = keys_down[keys.ctrl],
-			shift = keys_down[keys.shift],
-			alt = keys_down[keys.alt]
-		}
-
-		output2.notation = keypress.to_vim_notation(output2)
+	if #output == 0 then
+		output = evt
 	end
 
-else
-	last_key = nil
-end
+	last_evt = evt[1]
 
-last_evt = evt[1]
-
-return output1, output2
+	return table.unpack(output)
 end
 
 -- convert some key codes to characters
