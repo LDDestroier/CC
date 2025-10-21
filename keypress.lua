@@ -1,5 +1,24 @@
 -- Keypress API
 -- by LDDestroier
+--
+-- keypress event:
+-- kp = {
+--	key          : numerical keycode of key pressed
+--	char         : printable character of keypress
+--	               use this in place of "char" events, like for text input
+--	char_pressed : character of keypress, not necessarily printed
+--	               for instance, pressing "A" will return a char event, but
+--	               pressing "CTRL+A" will not
+--	notation     : vim-style notation of key event, like <C-PageUp>
+--	               Modifier keys do not have notation on their own.
+--	name         : vim-style notaton of EVERY key event, including modifier keys.
+--	               if you want to match against every possible keystroke, use this.
+--	time         : os.epoch() time of keypress
+--	ctrl         : true/false if CTRL was held
+--	alt          : true/false if ALT was held
+--	shift        : true/false if SHIFT was held
+--	paste        : if not nil, contains text that had been pasted
+-- }
 
 local keypress = {}
 
@@ -64,16 +83,16 @@ local function modifier_keydowns()
 	keys_down[keys.alt]   = keys_down[keys.leftAlt]   or keys_down[keys.rightAlt]
 end
 
-local modfier_lookup = {
-	[ keys.leftCtrl ] = true,
-	[ keys.rightCtrl ] = true,
-	[ keys.ctrl ] = true,
-	[ keys.leftShift ] = true,
-	[ keys.rightShift ] = true,
-	[ keys.shift ] = true,
-	[ keys.leftAlt ] = true,
-	[ keys.rightAlt ] = true,
-	[ keys.alt ] = true,
+local modifier_lookup = {
+	[ keys.leftCtrl ] = "Ctrl",
+	[ keys.rightCtrl ] = "Ctrl",
+	[ keys.ctrl ] = "Ctrl",
+	[ keys.leftShift ] = "Shift",
+	[ keys.rightShift ] = "Shift",
+	[ keys.shift ] = "Shift",
+	[ keys.leftAlt ] = "Alt",
+	[ keys.rightAlt ] = "Alt",
+	[ keys.alt ] = "Alt",
 
 	ctrl = {
 		[ keys.leftCtrl ] = true,
@@ -94,10 +113,24 @@ local modfier_lookup = {
 	}
 }
 
+-- requires kp.notation to be populated to work right
+local function get_keypress_name( kp )
+	if kp.notation then
+		return kp.notation
+		
+	elseif modifier_lookup[ kp.key ] then
+		return "<" .. modifier_lookup[ kp.key ] .. ">"
+	
+	else
+		return "<UnknownKey>"
+	end
+end
+
 function keypress.resume(...)
 
 	local evt = {...}
 	local output = {}
+	local paste_contents
 
 	if evt[1] == "keypress" then
 		if _DEMO then
@@ -120,11 +153,18 @@ function keypress.resume(...)
 					print("")
 				end
 
-				print("note = " .. (evt[2].notation or "(NONE)"))
+				print("name = " .. (evt[2].name or "nil"))
+
+				print("notation = " .. (evt[2].notation or "(NONE)"))
 				write("mods = ")
 				write(evt[2].ctrl and "ctrl " or "")
 				write(evt[2].alt and "alt " or "")
 				print(evt[2].shift and "shift" or "")
+				
+				if evt[2].paste then
+					print("paste = " .. evt[2].paste)
+				end
+
 				print("")
 			end
 		end
@@ -132,7 +172,15 @@ function keypress.resume(...)
 		-- keypress events should die when fed back into keypress.resume()
 		return
 
-	elseif evt[1] == "key" then
+	elseif evt[1] == "paste" then
+		-- assume a paste event means you pressed 'v'
+		evt[1] = "key"
+		paste_contents = evt[2]
+		evt[2] = keys.v
+		evt[3] = false
+	end
+
+	if evt[1] == "key" then
 		keys_down[evt[2]] = true
 		modifier_keydowns()
 
@@ -145,10 +193,12 @@ function keypress.resume(...)
 				time = os.epoch(),
 				ctrl = keys_down[keys.ctrl],
 				shift = keys_down[keys.shift],
-				alt = keys_down[keys.alt]
+				alt = keys_down[keys.alt],
+				paste = paste_contents
 			}
 
 			output[2].notation = keypress.to_vim_notation(output[2])
+			output[2].name = get_keypress_name(output[2])
 		else
 			last_epoch = os.epoch()
 			last_key = evt[2]
@@ -169,10 +219,12 @@ function keypress.resume(...)
 				time = os.epoch(),
 				ctrl = keys_down[keys.ctrl],
 				shift = keys_down[keys.shift],
-				alt = keys_down[keys.alt]
+				alt = keys_down[keys.alt],
+				paste = paste_contents
 			}
 
 			output[2].notation = keypress.to_vim_notation(output[2])
+			output[2].name = get_keypress_name(output[2])
 		end
 
 	else
@@ -261,7 +313,7 @@ local vim_notation_lookup = {
 	[ keys.convert ]   = "Convert",
 	[ keys.noconvert ] = "NoConvert",
 
-	-- NOTE: I am quite sure these keys are not recognized in Vim, but they *are* in CraftOS
+	-- NOTE: I am quite sure these keys are not recognized in Vim, but they *are* in CraftOS and are not modifiers
 	[ keys.capsLock ]  = "CapsLock",
 	[ keys.scollLock ] = "ScrollLock", -- 'scollLock' misspelled in CraftOS
 	[ keys.numLock ]   = "NumLock",
@@ -394,15 +446,15 @@ function keypress.to_vim_notation( kp )
 	kp.char_pressed = kp.char_pressed or kp.char
 
 	-- tack on modifier codes
-	if kp.alt and not modfier_lookup.alt[ kp.key ] then
+	if kp.alt and not modifier_lookup.alt[ kp.key ] then
 		output[2] = "M-"
 	end
 
-	if kp.ctrl and not modfier_lookup.ctrl[ kp.key ] then
+	if kp.ctrl and not modifier_lookup.ctrl[ kp.key ] then
 		output[3] = "C-"
 	end
 
-	if kp.shift and (not do_omit_s) and not modfier_lookup.shift[ kp.key ] then
+	if kp.shift and (not do_omit_s) and not modifier_lookup.shift[ kp.key ] then
 		output[4] = "S-"
 	end
 
